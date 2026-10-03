@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  seaweedfs-master:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweedfs-master
+    user: root
+    ports:
+      - "9333:9333"
+      - "19333:19333"
+    command: master -ip=seaweedfs-master -port=9333 -mdir=/data -ip.bind=0.0.0.0 -defaultReplication=000
+    volumes:
+      - master-data:/data
+    networks:
+      - seaweed-network
+    restart: unless-stopped
+
+  seaweedfs-volume:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweedfs-volume
+    user: root
+    ports:
+      - "8080:8080"
+      - "18080:18080"
+    environment:
+      - WEED_VOLUME_MSERVER=seaweedfs-master:9333
+    command: volume -mserver=seaweedfs-master:9333 -ip=seaweedfs-volume -port=8080 -dir=/data -ip.bind=0.0.0.0
+    volumes:
+      - volume-data:/data
+    networks:
+      - seaweed-network
+    restart: unless-stopped
+    depends_on:
+      - seaweedfs-master
+
+  seaweedfs-s3:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweedfs-s3
+    user: root
+    ports:
+      - "8333:8333"
+    environment:
+      - WEED_S3_MASTER=seaweedfs-master:9333
+      - AWS_ACCESS_KEY_ID=theron_access_key
+      - AWS_SECRET_ACCESS_KEY=theron_secret_key_123
+    # ✅ Thêm -port 8333 vào command để đảm bảo nó bind đúng cổng dù có env
+    command: s3 -port 8333
+    networks:
+      - seaweed-network
+    restart: unless-stopped
+    depends_on:
+      - seaweedfs-master
+      - seaweedfs-volume
+
+  seaweedfs-ui:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweedfs-ui
+    user: root
+    ports:
+      - "8888:8888"
+    command: filer -master=seaweedfs-master:9333
+    networks:
+      - seaweed-network
+    restart: unless-stopped
+    depends_on:
+      - seaweedfs-master
+
+volumes:
+  master-data:
+  volume-data:
+
+networks:
+  seaweed-network:
+    driver: bridge
