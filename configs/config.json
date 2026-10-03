@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "manager_docker_compose",
-    "port": 8080,
+    "port": 9001,
     "env": "development"
   },
   "database": {

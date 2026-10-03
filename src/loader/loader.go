@@ -1,34 +1,44 @@
 package loader
 
 import (
-	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/apis"
 	"knowledge_ingestion/src/controller/routers"
 	"knowledge_ingestion/src/controller/services"
-	"os"
 
+	"github.com/go-playground/validator/v10"
 	"go.uber.org/fx"
 )
 
-func ConfigProvider() (config.IConfig, error) {
-	path := os.Getenv("APP_CONFIG_PATH")
-	if path == "" {
-		path = "./configs/config.json"
+func Load() []fx.Option {
+	return []fx.Option{
+		fx.Options(loadAdapter()...),
+		fx.Options(loadService()...),
+		fx.Options(loadValidator()...),
+		fx.Options(loadEngine()...),
 	}
-	return config.Load(path)
 }
 
-var Module = fx.Options(
-	fx.Provide(ConfigProvider),
-	services.Module,
-	apis.Module,
-	routers.Module,
-)
-
-func New(opts ...fx.Option) *fx.App {
-	return fx.New(append([]fx.Option{Module}, opts...)...)
+func loadAdapter() []fx.Option {
+	return []fx.Option{
+		// fx.Provide(postgres.NewConnection),
+	}
 }
 
-func Run(opts ...fx.Option) {
-	New(opts...).Run()
+func loadService() []fx.Option {
+	return []fx.Option{
+		fx.Provide(services.NewPingPongService),
+	}
+}
+
+func loadValidator() []fx.Option {
+	return []fx.Option{
+		fx.Provide(validator.New),
+	}
+}
+
+func loadEngine() []fx.Option {
+	return []fx.Option{
+		fx.Provide(apis.NewPingPongAPI),
+		fx.Provide(routers.NewRouter),
+	}
 }

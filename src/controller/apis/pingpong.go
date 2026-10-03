@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/fx"
 )
 
 type PingPongAPI struct {
@@ -23,7 +22,3 @@ func (a *PingPongAPI) Ping(c *gin.Context) {
 func (a *PingPongAPI) Pong(c *gin.Context) {
 	c.JSON(http.StatusOK, a.svc.Pong())
 }
-
-var Module = fx.Options(
-	fx.Provide(NewPingPongAPI),
-)

@@ -52,7 +52,7 @@ func Load(path string) (IConfig, error) {
 
 	var cfg appConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+		return nil, fmt.Errorf("failed to parse config file %s: %w", path, err)
 	}
 
 	// Validate cơ bản

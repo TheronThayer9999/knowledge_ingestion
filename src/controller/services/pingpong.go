@@ -3,8 +3,6 @@ package services
 import (
 	"knowledge_ingestion/src/domain/dtos"
 	"time"
-
-	"go.uber.org/fx"
 )
 
 type IPingPongService interface {
@@ -25,7 +23,3 @@ func (s *pingPongService) Ping() dtos.PingPongResponse {
 func (s *pingPongService) Pong() dtos.PingPongResponse {
 	return dtos.PingPongResponse{Message: "ping", Timestamp: time.Now()}
 }
-
-var Module = fx.Options(
-	fx.Provide(NewPingPongService),
-)
