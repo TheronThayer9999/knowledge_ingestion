@@ -29,7 +29,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dtos.PingPongResponse"
+                            "$ref": "#/definitions/dtos.ResponseResource"
                         }
                     }
                 }
@@ -49,7 +49,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dtos.PingPongResponse"
+                            "$ref": "#/definitions/dtos.ResponseResource"
                         }
                     }
                 }
@@ -57,13 +57,14 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "dtos.PingPongResponse": {
+        "dtos.ResponseResource": {
             "type": "object",
             "properties": {
-                "message": {
-                    "type": "string"
+                "code": {
+                    "type": "integer"
                 },
-                "timestamp": {
+                "data": {},
+                "message": {
                     "type": "string"
                 }
             }

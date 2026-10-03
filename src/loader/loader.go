@@ -38,6 +38,7 @@ func loadValidator() []fx.Option {
 
 func loadEngine() []fx.Option {
 	return []fx.Option{
+		fx.Provide(apis.NewBaseController),
 		fx.Provide(apis.NewPingPongAPI),
 		fx.Provide(routers.NewRouter),
 	}

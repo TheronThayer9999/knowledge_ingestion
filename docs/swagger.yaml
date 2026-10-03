@@ -1,10 +1,11 @@
 basePath: /
 definitions:
-  dtos.PingPongResponse:
+  dtos.ResponseResource:
     properties:
+      code:
+        type: integer
+      data: {}
       message:
-        type: string
-      timestamp:
         type: string
     type: object
 info:
@@ -22,7 +23,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.PingPongResponse'
+            $ref: '#/definitions/dtos.ResponseResource'
       summary: Ping the server
       tags:
       - health
@@ -35,7 +36,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dtos.PingPongResponse'
+            $ref: '#/definitions/dtos.ResponseResource'
       summary: Pong the server
       tags:
       - health

@@ -20,6 +20,7 @@
 ## Conventions
 
 - Interfaces prefixed `I` (IConfig, IPingPongService, IDB); constructors take interfaces, fx binds interface → concrete (SOLID/DIP)
+- Handlers embed `*baseController` (`apis/base.go`): `Success`/`BadRequest` return the `{code, message, data}` envelope (`dtos.ResponseResource`), `Bind` = bind + validate — never return raw JSON from a handler
 - Comments are in Vietnamese — match the existing style
 - Swagger: general API info annotation sits above `package main` in cmd/main.go; per-endpoint annotations on handler methods reference response types from `domain/dtos` (handlers declare `var resp dtos.X = ...` so the import resolves)
 
