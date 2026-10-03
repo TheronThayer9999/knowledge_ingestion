@@ -2,7 +2,6 @@ package apis
 
 import (
 	"knowledge_ingestion/src/controller/services"
-	"knowledge_ingestion/src/domain/dtos"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,7 +23,7 @@ func NewPingPongAPI(base *baseController, svc services.IPingPongService) *PingPo
 // @Success 200 {object} dtos.ResponseResource
 // @Router /api/v1/ping [get]
 func (a *PingPongAPI) Ping(c *gin.Context) {
-	var res dtos.Result[dtos.PingPongResponse] = a.svc.Ping()
+	res := a.svc.Ping()
 	Render(c, a.baseController, res)
 }
 
@@ -36,6 +35,6 @@ func (a *PingPongAPI) Ping(c *gin.Context) {
 // @Success 200 {object} dtos.ResponseResource
 // @Router /api/v1/pong [get]
 func (a *PingPongAPI) Pong(c *gin.Context) {
-	var res dtos.Result[dtos.PingPongResponse] = a.svc.Pong()
+	res := a.svc.Pong()
 	Render(c, a.baseController, res)
 }

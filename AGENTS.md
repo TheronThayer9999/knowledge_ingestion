@@ -2,7 +2,7 @@
 
 ## Commands
 
-- Verify: `go build ./...` && `go vet ./...` — no lint config, no CI, no Makefile, no test files exist
+- Verify: `go build ./...` && `go vet ./...` — no lint config, no CI, no Makefile; tests: `go test ./...` (currently only `src/infrastructure/seaweedfs` has any)
 - Run: `go run ./cmd` → `GET /api/v1/ping`, `GET /api/v1/pong`, Swagger UI at `/swagger/index.html`
 - Config: `-configs <path>` flag, default `./configs/config.json`; `APP_CONFIG_PATH` env overrides the flag default
 - Swagger: regenerate after changing annotations with `swag init -g cmd/main.go` (swag CLI in `%USERPROFILE%\go\bin`); `docs/` is generated — never hand-edit it
@@ -14,7 +14,9 @@
 - Entrypoint `cmd/main.go`: `fx.New(Provide(config), Options(loader.Load()...), Invoke(serverLifecycle))` then manual `Start` → OS signal → `Stop` (not `fx.Run`)
 - All DI wiring lives in `src/loader/loader.go` — `Load() []fx.Option` grouped as loadAdapter/loadService/loadValidator/loadEngine (same pattern as the shoe_shop fxloader); add new providers there only, never as package-level `var Module`
 - Layer flow: `routers` (route table only, exposes `Engine`; HTTP server lifecycle is in `serverLifecycle` in cmd/main.go) → `apis` (gin handlers) → `services` (business logic behind `I…` interfaces) → `domain/dtos`; config injected everywhere via `config.IConfig`
-- Empty scaffold dirs reserved for future use: `common/{logs,utils}`, `controller/middlewares`, `domain/models`, `repository`, `infrastructure/seaweedfs` — follow the existing layer pattern when filling them- `infrastructure/postgres/connection.go` is NOT wired (commented in `loadAdapter`); `sql.Open("postgres", ...)` has no driver registered — import `lib/pq` (driver name `postgres`) or switch to `pgx/v5/stdlib` (driver name `pgx`) and uncomment before enabling it
+- Storage: contract `common/storage.IStorage` (`Save`/`Open`/`Delete`), implemented by `infrastructure/seaweedfs` with aws-sdk-go-v2 against the S3-compatible gateway (path-style, static creds, region fixed `us-east-1`); provided in `loadAdapter` — fx builds it lazily, so the app boots without SeaweedFS running
+- Empty scaffold dirs reserved for future use: `common/{logs,utils}`, `controller/middlewares`, `domain/models`, `repository` — follow the existing layer pattern when filling them
+- `infrastructure/postgres/connection.go` is NOT wired (absent from `loadAdapter`); `sql.Open("postgres", ...)` has no driver registered — import `lib/pq` (driver name `postgres`) or switch to `pgx/v5/stdlib` (driver name `pgx`) and add it to `loadAdapter` before enabling it
 
 ## Conventions
 
@@ -28,6 +30,6 @@
 
 ## Gotchas
 
-- `gofmt -l` flags several pre-existing files (`config.go`, `connection.go`, `qdrant/connection.go`, `storage.go`) only for CRLF line endings (content is formatted) — don't mass-convert line endings
+- `gofmt -l` flags several pre-existing files (`config.go`, `connection.go`, `qdrant/connection.go`) only for CRLF line endings (content is formatted) — don't mass-convert line endings
 - `configs/config.json` points at Docker-network hosts (`postgres`, `seaweedfs-s3`) — fine to boot locally since DB is not wired yet; dev port is 9001 because Docker Desktop occupies 8080/18080 on this machine
 - `.gitignore` is empty — don't commit built binaries (`ki.exe`, etc.)
