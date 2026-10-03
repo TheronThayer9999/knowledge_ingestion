@@ -1,3 +1,7 @@
+// @title Knowledge Ingestion API
+// @version 1.0
+// @description Knowledge ingestion service
+// @BasePath /
 package main
 
 import (
@@ -5,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	_ "knowledge_ingestion/docs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/routers"
 	"knowledge_ingestion/src/loader"

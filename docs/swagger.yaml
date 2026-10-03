@@ -1,0 +1,42 @@
+basePath: /
+definitions:
+  dtos.PingPongResponse:
+    properties:
+      message:
+        type: string
+      timestamp:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Knowledge ingestion service
+  title: Knowledge Ingestion API
+  version: "1.0"
+paths:
+  /api/v1/ping:
+    get:
+      description: Returns pong with server timestamp
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.PingPongResponse'
+      summary: Ping the server
+      tags:
+      - health
+  /api/v1/pong:
+    get:
+      description: Returns ping with server timestamp
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.PingPongResponse'
+      summary: Pong the server
+      tags:
+      - health
+swagger: "2.0"
