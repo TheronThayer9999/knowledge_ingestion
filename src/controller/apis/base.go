@@ -34,12 +34,7 @@ func (b *baseController) Bind(c *gin.Context, request interface{}) bool {
 }
 
 func (b *baseController) Success(c *gin.Context, data interface{}) {
-	c.JSON(http.StatusOK, dtos.ResponseResource{
-		Status:  true,
-		Code:    errors.Success,
-		Message: "success",
-		Data:    data,
-	})
+	c.JSON(http.StatusOK, dtos.Success(data))
 }
 
 func (b *baseController) ErrorData(c *gin.Context, err *errors.Error) {
@@ -54,14 +49,20 @@ func (b *baseController) BadRequest(c *gin.Context, message string) {
 	b.ErrorData(c, errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, message))
 }
 
-func Render[T any](c *gin.Context, b *baseController, res dtos.Result[T]) {
+type renderer interface {
+	Success(c *gin.Context, data interface{})
+	ErrorData(c *gin.Context, err *errors.Error)
+	BadRequest(c *gin.Context, message string)
+}
+
+func Render[T any](c *gin.Context, r renderer, res dtos.Result[T]) {
 	if res.Err != nil {
 		if e := errors.From(res.Err); e != nil {
-			b.ErrorData(c, e)
+			r.ErrorData(c, e)
 			return
 		}
-		b.BadRequest(c, res.Err.Error())
+		r.BadRequest(c, res.Err.Error())
 		return
 	}
-	b.Success(c, res.Data)
+	r.Success(c, res.Data)
 }

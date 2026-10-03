@@ -15,18 +15,19 @@
 - All DI wiring lives in `src/loader/loader.go` — `Load() []fx.Option` grouped as loadAdapter/loadService/loadValidator/loadEngine (same pattern as the shoe_shop fxloader); add new providers there only, never as package-level `var Module`
 - Layer flow: `routers` (route table only, exposes `Engine`; HTTP server lifecycle is in `serverLifecycle` in cmd/main.go) → `apis` (gin handlers) → `services` (business logic behind `I…` interfaces) → `domain/dtos`; config injected everywhere via `config.IConfig`
 - Storage: contract `common/storage.IStorage` (`Save`/`Open`/`Delete`), implemented by `infrastructure/seaweedfs` with aws-sdk-go-v2 against the S3-compatible gateway (path-style, static creds, region fixed `us-east-1`); provided in `loadAdapter` — fx builds it lazily, so the app boots without SeaweedFS running
-- Empty scaffold dirs reserved for future use: `common/{logs,utils}`, `controller/middlewares`, `domain/models`, `repository` — follow the existing layer pattern when filling them
+- Empty scaffold dirs reserved for future use: `common/utils`, `controller/middlewares`, `domain/models`, `repository` — follow the existing layer pattern when filling them
 - `infrastructure/postgres/connection.go` is NOT wired (absent from `loadAdapter`); `sql.Open("postgres", ...)` has no driver registered — import `lib/pq` (driver name `postgres`) or switch to `pgx/v5/stdlib` (driver name `pgx`) and add it to `loadAdapter` before enabling it
 
 ## Conventions
 
 - Interfaces prefixed `I` (IConfig, IPingPongService, IDB); constructors take interfaces, fx binds interface → concrete (SOLID/DIP)
-- Services never return bare values/errors — they return `dtos.Result[T]` built with `dtos.Ok(data)` / `dtos.Fail(err)`; handlers map it in one call: `Render(c, a.baseController, res)`
+- Services never return bare values/errors — they return `dtos.Result[T]` built with `dtos.Ok(data)` / `dtos.Fail(err)`; handlers map it in one call: `Render(c, a, res)` (Render takes the `renderer` interface — any controller embedding `*baseController` satisfies it, so no need to name the struct)
 - Handlers embed `*baseController` (`apis/base.go`): `Success`/`ErrorData`/`BadRequest` emit the `{status, code, message, data}` envelope (`dtos.ResponseResource`), `Bind` = bind + validate — never return raw JSON from a handler
 - Custom errors live in `src/common/errors`: `errors.Error` carries `Code` (body) + `HttpCode` (status line); build with `NewCustomHttpError`, unwrap with `errors.From`, sentinels `Success/BadRequest/Internal` + `ErrBadRequest/ErrInternal` — the package name shadows stdlib `errors`, so alias stdlib when a file needs both
 - Struct tags are the single source of truth: `json` for wire+schema, standalone `example:"…"` for swagger examples (NOT `json:"x,example=…"` — swag ignores that form), `validate`/`binding` for rules enforced by `Bind` — keep validation out of handler code
+- Logging: `src/common/logs` wraps zap sugared logger as a package-level default — call `logs.LoadLogger()` once in `init()` (already in main), then short calls anywhere: `logs.Infow(msg, kv…)`, `logs.Error(err, msg, kv…)`, `logs.Fatalf(…)`, `LOG_LEVEL` env overrides level; before `LoadLogger` the default is nop so tests stay silent — never log secrets (keys, passwords)
 - Comments are in Vietnamese — match the existing style
-- Swagger: general API info annotation sits above `package main` in cmd/main.go; per-endpoint annotations on handler methods reference response types from `domain/dtos` (handlers declare `var resp dtos.X = ...` so the import resolves)
+- Swagger: general API info annotation sits above `package main` in cmd/main.go; per-endpoint annotations on handler methods (`@Success 200 {object} dtos.ResponseResource`) — swag resolves type refs via package/search-dir parsing, so handlers just use `:=` (no need to import the DTO type in the handler file); don't use import aliases or full `github.com/x/y.Type` paths in annotations (unsupported/invalid refs)
 
 ## Gotchas
 

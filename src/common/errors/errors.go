@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	Success    = 200
+	Success    = 0
 	BadRequest = 400
 	Internal   = 500
 )

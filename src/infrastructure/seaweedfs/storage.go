@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/config"
 
@@ -40,6 +41,8 @@ func NewStorage(cfg config.IConfig) (storage.IStorage, error) {
 		o.BaseEndpoint = aws.String(s.Endpoint)
 		o.UsePathStyle = true
 	})
+
+	logs.Infow("seaweedfs storage ready", "endpoint", s.Endpoint, "bucket", s.Bucket)
 
 	return &Storage{client: client, bucket: s.Bucket}, nil
 }

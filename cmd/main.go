@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	_ "knowledge_ingestion/docs"
+	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/routers"
 	"knowledge_ingestion/src/loader"
@@ -26,6 +27,7 @@ import (
 var configPath string
 
 func init() {
+	logs.LoadLogger()
 	defaultPath := "./configs/config.json"
 	if p := os.Getenv("APP_CONFIG_PATH"); p != "" {
 		defaultPath = p
@@ -44,18 +46,19 @@ func main() {
 	)
 
 	if err := app.Start(context.Background()); err != nil {
-		fmt.Fprintln(os.Stderr, "Error starting application:", err)
-		os.Exit(1)
+		logs.Fatal(err, "Error starting application")
 	}
+	logs.Infow("application started", "config", configPath)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
 	if err := app.Stop(context.Background()); err != nil {
-		fmt.Fprintln(os.Stderr, "Error stopping application:", err)
-		os.Exit(1)
+		logs.Fatal(err, "Error stopping application")
 	}
+	logs.Info("application stopped")
+	logs.Sync()
 }
 
 func serverLifecycle(lc fx.Lifecycle, router *routers.Router, cfg config.IConfig) {
@@ -73,12 +76,13 @@ func serverLifecycle(lc fx.Lifecycle, router *routers.Router, cfg config.IConfig
 			}
 			go func() {
 				if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-					fmt.Fprintln(os.Stderr, "http server stopped:", err)
+					logs.Error(err, "http server stopped", "addr", server.Addr)
 				}
 			}()
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
+			logs.Infow("http server stopping", "addr", server.Addr)
 			return server.Shutdown(ctx)
 		},
 	})

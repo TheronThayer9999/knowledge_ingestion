@@ -24,7 +24,7 @@ func NewPingPongAPI(base *baseController, svc services.IPingPongService) *PingPo
 // @Router /api/v1/ping [get]
 func (a *PingPongAPI) Ping(c *gin.Context) {
 	res := a.svc.Ping()
-	Render(c, a.baseController, res)
+	Render(c, a, res)
 }
 
 // Pong godoc
@@ -36,5 +36,5 @@ func (a *PingPongAPI) Ping(c *gin.Context) {
 // @Router /api/v1/pong [get]
 func (a *PingPongAPI) Pong(c *gin.Context) {
 	res := a.svc.Pong()
-	Render(c, a.baseController, res)
+	Render(c, a, res)
 }
