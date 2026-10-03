@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/domain/dtos"
 	"net/http"
 
@@ -33,17 +34,34 @@ func (b *baseController) Bind(c *gin.Context, request interface{}) bool {
 }
 
 func (b *baseController) Success(c *gin.Context, data interface{}) {
-	b.ResponseWithCode(c, http.StatusOK, "success", data)
+	c.JSON(http.StatusOK, dtos.ResponseResource{
+		Status:  true,
+		Code:    errors.Success,
+		Message: "success",
+		Data:    data,
+	})
+}
+
+func (b *baseController) ErrorData(c *gin.Context, err *errors.Error) {
+	c.JSON(err.GetHttpCode(), dtos.ResponseResource{
+		Status:  false,
+		Code:    err.Code,
+		Message: err.Message,
+	})
 }
 
 func (b *baseController) BadRequest(c *gin.Context, message string) {
-	b.ResponseWithCode(c, http.StatusBadRequest, message, nil)
+	b.ErrorData(c, errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, message))
 }
 
-func (b *baseController) ResponseWithCode(c *gin.Context, code int, message string, data interface{}) {
-	c.JSON(code, dtos.ResponseResource{
-		Code:    code,
-		Message: message,
-		Data:    data,
-	})
+func Render[T any](c *gin.Context, b *baseController, res dtos.Result[T]) {
+	if res.Err != nil {
+		if e := errors.From(res.Err); e != nil {
+			b.ErrorData(c, e)
+			return
+		}
+		b.BadRequest(c, res.Err.Error())
+		return
+	}
+	b.Success(c, res.Data)
 }

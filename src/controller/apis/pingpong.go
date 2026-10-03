@@ -24,8 +24,8 @@ func NewPingPongAPI(base *baseController, svc services.IPingPongService) *PingPo
 // @Success 200 {object} dtos.ResponseResource
 // @Router /api/v1/ping [get]
 func (a *PingPongAPI) Ping(c *gin.Context) {
-	var resp dtos.PingPongResponse = a.svc.Ping()
-	a.Success(c, resp)
+	var res dtos.Result[dtos.PingPongResponse] = a.svc.Ping()
+	Render(c, a.baseController, res)
 }
 
 // Pong godoc
@@ -36,6 +36,6 @@ func (a *PingPongAPI) Ping(c *gin.Context) {
 // @Success 200 {object} dtos.ResponseResource
 // @Router /api/v1/pong [get]
 func (a *PingPongAPI) Pong(c *gin.Context) {
-	var resp dtos.PingPongResponse = a.svc.Pong()
-	a.Success(c, resp)
+	var res dtos.Result[dtos.PingPongResponse] = a.svc.Pong()
+	Render(c, a.baseController, res)
 }

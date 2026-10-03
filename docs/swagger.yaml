@@ -3,10 +3,15 @@ definitions:
   dtos.ResponseResource:
     properties:
       code:
+        example: 200
         type: integer
       data: {}
       message:
+        example: success
         type: string
+      status:
+        example: true
+        type: boolean
     type: object
 info:
   contact: {}

@@ -6,8 +6,8 @@ import (
 )
 
 type IPingPongService interface {
-	Ping() dtos.PingPongResponse
-	Pong() dtos.PingPongResponse
+	Ping() dtos.Result[dtos.PingPongResponse]
+	Pong() dtos.Result[dtos.PingPongResponse]
 }
 
 type pingPongService struct{}
@@ -16,10 +16,10 @@ func NewPingPongService() IPingPongService {
 	return &pingPongService{}
 }
 
-func (s *pingPongService) Ping() dtos.PingPongResponse {
-	return dtos.PingPongResponse{Message: "pong", Timestamp: time.Now()}
+func (s *pingPongService) Ping() dtos.Result[dtos.PingPongResponse] {
+	return dtos.Ok(dtos.PingPongResponse{Message: "pong", Timestamp: time.Now()})
 }
 
-func (s *pingPongService) Pong() dtos.PingPongResponse {
-	return dtos.PingPongResponse{Message: "ping", Timestamp: time.Now()}
+func (s *pingPongService) Pong() dtos.Result[dtos.PingPongResponse] {
+	return dtos.Ok(dtos.PingPongResponse{Message: "ping", Timestamp: time.Now()})
 }
