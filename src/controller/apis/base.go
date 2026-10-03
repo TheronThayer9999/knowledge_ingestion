@@ -2,6 +2,7 @@ package apis
 
 import (
 	"knowledge_ingestion/src/common/errors"
+	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/domain/dtos"
 	"net/http"
 
@@ -61,7 +62,8 @@ func Render[T any](c *gin.Context, r renderer, res dtos.Result[T]) {
 			r.ErrorData(c, e)
 			return
 		}
-		r.BadRequest(c, res.Err.Error())
+		logs.Error(res.Err, "unhandled error")
+		r.ErrorData(c, errors.ErrInternal)
 		return
 	}
 	r.Success(c, res.Data)

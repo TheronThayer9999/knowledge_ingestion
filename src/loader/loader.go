@@ -4,6 +4,7 @@ import (
 	"knowledge_ingestion/src/controller/apis"
 	"knowledge_ingestion/src/controller/routers"
 	"knowledge_ingestion/src/controller/services"
+	"knowledge_ingestion/src/infrastructure/postgres"
 	"knowledge_ingestion/src/infrastructure/seaweedfs"
 
 	"github.com/go-playground/validator/v10"
@@ -21,6 +22,7 @@ func Load() []fx.Option {
 
 func loadAdapter() []fx.Option {
 	return []fx.Option{
+		fx.Provide(postgres.NewConnection),
 		fx.Provide(seaweedfs.NewStorage),
 	}
 }
