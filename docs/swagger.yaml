@@ -71,6 +71,22 @@ paths:
       tags:
       - health
   /api/v1/users:
+    get:
+      description: Returns all users with total count
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      summary: List all users
+      tags:
+      - users
     post:
       consumes:
       - application/json

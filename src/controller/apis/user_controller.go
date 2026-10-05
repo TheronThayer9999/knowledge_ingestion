@@ -34,3 +34,15 @@ func (a *UserAPI) Create(c *gin.Context) {
 	}
 	Render(c, a, a.svc.Create(c, req))
 }
+
+// GetAllUser godoc
+// @Summary List all users
+// @Description Returns all users with total count
+// @Tags users
+// @Produce json
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 500 {object} dtos.ResponseResource
+// @Router /api/v1/users [get]
+func (a *UserAPI) GetAllUser(c *gin.Context) {
+	Render(c, a, a.svc.GetAllUser(c))
+}

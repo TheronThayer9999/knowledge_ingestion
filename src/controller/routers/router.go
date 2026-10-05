@@ -27,6 +27,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI)
 	{
 		v1.GET("/ping", api.Ping)
 		v1.GET("/pong", api.Pong)
+		v1.GET("/users", userAPI.GetAllUser)
 		v1.POST("/users", userAPI.Create)
 	}
 

@@ -56,6 +56,30 @@ const docTemplate = `{
             }
         },
         "/api/v1/users": {
+            "get": {
+                "description": "Returns all users with total count",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "List all users",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            },
             "post": {
                 "description": "Hashes the password and creates a new user",
                 "consumes": [
