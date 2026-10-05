@@ -70,7 +70,7 @@ func serverLifecycle(lc fx.Lifecycle, router *routers.Router, cfg config.IConfig
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			ln, err := net.Listen("tcp", server.Addr)
+			ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", server.Addr)
 			if err != nil {
 				return fmt.Errorf("listen %s: %w", server.Addr, err)
 			}

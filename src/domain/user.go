@@ -13,7 +13,7 @@ type User struct {
 	Phone     string     `json:"phone"`
 	Avatar    string     `json:"avatar"`
 	Active    bool       `json:"active"`
-	Role      string     `json:"role"`
+	Role      int        `json:"role"`
 	LastLogin *time.Time `json:"last_login"`
 }
 
@@ -26,5 +26,5 @@ type IUserRepositoryImpl interface {
 	UpdateUser(ctx context.Context, user *User) (*User, error)
 	GetUserById(ctx context.Context, id int64) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
-	GetAllUsers(ctx context.Context) ([]*User, error)
+	GetAllUser(ctx context.Context) ([]*User, error)
 }

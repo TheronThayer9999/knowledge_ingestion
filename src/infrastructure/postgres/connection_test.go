@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"knowledge_ingestion/src/config"
 	"net"
 	"os"
@@ -48,7 +49,9 @@ func reachableHost(db config.DBConfig) string {
 		candidates = append(candidates, "127.0.0.1")
 	}
 	for _, host := range candidates {
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(db.Port)), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(db.Port)))
+		cancel()
 		if err == nil {
 			err := conn.Close()
 			if err != nil {
