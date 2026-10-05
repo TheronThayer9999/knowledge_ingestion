@@ -25,6 +25,8 @@ type IStorage interface {
 
 	// PresignedURL ký một URL PUT có hạn expiry để client upload thẳng vào kho
 	// mà không đi qua server — luồng 2. Không có I/O mạng, chỉ tính HMAC cục bộ.
-	// Hết expiry thì URL vô hiệu; file chỉ tồn tại sau khi client PUT thành công.
-	PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error)
+	// contentType được nhét vào chữ ký: client PUT mà gửi Content-Type khác
+	// (hoặc không gửi) thì S3 trả 403. Hết expiry thì URL vô hiệu; file chỉ
+	// tồn tại sau khi client PUT thành công.
+	PresignedURL(ctx context.Context, key string, contentType string, expiry time.Duration) (string, error)
 }

@@ -14,7 +14,7 @@
   },
   "storage": {
     "type": "seaweedfs",
-    "s3_endpoint": "http://seaweedfs-s3:8333",
+    "s3_endpoint": "http://localhost:8333",
     "access_key": "theron_access_key",
     "secret_key": "theron_secret_key_123",
     "bucket_name": "app-uploads"

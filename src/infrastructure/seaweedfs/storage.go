@@ -79,12 +79,13 @@ func (s *Storage) Download(ctx context.Context, key string) (io.ReadCloser, erro
 
 // PresignedURL ký URL PUT tạm thời bằng PresignPutObject để client upload
 // thẳng vào SeaweedFS. Không có I/O mạng — chỉ tính HMAC cục bộ, secret_key
-// không bao giờ rời khỏi đây.
-func (s *Storage) PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error) {
+// không bao giờ rời khỏi đây. Content-Type ký kèm, client bắt buộc gửi đúng.
+func (s *Storage) PresignedURL(ctx context.Context, key string, contentType string, expiry time.Duration) (string, error) {
 	presignClient := s3.NewPresignClient(s.client)
 	res, err := presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
 	}, func(o *s3.PresignOptions) {
 		o.Expires = expiry
 	})

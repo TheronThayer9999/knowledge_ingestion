@@ -30,6 +30,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI,
 		v1.GET("/users", userAPI.GetAllUser)
 		v1.POST("/users", userAPI.Create)
 		v1.POST("/uploads/presign", fileAPI.PresignUpload)
+		v1.POST("/uploads/presign/batch", fileAPI.PresignUploads)
 	}
 
 	return &Router{Engine: engine}

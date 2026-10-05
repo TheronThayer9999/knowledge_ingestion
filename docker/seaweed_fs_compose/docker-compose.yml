@@ -44,7 +44,10 @@ services:
       - AWS_ACCESS_KEY_ID=theron_access_key
       - AWS_SECRET_ACCESS_KEY=theron_secret_key_123
     # ✅ Thêm -port 8333 vào command để đảm bảo nó bind đúng cổng dù có env
-    command: s3 -port 8333
+    # -filer: BẮT BUỘC — mặc định là localhost:8888 (không có trong container này),
+    # thiếu là weed s3 retry vô hạn, không bind cổng nào -> host kết nối được nhưng
+    # nhận "Empty reply from server". Fer chạy trong container seaweedfs-ui.
+    command: s3 -port 8333 -filer=seaweedfs-ui:8888
     networks:
       - seaweed-network
     restart: unless-stopped

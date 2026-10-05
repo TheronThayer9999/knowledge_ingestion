@@ -25,21 +25,36 @@ definitions:
     - password
     - username
     type: object
-  dtos.PresignUploadRequest:
+  dtos.PresignUploadFile:
     properties:
-      content_type:
-        example: application/pdf
-        maxLength: 100
-        minLength: 3
-        type: string
       filename:
         example: bao-cao.pdf
         maxLength: 255
         minLength: 1
         type: string
     required:
-    - content_type
     - filename
+    type: object
+  dtos.PresignUploadRequest:
+    properties:
+      filename:
+        example: bao-cao.pdf
+        maxLength: 255
+        minLength: 1
+        type: string
+    required:
+    - filename
+    type: object
+  dtos.PresignUploadsRequest:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/dtos.PresignUploadFile'
+        maxItems: 20
+        minItems: 1
+        type: array
+    required:
+    - files
     type: object
   dtos.ResponseResource:
     properties:
@@ -115,6 +130,37 @@ paths:
           schema:
             $ref: '#/definitions/dtos.ResponseResource'
       summary: Get a presigned upload URL
+      tags:
+      - files
+  /api/v1/uploads/presign/batch:
+    post:
+      consumes:
+      - application/json
+      description: Signs temporary PUT URLs for up to 20 files in one call, returned
+        in the same order as the request
+      parameters:
+      - description: batch upload payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.PresignUploadsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      summary: Get presigned upload URLs for multiple files
       tags:
       - files
   /api/v1/users:

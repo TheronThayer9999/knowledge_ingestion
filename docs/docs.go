@@ -101,6 +101,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/uploads/presign/batch": {
+            "post": {
+                "description": "Signs temporary PUT URLs for up to 20 files in one call, returned in the same order as the request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Get presigned upload URLs for multiple files",
+                "parameters": [
+                    {
+                        "description": "batch upload payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.PresignUploadsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users": {
             "get": {
                 "description": "Returns all users with total count",
@@ -206,24 +252,47 @@ const docTemplate = `{
                 }
             }
         },
-        "dtos.PresignUploadRequest": {
+        "dtos.PresignUploadFile": {
             "type": "object",
             "required": [
-                "content_type",
                 "filename"
             ],
             "properties": {
-                "content_type": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 3,
-                    "example": "application/pdf"
-                },
                 "filename": {
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1,
                     "example": "bao-cao.pdf"
+                }
+            }
+        },
+        "dtos.PresignUploadRequest": {
+            "type": "object",
+            "required": [
+                "filename"
+            ],
+            "properties": {
+                "filename": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "example": "bao-cao.pdf"
+                }
+            }
+        },
+        "dtos.PresignUploadsRequest": {
+            "type": "object",
+            "required": [
+                "files"
+            ],
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dtos.PresignUploadFile"
+                    }
                 }
             }
         },

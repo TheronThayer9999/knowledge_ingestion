@@ -34,3 +34,22 @@ func (a *FileAPI) PresignUpload(c *gin.Context) {
 	}
 	Render(c, a, a.svc.PresignUpload(c, req))
 }
+
+// PresignUploads godoc
+// @Summary Get presigned upload URLs for multiple files
+// @Description Signs temporary PUT URLs for up to 20 files in one call, returned in the same order as the request
+// @Tags files
+// @Accept json
+// @Produce json
+// @Param request body dtos.PresignUploadsRequest true "batch upload payload"
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 400 {object} dtos.ResponseResource
+// @Failure 500 {object} dtos.ResponseResource
+// @Router /api/v1/uploads/presign/batch [post]
+func (a *FileAPI) PresignUploads(c *gin.Context) {
+	req := &dtos.PresignUploadsRequest{}
+	if !a.Bind(c, req) {
+		return
+	}
+	Render(c, a, a.svc.PresignUploads(c, req))
+}
