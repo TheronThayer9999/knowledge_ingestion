@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
+	"knowledge_ingestion/src/domain/models"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -38,7 +39,10 @@ func NewConnection(cfg config.IConfig) (IDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
 	}
-
+	err = db.AutoMigrate(models.User{})
+	if err != nil {
+		return nil, err
+	}
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sql pool: %w", err)
@@ -52,7 +56,10 @@ func NewConnection(cfg config.IConfig) (IDB, error) {
 	defer cancel()
 
 	if err := sqlDB.PingContext(ctx); err != nil {
-		sqlDB.Close()
+		err := sqlDB.Close()
+		if err != nil {
+			return nil, err
+		}
 		return nil, fmt.Errorf("failed to ping postgres: %w", err)
 	}
 

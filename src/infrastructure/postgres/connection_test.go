@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type testConfig struct {
@@ -48,7 +50,10 @@ func reachableHost(db config.DBConfig) string {
 	for _, host := range candidates {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(db.Port)), 2*time.Second)
 		if err == nil {
-			conn.Close()
+			err := conn.Close()
+			if err != nil {
+				return ""
+			}
 			return host
 		}
 	}
@@ -71,7 +76,12 @@ func TestPostgresConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewConnection failed: %v", err)
 	}
-	defer conn.GetDB().DB()
+	defer func(db *gorm.DB) {
+		_, err := db.DB()
+		if err != nil {
+			t.Errorf("db.DB() failed: %v", err)
+		}
+	}(conn.GetDB())
 
 	var version string
 	if err := conn.GetDB().Raw("SELECT version()").Row().Scan(&version); err != nil {

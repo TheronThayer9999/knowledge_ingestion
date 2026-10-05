@@ -11,7 +11,7 @@
 ## Architecture
 
 - Go 1.26.5, single module `knowledge_ingestion`; import paths are `knowledge_ingestion/src/...` — keep this prefix, all code lives under `src/`
-- Entrypoint `cmd/main.go`: `fx.New(Provide(config), Options(loader.Load()...), Invoke(serverLifecycle))` then manual `Start` → OS signal → `Stop` (not `fx.Run`)
+- Entrypoint `cmd/apis/main.go`: `fx.New(Provide(config), Options(loader.Load()...), Invoke(serverLifecycle))` then manual `Start` → OS signal → `Stop` (not `fx.Run`)
 - All DI wiring lives in `src/loader/loader.go` — `Load() []fx.Option` grouped as loadAdapter/loadService/loadValidator/loadEngine (same pattern as the shoe_shop fxloader); add new providers there only, never as package-level `var Module`
 - Layer flow: `routers` (route table only, exposes `Engine`; HTTP server lifecycle is in `serverLifecycle` in cmd/main.go) → `apis` (gin handlers) → `services` (business logic behind `I…` interfaces) → `domain/dtos`; config injected everywhere via `config.IConfig`
 - Storage: contract `common/storage.IStorage` (`Save`/`Open`/`Delete`), implemented by `infrastructure/seaweedfs` with aws-sdk-go-v2 against the S3-compatible gateway (path-style, static creds, region fixed `us-east-1`); provided in `loadAdapter` — fx builds it lazily, so the app boots without SeaweedFS running

@@ -23,6 +23,9 @@
     "host": "qdrant",
     "port": 6333,
     "token": "theron_qdrant_token"
+  },
+  "embedding": {
+    "host": "http://bore.pub:12345"
   }
   
 }
