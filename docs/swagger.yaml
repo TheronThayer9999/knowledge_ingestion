@@ -25,6 +25,22 @@ definitions:
     - password
     - username
     type: object
+  dtos.PresignUploadRequest:
+    properties:
+      content_type:
+        example: application/pdf
+        maxLength: 100
+        minLength: 3
+        type: string
+      filename:
+        example: bao-cao.pdf
+        maxLength: 255
+        minLength: 1
+        type: string
+    required:
+    - content_type
+    - filename
+    type: object
   dtos.ResponseResource:
     properties:
       code:
@@ -70,6 +86,37 @@ paths:
       summary: Pong the server
       tags:
       - health
+  /api/v1/uploads/presign:
+    post:
+      consumes:
+      - application/json
+      description: Signs a temporary PUT URL so the client can upload the file straight
+        to storage without going through this server
+      parameters:
+      - description: upload payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.PresignUploadRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      summary: Get a presigned upload URL
+      tags:
+      - files
   /api/v1/users:
     get:
       description: Returns all users with total count

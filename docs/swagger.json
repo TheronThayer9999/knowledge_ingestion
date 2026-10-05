@@ -48,6 +48,52 @@
                 }
             }
         },
+        "/api/v1/uploads/presign": {
+            "post": {
+                "description": "Signs a temporary PUT URL so the client can upload the file straight to storage without going through this server",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Get a presigned upload URL",
+                "parameters": [
+                    {
+                        "description": "upload payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.PresignUploadRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users": {
             "get": {
                 "description": "Returns all users with total count",
@@ -150,6 +196,27 @@
                     "maxLength": 50,
                     "minLength": 3,
                     "example": "johndoe"
+                }
+            }
+        },
+        "dtos.PresignUploadRequest": {
+            "type": "object",
+            "required": [
+                "content_type",
+                "filename"
+            ],
+            "properties": {
+                "content_type": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 3,
+                    "example": "application/pdf"
+                },
+                "filename": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "example": "bao-cao.pdf"
                 }
             }
         },

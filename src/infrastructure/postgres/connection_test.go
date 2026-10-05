@@ -30,6 +30,8 @@ func (c *testConfig) GetDatabase() config.DBConfig {
 
 func (c *testConfig) GetStorage() config.S3Config { return c.inner.GetStorage() }
 
+func (c *testConfig) GetEmbedding() config.EmbeddingConfig { return c.inner.GetEmbedding() }
+
 func loadTestConfig(t *testing.T) config.IConfig {
 	t.Helper()
 	path := os.Getenv("APP_CONFIG_PATH")

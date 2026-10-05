@@ -25,7 +25,11 @@
     "token": "theron_qdrant_token"
   },
   "embedding": {
-    "host": "http://bore.pub:12345"
+    "provider": "ollama",
+    "model": "nomic-embed-text",
+    "base_url": "http://localhost:11434",
+    "api_key": "",
+    "dim": 1024
   }
   
 }

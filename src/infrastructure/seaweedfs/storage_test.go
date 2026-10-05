@@ -14,6 +14,8 @@ func (f *fakeConfig) GetApp() config.AppConfig     { return config.AppConfig{} }
 func (f *fakeConfig) GetDatabase() config.DBConfig { return config.DBConfig{} }
 func (f *fakeConfig) GetStorage() config.S3Config  { return f.s3 }
 
+func (f *fakeConfig) GetEmbedding() config.EmbeddingConfig { return config.EmbeddingConfig{} }
+
 func TestNewStorageBuildsClient(t *testing.T) {
 	cfg := &fakeConfig{s3: config.S3Config{
 		Type:      "seaweedfs",

@@ -13,7 +13,7 @@ type Router struct {
 	Engine *gin.Engine
 }
 
-func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI) *Router {
+func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI, fileAPI *apis.FileAPI) *Router {
 	if cfg.GetApp().Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -29,6 +29,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI)
 		v1.GET("/pong", api.Pong)
 		v1.GET("/users", userAPI.GetAllUser)
 		v1.POST("/users", userAPI.Create)
+		v1.POST("/uploads/presign", fileAPI.PresignUpload)
 	}
 
 	return &Router{Engine: engine}

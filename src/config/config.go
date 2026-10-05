@@ -11,13 +11,15 @@ type IConfig interface {
 	GetApp() AppConfig
 	GetDatabase() DBConfig
 	GetStorage() S3Config
+	GetEmbedding() EmbeddingConfig
 }
 
 // Implementations
 type appConfig struct {
-	App      AppConfig `json:"app"`
-	Database DBConfig  `json:"database"`
-	Storage  S3Config  `json:"storage"`
+	App       AppConfig       `json:"app"`
+	Database  DBConfig        `json:"database"`
+	Storage   S3Config        `json:"storage"`
+	Embedding EmbeddingConfig `json:"embedding"`
 }
 
 type AppConfig struct {
@@ -43,6 +45,14 @@ type S3Config struct {
 	Bucket    string `json:"bucket_name"`
 }
 
+type EmbeddingConfig struct {
+	Provider string `json:"provider"` // "ollama", "openai", ...
+	Model    string `json:"model"`
+	BaseURL  string `json:"base_url"`
+	APIKey   string `json:"api_key"` // Ollama để trống
+	Dim      int    `json:"dim"`
+}
+
 // Load đọc file JSON và trả về IConfig
 func Load(path string) (IConfig, error) {
 	data, err := os.ReadFile(path)
@@ -62,11 +72,20 @@ func Load(path string) (IConfig, error) {
 	if cfg.Database.Host == "" {
 		return nil, fmt.Errorf("database.host is required")
 	}
-
+	if cfg.Embedding.Provider == "" {
+		return nil, fmt.Errorf("embedding.provider is required")
+	}
+	if cfg.Embedding.Model == "" {
+		return nil, fmt.Errorf("embedding.model is required")
+	}
+	if cfg.Embedding.Dim <= 0 {
+		return nil, fmt.Errorf("embedding.dim must be > 0")
+	}
 	return &cfg, nil
 }
 
 // Getter methods
-func (c *appConfig) GetApp() AppConfig     { return c.App }
-func (c *appConfig) GetDatabase() DBConfig { return c.Database }
-func (c *appConfig) GetStorage() S3Config  { return c.Storage }
+func (c *appConfig) GetApp() AppConfig             { return c.App }
+func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
+func (c *appConfig) GetStorage() S3Config          { return c.Storage }
+func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }

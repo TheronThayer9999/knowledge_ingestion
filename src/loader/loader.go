@@ -4,6 +4,8 @@ import (
 	"knowledge_ingestion/src/controller/apis"
 	"knowledge_ingestion/src/controller/routers"
 	"knowledge_ingestion/src/controller/services"
+	"knowledge_ingestion/src/domain"
+	"knowledge_ingestion/src/infrastructure/embedding"
 	"knowledge_ingestion/src/infrastructure/postgres"
 	"knowledge_ingestion/src/infrastructure/repository"
 	"knowledge_ingestion/src/infrastructure/seaweedfs"
@@ -29,6 +31,8 @@ func loadAdapter() []fx.Option {
 		fx.Provide(seaweedfs.NewStorage),
 		fx.Provide(repository.NewUserRepository),
 		fx.Invoke(func(postgres.IDB) {}), // init database
+		fx.Provide(embedding.NewEmbedder),
+		fx.Invoke(func(domain.Embedder) {}),
 	}
 }
 
@@ -36,6 +40,7 @@ func loadService() []fx.Option {
 	return []fx.Option{
 		fx.Provide(services.NewPingPongService),
 		fx.Provide(services.NewUserService),
+		fx.Provide(services.NewFileService),
 	}
 }
 
@@ -50,6 +55,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewBaseController),
 		fx.Provide(apis.NewPingPongAPI),
 		fx.Provide(apis.NewUserAPI),
+		fx.Provide(apis.NewFileAPI),
 		fx.Provide(routers.NewRouter),
 	}
 }
