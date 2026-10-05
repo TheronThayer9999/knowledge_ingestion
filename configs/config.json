@@ -5,7 +5,7 @@
     "env": "development"
   },
   "database": {
-    "host": "postgres",
+    "host": "127.0.0.1",
     "port": 5432,
     "user": "theron_user",
     "password": "theron_db_pass",
@@ -20,7 +20,7 @@
     "bucket_name": "app-uploads"
   },
   "qdrant": {
-    "host": "qdrant",
+    "host": "127.0.0.1",
     "port": 6333,
     "token": "theron_qdrant_token"
   },

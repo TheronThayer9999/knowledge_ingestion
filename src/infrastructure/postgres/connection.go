@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
-	"knowledge_ingestion/src/domain/models"
+	"knowledge_ingestion/src/domain"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -39,7 +39,7 @@ func NewConnection(cfg config.IConfig) (IDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
 	}
-	err = db.AutoMigrate(models.User{})
+	err = db.AutoMigrate(domain.User{})
 	if err != nil {
 		return nil, err
 	}

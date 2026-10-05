@@ -3,7 +3,7 @@ package apis
 import (
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/common/logs"
-	"knowledge_ingestion/src/domain/dtos"
+	"knowledge_ingestion/src/controller/dtos"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

@@ -1,7 +1,7 @@
 package services
 
 import (
-	"knowledge_ingestion/src/domain/dtos"
+	"knowledge_ingestion/src/controller/dtos"
 	"time"
 )
 

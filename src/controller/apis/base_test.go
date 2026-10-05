@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"knowledge_ingestion/src/common/errors"
-	"knowledge_ingestion/src/domain/dtos"
+	"knowledge_ingestion/src/controller/dtos"
 	"net/http"
 	"net/http/httptest"
 	"testing"

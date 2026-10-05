@@ -24,6 +24,7 @@ func loadAdapter() []fx.Option {
 	return []fx.Option{
 		fx.Provide(postgres.NewConnection),
 		fx.Provide(seaweedfs.NewStorage),
+		fx.Invoke(func(postgres.IDB) {}), // init database
 	}
 }
 
