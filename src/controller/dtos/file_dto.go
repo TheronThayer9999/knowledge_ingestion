@@ -12,6 +12,9 @@ import (
 type PresignUploadRequest struct {
 	Filename string `json:"filename" binding:"required,min=1,max=255" example:"bao-cao.pdf"`
 	Head     []byte `json:"head"`
+	// Size là tổng dung lượng file (byte) do handler đo trực tiếp trên
+	// stream — service từ chối khi vượt MAX_FILE_SIZE.
+	Size int64 `json:"size" example:"524288"`
 }
 
 // PresignUploadResponse trả về "vé" để client tự PUT file thẳng vào kho,
@@ -31,6 +34,8 @@ type PresignUploadResponse struct {
 type PresignUploadFile struct {
 	Filename string `json:"filename" example:"bao-cao.pdf"`
 	Head     []byte `json:"head"`
+	// Size là tổng dung lượng file (byte) do handler đo trực tiếp trên stream.
+	Size int64 `json:"size" example:"524288"`
 }
 
 // PresignUploadsRequest xin nhiều URL cùng lúc, để client không phải gọi

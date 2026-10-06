@@ -18,6 +18,8 @@ type testConfig struct {
 	host  string
 }
 
+func (c *testConfig) GetRedis() config.RedisConfig { return c.inner.GetRedis() }
+
 func (c *testConfig) GetApp() config.AppConfig { return c.inner.GetApp() }
 
 func (c *testConfig) GetDatabase() config.DBConfig {

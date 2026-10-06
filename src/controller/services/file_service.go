@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/common/utils"
@@ -11,21 +12,6 @@ import (
 	"strings"
 	"time"
 )
-
-// presignExpiry là thời hạn sống của URL upload — hết hạn client phải xin lại.
-const presignExpiry = 15 * time.Minute
-
-// uploadPrefix là "thư mục ảo" trong bucket, để file upload không trộn với file khác.
-const uploadPrefix = "uploads/"
-
-// maxFilenameLen chốt độ dài tên file, tránh key quá to.
-const maxFilenameLen = 100
-
-// MaxUploadsPerRequest chốt số file tối đa mỗi request batch. Check tay ở
-// service (và handler chặn sớm khi stream) vì tag binding max=20 trên DTO
-// không chạy qua đường multipart (validator dùng tag "validate", gin binding
-// mới đọc tag "binding"). Export để handler dùng chung một hằng số.
-const MaxUploadsPerRequest = 20
 
 // allowedExts là whitelist loại file được upload — BE chốt, không tin content_type
 // client gửi (client khai bừa cũng không ảnh hưởng vì MIME gắn với phần mở rộng).
@@ -62,7 +48,7 @@ func NewFileService(st storage.IStorage) IFileService {
 // PresignUpload sinh key mới (client không được tự chọn key — chống path
 // traversal và ghi đè), ký URL PUT tạm thời, trả về cho client tự upload.
 func (s *fileService) PresignUpload(ctx context.Context, req *dtos.PresignUploadRequest) dtos.Result[*dtos.PresignUploadResponse] {
-	item, err := s.presign(ctx, req.Filename, req.Head)
+	item, err := s.presign(ctx, req.Filename, req.Head, req.Size)
 	if err != nil {
 		return dtos.Fail[*dtos.PresignUploadResponse](err)
 	}
@@ -84,7 +70,7 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 	if len(req.Files) == 0 {
 		return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "thiếu file đính kèm"))
 	}
-	if len(req.Files) > MaxUploadsPerRequest {
+	if len(req.Files) > constants.MAX_UPLOADS_PER_REQUEST {
 		return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "tối đa 20 file mỗi request"))
 	}
 
@@ -93,7 +79,7 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 		if f == nil {
 			return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "thiếu file đính kèm"))
 		}
-		key, mime, err := resolveUploadContent(f.Filename, f.Head)
+		key, mime, err := resolveUploadContent(f.Filename, f.Head, f.Size)
 		if err != nil {
 			return dtos.Fail[*dtos.PresignUploadsResponse](err)
 		}
@@ -102,7 +88,7 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 
 	items := make([]dtos.PresignUploadsItem, 0, len(prep))
 	for _, p := range prep {
-		url, err := s.storage.PresignedURL(ctx, p.key, p.mime, presignExpiry)
+		url, err := s.storage.PresignedURL(ctx, p.key, p.mime, constants.PRESIGN_EXPIRY)
 		if err != nil {
 			return dtos.Fail[*dtos.PresignUploadsResponse](err)
 		}
@@ -112,20 +98,20 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 			Key:         p.key,
 			Method:      http.MethodPut,
 			ContentType: p.mime,
-			ExpiresAt:   time.Now().Add(presignExpiry),
+			ExpiresAt:   time.Now().Add(constants.PRESIGN_EXPIRY),
 		})
 	}
 	return dtos.Ok(&dtos.PresignUploadsResponse{Items: items})
 }
 
 // presign chốt MIME từ tên + head sniff được (đuôi + magic bytes phải khớp),
-// sinh key rồi ký 1 URL, dùng chung cho PresignUpload.
-func (s *fileService) presign(ctx context.Context, filename string, head []byte) (*dtos.PresignUploadsItem, error) {
-	key, mime, err := resolveUploadContent(filename, head)
+// chặn file vượt MAX_FILE_SIZE, sinh key rồi ký 1 URL, dùng chung cho PresignUpload.
+func (s *fileService) presign(ctx context.Context, filename string, head []byte, size int64) (*dtos.PresignUploadsItem, error) {
+	key, mime, err := resolveUploadContent(filename, head, size)
 	if err != nil {
 		return nil, err
 	}
-	url, err := s.storage.PresignedURL(ctx, key, mime, presignExpiry)
+	url, err := s.storage.PresignedURL(ctx, key, mime, constants.PRESIGN_EXPIRY)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +121,7 @@ func (s *fileService) presign(ctx context.Context, filename string, head []byte)
 		Key:         key,
 		Method:      http.MethodPut,
 		ContentType: mime,
-		ExpiresAt:   time.Now().Add(presignExpiry),
+		ExpiresAt:   time.Now().Add(constants.PRESIGN_EXPIRY),
 	}, nil
 }
 
@@ -155,8 +141,16 @@ var sniffAllow = map[string][]string{
 
 // resolveUploadContent validate filename rồi đối chiếu loại nội dung sniff từ
 // bytes thật với MIME của đuôi file — .exe đổi tên .pdf bị chặn ở đây vì
-// sniff ra application/octet-stream. Trả key + MIME đã verify để ký.
-func resolveUploadContent(filename string, head []byte) (key string, mime string, err error) {
+// sniff ra application/octet-stream. size là tổng dung lượng handler đo trên
+// stream — vượt MAX_FILE_SIZE thì 400 ngay, chưa tới bước ký URL.
+// Trả key + MIME đã verify để ký.
+func resolveUploadContent(filename string, head []byte, size int64) (key string, mime string, err error) {
+	if size <= 0 {
+		return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "file rỗng")
+	}
+	if size > constants.MAX_FILE_SIZE {
+		return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "mỗi file tối đa 500MB")
+	}
 	if len(head) == 0 {
 		return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "file rỗng")
 	}
@@ -204,7 +198,7 @@ func buildUploadKey(filename string) (string, error) {
 	name = utils.SanitizeFileName(name)
 	name = strings.Trim(name, ".")
 	// name toàn dấu . - _ (vd "...", ".   .") cũng coi là rỗng
-	if name == "" || strings.Trim(name, "._-") == "" || len(name) > maxFilenameLen {
+	if name == "" || strings.Trim(name, "._-") == "" || len(name) > constants.MAX_FILENAME_LEN {
 		return "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "filename không hợp lệ")
 	}
 
@@ -214,5 +208,5 @@ func buildUploadKey(filename string) (string, error) {
 	if err != nil {
 		return "", errors.NewCustomHttpError(http.StatusInternalServerError, errors.Internal, "không sinh được key upload")
 	}
-	return uploadPrefix + id + ext, nil
+	return constants.UPLOAD_PREFIX + id + ext, nil
 }

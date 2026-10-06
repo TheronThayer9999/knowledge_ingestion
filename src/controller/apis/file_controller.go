@@ -2,9 +2,11 @@ package apis
 
 import (
 	"io"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/controller/services"
+	"mime/multipart"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,13 +16,27 @@ type FileAPI struct {
 	svc services.IFileService
 }
 
-// maxStreamParts chặn số part tối đa lướt qua khi đọc multipart stream —
-// client gửi vô hạn part (field rác, file rác) thì 400 sớm thay vì loop
-// treo connection. 20 file + dư địa cho field phụ.
-const maxStreamParts = 64
-
 func NewFileAPI(base *baseController, svc services.IFileService) *FileAPI {
 	return &FileAPI{baseController: base, svc: svc}
+}
+
+// readHeadAndSize đọc 512B đầu để sniff rồi drain phần còn lại ra /dev/null
+// để đo tổng size thật — không buffer file vào RAM hay đĩa. Dừng ở
+// MAX_FILE_SIZE+1 byte để file vượt ngưỡng 400 sớm thay vì nuốt hết stream.
+func readHeadAndSize(part *multipart.Part) (head []byte, size int64, err error) {
+	head, err = utils.ReadHead(part)
+	if err != nil {
+		return nil, 0, err
+	}
+	// head đã vượt ngưỡng thì khỏi drain tiếp
+	if int64(len(head)) > constants.MAX_FILE_SIZE {
+		return head, int64(len(head)) + 1, nil
+	}
+	drained, err := io.Copy(io.Discard, io.LimitReader(part, constants.MAX_FILE_SIZE+1-int64(len(head))))
+	if err != nil {
+		return nil, 0, err
+	}
+	return head, int64(len(head)) + drained, nil
 }
 
 // PresignUpload godoc
@@ -41,7 +57,7 @@ func (a *FileAPI) PresignUpload(c *gin.Context) {
 		return
 	}
 	for seen := 0; ; seen++ {
-		if seen >= maxStreamParts {
+		if seen >= constants.MAX_STREAM_PARTS {
 			a.BadRequest(c, "quá nhiều part trong request")
 			return
 		}
@@ -56,14 +72,19 @@ func (a *FileAPI) PresignUpload(c *gin.Context) {
 		if part.FormName() != "file" || part.FileName() == "" {
 			continue
 		}
-		head, err := utils.ReadHead(part)
+		head, size, err := readHeadAndSize(part)
 		if err != nil {
 			a.BadRequest(c, "không đọc được file đính kèm")
+			return
+		}
+		if size > constants.MAX_FILE_SIZE {
+			a.BadRequest(c, "mỗi file tối đa 500MB")
 			return
 		}
 		Render(c, a, a.svc.PresignUpload(c, &dtos.PresignUploadRequest{
 			Filename: part.FileName(),
 			Head:     head,
+			Size:     size,
 		}))
 		return // đủ tên + head để ký — không đọc tiếp body, Go tự đóng connection
 	}
@@ -89,7 +110,7 @@ func (a *FileAPI) PresignUploads(c *gin.Context) {
 	}
 	req := &dtos.PresignUploadsRequest{}
 	for seen := 0; ; seen++ {
-		if seen >= maxStreamParts {
+		if seen >= constants.MAX_STREAM_PARTS {
 			a.BadRequest(c, "quá nhiều part trong request")
 			return
 		}
@@ -104,16 +125,21 @@ func (a *FileAPI) PresignUploads(c *gin.Context) {
 		if part.FormName() != "files" || part.FileName() == "" {
 			continue
 		}
-		head, err := utils.ReadHead(part)
+		head, size, err := readHeadAndSize(part)
 		if err != nil {
 			a.BadRequest(c, "không đọc được file đính kèm")
+			return
+		}
+		if size > constants.MAX_FILE_SIZE {
+			a.BadRequest(c, "mỗi file tối đa 500MB")
 			return
 		}
 		req.Files = append(req.Files, &dtos.PresignUploadFile{
 			Filename: part.FileName(),
 			Head:     head,
+			Size:     size,
 		})
-		if len(req.Files) > services.MaxUploadsPerRequest {
+		if len(req.Files) > constants.MAX_UPLOADS_PER_REQUEST {
 			a.BadRequest(c, "tối đa 20 file mỗi request")
 			return
 		}
