@@ -1,12 +1,16 @@
 package dtos
 
-import "time"
+import (
+	"mime/multipart"
+	"time"
+)
 
-// PresignUploadRequest là payload client gửi lên để xin URL upload tạm thời.
-// Chỉ có filename — loại file KHÔNG nhận từ client, BE tự suy ra từ phần
-// mở rộng (xem allowedExts trong services). Theo DTO Guidelines ở user_dto.go.
+// PresignUploadRequest là request service nhận — KHÔNG do client gửi thẳng:
+// handler đọc file part multipart ("file") rồi tự điền Filename từ tên file
+// đó. Loại file KHÔNG nhận từ client, BE tự suy ra từ phần mở rộng
+// (xem allowedExts trong services). Theo DTO Guidelines ở user_dto.go.
 type PresignUploadRequest struct {
-	Filename string `json:"filename" binding:"required,min=1,max=255" example:"bao-cao.pdf"`
+	File *multipart.FileHeader `json:"file"`
 }
 
 // PresignUploadResponse trả về "vé" để client tự PUT file thẳng vào kho,

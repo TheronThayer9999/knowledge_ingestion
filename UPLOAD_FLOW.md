@@ -133,7 +133,7 @@ sequenceDiagram
 Ýtưởng: **server không nhận file, server chỉ cấp "vé tạm"**. Client cầm vé đó ghi thẳng vào SeaweedFS.
 
 ```
-① Client ── POST /uploads/presign {filename, content_type} ──▶ API server
+① Client ── POST /uploads/presign (multipart/form-data, field "file") ──▶ API server
 ② API server ── ký URL bằng secret_key ──▶ trả {upload_url, key, expires_at}
 ③ Client ── PUT file (vé nằm trong URL) ──▶ SeaweedFS
 ④ SeaweedFS tự ký lại, khớp ──▶ ghi file
@@ -149,7 +149,7 @@ sequenceDiagram
 
     rect rgb(235, 245, 255)
     Note over C, API: Giai đoạn 1 — xin vé (không có file)
-    C->>API: POST /api/v1/uploads/presign<br/>{filename, content_type}
+    C->>API: POST /api/v1/uploads/presign<br/>(multipart, field "file")
     API->>API: Sinh key = UUID, ký SigV4 (expiry 15 phút)
     API-->>C: {upload_url, key, expires_at}
     end
@@ -172,12 +172,21 @@ sequenceDiagram
 
 ### Bước chi tiết
 
-**① Client xin vé** — request không hề chứa file, chỉ metadata:
+**① Client xin vé** — request là `multipart/form-data` với 1 file part tên `file`. Server **chỉ đọc tên file** (`c.FormFile("file")` → `file.Filename`), không lưu bytes:
 
-```json
+```http
 POST /api/v1/uploads/presign
-{ "filename": "bao-cao.pdf", "content_type": "application/pdf" }
+Content-Type: multipart/form-data; boundary=...
+
+--...
+Content-Disposition: form-data; name="file"; filename="bao-cao.pdf"
+Content-Type: application/pdf
+
+...bytes file...
+--...--
 ```
+
+Loại file do BE suy ra từ phần mở rộng (whitelist `allowedExts`), không tin `Content-Type` part khai.
 
 **② Server ký URL** — toàn bộ "bí thuật" nằm ở đây, chỉ 3 dòng:
 

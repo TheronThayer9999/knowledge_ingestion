@@ -57,9 +57,9 @@ const docTemplate = `{
         },
         "/api/v1/uploads/presign": {
             "post": {
-                "description": "Signs a temporary PUT URL so the client can upload the file straight to storage without going through this server",
+                "description": "Signs a temporary PUT URL so the client can upload the file straight to storage without going through this server. The file itself is NOT stored — only its name is read from the multipart part to derive the key and content type",
                 "consumes": [
-                    "application/json"
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -70,13 +70,11 @@ const docTemplate = `{
                 "summary": "Get a presigned upload URL",
                 "parameters": [
                     {
-                        "description": "upload payload",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dtos.PresignUploadRequest"
-                        }
+                        "type": "file",
+                        "description": "file whose name is used for the presign (body is never stored)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -103,9 +101,9 @@ const docTemplate = `{
         },
         "/api/v1/uploads/presign/batch": {
             "post": {
-                "description": "Signs temporary PUT URLs for up to 20 files in one call, returned in the same order as the request",
+                "description": "Signs temporary PUT URLs for up to 20 files in one call, returned in the same order as the request. Files are NOT stored — only their names are read from the multipart parts to derive keys and content types",
                 "consumes": [
-                    "application/json"
+                    "multipart/form-data"
                 ],
                 "produces": [
                     "application/json"
@@ -116,13 +114,11 @@ const docTemplate = `{
                 "summary": "Get presigned upload URLs for multiple files",
                 "parameters": [
                     {
-                        "description": "batch upload payload",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dtos.PresignUploadsRequest"
-                        }
+                        "type": "file",
+                        "description": "files to presign (field name \\",
+                        "name": "files",
+                        "in": "formData",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -249,50 +245,6 @@ const docTemplate = `{
                     "maxLength": 50,
                     "minLength": 3,
                     "example": "johndoe"
-                }
-            }
-        },
-        "dtos.PresignUploadFile": {
-            "type": "object",
-            "required": [
-                "filename"
-            ],
-            "properties": {
-                "filename": {
-                    "type": "string",
-                    "maxLength": 255,
-                    "minLength": 1,
-                    "example": "bao-cao.pdf"
-                }
-            }
-        },
-        "dtos.PresignUploadRequest": {
-            "type": "object",
-            "required": [
-                "filename"
-            ],
-            "properties": {
-                "filename": {
-                    "type": "string",
-                    "maxLength": 255,
-                    "minLength": 1,
-                    "example": "bao-cao.pdf"
-                }
-            }
-        },
-        "dtos.PresignUploadsRequest": {
-            "type": "object",
-            "required": [
-                "files"
-            ],
-            "properties": {
-                "files": {
-                    "type": "array",
-                    "maxItems": 20,
-                    "minItems": 1,
-                    "items": {
-                        "$ref": "#/definitions/dtos.PresignUploadFile"
-                    }
                 }
             }
         },

@@ -25,37 +25,6 @@ definitions:
     - password
     - username
     type: object
-  dtos.PresignUploadFile:
-    properties:
-      filename:
-        example: bao-cao.pdf
-        maxLength: 255
-        minLength: 1
-        type: string
-    required:
-    - filename
-    type: object
-  dtos.PresignUploadRequest:
-    properties:
-      filename:
-        example: bao-cao.pdf
-        maxLength: 255
-        minLength: 1
-        type: string
-    required:
-    - filename
-    type: object
-  dtos.PresignUploadsRequest:
-    properties:
-      files:
-        items:
-          $ref: '#/definitions/dtos.PresignUploadFile'
-        maxItems: 20
-        minItems: 1
-        type: array
-    required:
-    - files
-    type: object
   dtos.ResponseResource:
     properties:
       code:
@@ -104,16 +73,17 @@ paths:
   /api/v1/uploads/presign:
     post:
       consumes:
-      - application/json
+      - multipart/form-data
       description: Signs a temporary PUT URL so the client can upload the file straight
-        to storage without going through this server
+        to storage without going through this server. The file itself is NOT stored
+        — only its name is read from the multipart part to derive the key and content
+        type
       parameters:
-      - description: upload payload
-        in: body
-        name: request
+      - description: file whose name is used for the presign (body is never stored)
+        in: formData
+        name: file
         required: true
-        schema:
-          $ref: '#/definitions/dtos.PresignUploadRequest'
+        type: file
       produces:
       - application/json
       responses:
@@ -135,16 +105,16 @@ paths:
   /api/v1/uploads/presign/batch:
     post:
       consumes:
-      - application/json
+      - multipart/form-data
       description: Signs temporary PUT URLs for up to 20 files in one call, returned
-        in the same order as the request
+        in the same order as the request. Files are NOT stored — only their names
+        are read from the multipart parts to derive keys and content types
       parameters:
-      - description: batch upload payload
-        in: body
-        name: request
+      - description: files to presign (field name \
+        in: formData
+        name: files
         required: true
-        schema:
-          $ref: '#/definitions/dtos.PresignUploadsRequest'
+        type: file
       produces:
       - application/json
       responses:

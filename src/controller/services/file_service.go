@@ -2,14 +2,15 @@ package services
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/controller/dtos"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // presignExpiry là thời hạn sống của URL upload — hết hạn client phải xin lại.
@@ -56,7 +57,7 @@ func NewFileService(st storage.IStorage) IFileService {
 // PresignUpload sinh key mới (client không được tự chọn key — chống path
 // traversal và ghi đè), ký URL PUT tạm thời, trả về cho client tự upload.
 func (s *fileService) PresignUpload(ctx context.Context, req *dtos.PresignUploadRequest) dtos.Result[*dtos.PresignUploadResponse] {
-	item, err := s.presign(ctx, req.Filename)
+	item, err := s.presign(ctx, req.File)
 	if err != nil {
 		return dtos.Fail[*dtos.PresignUploadResponse](err)
 	}
@@ -112,9 +113,11 @@ func deref(s *string) string {
 	return *s
 }
 
+//File *multipart.FileHeader `json:"file"`
+
 // presign sinh key, chốt MIME rồi ký 1 URL, dùng chung cho PresignUpload.
-func (s *fileService) presign(ctx context.Context, filename string) (*dtos.PresignUploadsItem, error) {
-	key, mime, err := resolveUpload(filename)
+func (s *fileService) presign(ctx context.Context, file *multipart.FileHeader) (*dtos.PresignUploadsItem, error) {
+	key, mime, err := resolveUpload(file.Filename)
 	if err != nil {
 		return nil, err
 	}
@@ -123,11 +126,11 @@ func (s *fileService) presign(ctx context.Context, filename string) (*dtos.Presi
 		return nil, err
 	}
 	return &dtos.PresignUploadsItem{
-		Filename:    filename,
+		Filename:    file.Filename,
 		UploadURL:   url,
 		Key:         key,
 		Method:      http.MethodPut,
-		ContentType: mime,
+		ContentType: file.Header["Content-Type"][0],
 		ExpiresAt:   time.Now().Add(presignExpiry),
 	}, nil
 }
@@ -168,7 +171,7 @@ func buildUploadKey(filename string) (string, error) {
 
 	ext := fileExt(name)
 
-	id, err := randomHex(16)
+	id, err := GenerateUUIDv7()
 	if err != nil {
 		return "", err
 	}
@@ -205,11 +208,11 @@ func sanitize(s string) string {
 	return b.String()
 }
 
-// randomHex sinh chuỗi hex ngẫu nhiên làm tên file duy nhất trong bucket.
-func randomHex(n int) (string, error) {
-	buf := make([]byte, n)
-	if _, err := rand.Read(buf); err != nil {
-		return "", errors.NewCustomHttpError(http.StatusInternalServerError, errors.Internal, "không sinh được key upload")
+// GenerateUUIDv7 sinh ra một UUID version 7 (có thể sắp xếp theo thời gian)
+func GenerateUUIDv7() (string, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return "", errors.NewCustomHttpError(http.StatusInternalServerError, errors.Internal, "không sinh được UUIDv7")
 	}
-	return hex.EncodeToString(buf), nil
+	return id.String(), nil
 }
