@@ -57,7 +57,7 @@ const docTemplate = `{
         },
         "/api/v1/uploads/presign": {
             "post": {
-                "description": "Signs a temporary PUT URL so the client can upload the file straight to storage without going through this server. The file itself is NOT stored — only its name is read from the multipart part to derive the key and content type",
+                "description": "Signs a temporary PUT URL so the client can upload the file straight to storage without going through this server. The file itself is NOT stored — only its name is read and content type sniffed from the multipart part to derive the key and sign the content type",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -101,7 +101,7 @@ const docTemplate = `{
         },
         "/api/v1/uploads/presign/batch": {
             "post": {
-                "description": "Signs temporary PUT URLs for up to 20 files in one call, returned in the same order as the request. Files are NOT stored — only their names are read from the multipart parts to derive keys and content types",
+                "description": "Signs temporary PUT URLs for up to 20 files in one call, returned in the same order as the request. Files are NOT stored — only their names are read and content types sniffed from the multipart parts to derive keys and sign content types",
                 "consumes": [
                     "multipart/form-data"
                 ],

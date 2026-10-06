@@ -76,8 +76,8 @@ paths:
       - multipart/form-data
       description: Signs a temporary PUT URL so the client can upload the file straight
         to storage without going through this server. The file itself is NOT stored
-        — only its name is read from the multipart part to derive the key and content
-        type
+        — only its name is read and content type sniffed from the multipart part to
+        derive the key and sign the content type
       parameters:
       - description: file whose name is used for the presign (body is never stored)
         in: formData
@@ -108,7 +108,8 @@ paths:
       - multipart/form-data
       description: Signs temporary PUT URLs for up to 20 files in one call, returned
         in the same order as the request. Files are NOT stored — only their names
-        are read from the multipart parts to derive keys and content types
+        are read and content types sniffed from the multipart parts to derive keys
+        and sign content types
       parameters:
       - description: files to presign (field name \
         in: formData

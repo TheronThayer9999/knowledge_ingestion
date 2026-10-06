@@ -18,7 +18,7 @@ func NewFileAPI(base *baseController, svc services.IFileService) *FileAPI {
 
 // PresignUpload godoc
 // @Summary Get a presigned upload URL
-// @Description Signs a temporary PUT URL so the client can upload the file straight to storage without going through this server. The file itself is NOT stored — only its name is read from the multipart part to derive the key and content type
+// @Description Signs a temporary PUT URL so the client can upload the file straight to storage without going through this server. The file itself is NOT stored — only its name is read and content type sniffed from the multipart part to derive the key and sign the content type
 // @Tags files
 // @Accept multipart/form-data
 // @Produce json
@@ -42,7 +42,7 @@ func (a *FileAPI) PresignUpload(c *gin.Context) {
 
 // PresignUploads godoc
 // @Summary Get presigned upload URLs for multiple files
-// @Description Signs temporary PUT URLs for up to 20 files in one call, returned in the same order as the request. Files are NOT stored — only their names are read from the multipart parts to derive keys and content types
+// @Description Signs temporary PUT URLs for up to 20 files in one call, returned in the same order as the request. Files are NOT stored — only their names are read and content types sniffed from the multipart parts to derive keys and sign content types
 // @Tags files
 // @Accept multipart/form-data
 // @Produce json
@@ -66,12 +66,7 @@ func (a *FileAPI) PresignUploads(c *gin.Context) {
 		Files: make([]*dtos.PresignUploadFile, 0, len(uploads)),
 	}
 	for _, f := range uploads {
-		name := f.Filename
-		req.Files = append(req.Files, &dtos.PresignUploadFile{Filename: &name})
-	}
-	if err := a.validateRequest(req); err != nil {
-		a.BadRequest(c, err.Error())
-		return
+		req.Files = append(req.Files, &dtos.PresignUploadFile{File: f})
 	}
 	Render(c, a, a.svc.PresignUploads(c, req))
 }

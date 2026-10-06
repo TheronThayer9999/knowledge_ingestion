@@ -186,7 +186,11 @@ Content-Type: application/pdf
 --...--
 ```
 
-Loại file do BE suy ra từ phần mở rộng (whitelist `allowedExts`), không tin `Content-Type` part khai.
+Loại file do BE chốt 2 lớp: whitelist đuôi file (`allowedExts`) + sniff magic
+bytes 512 đầu (`http.DetectContentType` đối chiếu allow-map) — `.exe` đổi tên
+`.pdf` bị chặn 400 vì sniff ra `application/octet-stream`. Header `Content-Type`
+của part do client khai nên BE lờ hoàn toàn. MIME đã verify được nhét vào chữ
+ký presigned URL và trả về trong `content_type` — client PUT phải gửi đúng.
 
 **② Server ký URL** — toàn bộ "bí thuật" nằm ở đây, chỉ 3 dòng:
 

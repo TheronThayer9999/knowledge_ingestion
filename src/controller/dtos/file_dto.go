@@ -6,9 +6,10 @@ import (
 )
 
 // PresignUploadRequest là request service nhận — KHÔNG do client gửi thẳng:
-// handler đọc file part multipart ("file") rồi tự điền Filename từ tên file
-// đó. Loại file KHÔNG nhận từ client, BE tự suy ra từ phần mở rộng
-// (xem allowedExts trong services). Theo DTO Guidelines ở user_dto.go.
+// handler đọc file part multipart ("file") rồi gắn nguyên FileHeader vào đây.
+// Service tự mở part, sniff magic bytes đối chiếu với đuôi file (đuôi +
+// nội dung phải khớp), rồi chốt MIME ký vào URL. Header Content-Type của
+// part do client khai nên service lờ hoàn toàn.
 type PresignUploadRequest struct {
 	File *multipart.FileHeader `json:"file"`
 }
@@ -25,17 +26,17 @@ type PresignUploadResponse struct {
 	ExpiresAt   time.Time `json:"expires_at" example:"2026-10-05T12:15:00+07:00"`
 }
 
-// PresignUploadFile là 1 file trong request batch xin nhiều URL một lần.
-// Dùng con trỏ để phân biệt "không gửi field" với "gửi field rỗng" khi validate.
+// PresignUploadFile là 1 file trong request batch xin nhiều URL một lần —
+// handler gắn FileHeader của từng part, service sniff từng file.
 type PresignUploadFile struct {
-	Filename *string `json:"filename" binding:"required,min=1,max=255" example:"bao-cao.pdf"`
+	File *multipart.FileHeader `json:"file"`
 }
 
 // PresignUploadsRequest xin nhiều URL cùng lúc, để client không phải gọi
-// /uploads/presign N lần khi upload nhiều file. Tối đa 20 file mỗi request;
-// dive + required để bắt element null trong mảng.
+// /uploads/presign N lần khi upload nhiều file. Tối đa 20 file mỗi request
+// (check tay ở service vì tag binding không chạy qua đường multipart).
 type PresignUploadsRequest struct {
-	Files []*PresignUploadFile `json:"files" binding:"required,min=1,max=20,dive,required"`
+	Files []*PresignUploadFile `json:"files"`
 }
 
 // PresignUploadsItem là URL của 1 file trong batch — Filename là tên gốc

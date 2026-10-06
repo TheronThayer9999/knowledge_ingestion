@@ -4,13 +4,12 @@ import (
 	"context"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/common/storage"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // presignExpiry là thời hạn sống của URL upload — hết hạn client phải xin lại.
@@ -21,6 +20,11 @@ const uploadPrefix = "uploads/"
 
 // maxFilenameLen chốt độ dài tên file, tránh key quá to.
 const maxFilenameLen = 100
+
+// maxUploadsPerRequest chốt số file tối đa mỗi request batch. Check tay ở
+// service vì tag binding max=20 trên DTO không chạy qua đường multipart
+// (validator dùng tag "validate", gin binding mới đọc tag "binding").
+const maxUploadsPerRequest = 20
 
 // allowedExts là whitelist loại file được upload — BE chốt, không tin content_type
 // client gửi (client khai bừa cũng không ảnh hưởng vì MIME gắn với phần mở rộng).
@@ -76,14 +80,27 @@ func (s *fileService) PresignUpload(ctx context.Context, req *dtos.PresignUpload
 func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploadsRequest) dtos.Result[*dtos.PresignUploadsResponse] {
 	type prepared struct{ filename, key, mime string }
 
+	if len(req.Files) == 0 {
+		return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "thiếu file đính kèm"))
+	}
+	if len(req.Files) > maxUploadsPerRequest {
+		return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "tối đa 20 file mỗi request"))
+	}
+
 	prep := make([]prepared, 0, len(req.Files))
 	for _, f := range req.Files {
-		name := deref(f.Filename)
-		key, mime, err := resolveUpload(name)
+		if f == nil || f.File == nil {
+			return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "thiếu file đính kèm"))
+		}
+		head, err := utils.ReadPartHead(f.File)
+		if err != nil {
+			return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusInternalServerError, errors.Internal, "không đọc được file đính kèm"))
+		}
+		key, mime, err := resolveUploadContent(f.File.Filename, head)
 		if err != nil {
 			return dtos.Fail[*dtos.PresignUploadsResponse](err)
 		}
-		prep = append(prep, prepared{filename: name, key: key, mime: mime})
+		prep = append(prep, prepared{filename: f.File.Filename, key: key, mime: mime})
 	}
 
 	items := make([]dtos.PresignUploadsItem, 0, len(prep))
@@ -104,20 +121,17 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 	return dtos.Ok(&dtos.PresignUploadsResponse{Items: items})
 }
 
-// deref trả "" khi con trỏ nil — binding đã chặn nil trước khi tới service,
-// đây chỉ là phòng thủ tránh panic.
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-//File *multipart.FileHeader `json:"file"`
-
-// presign sinh key, chốt MIME rồi ký 1 URL, dùng chung cho PresignUpload.
+// presign đọc nội dung file để chốt MIME (đuôi + magic bytes phải khớp),
+// sinh key rồi ký 1 URL, dùng chung cho PresignUpload.
 func (s *fileService) presign(ctx context.Context, file *multipart.FileHeader) (*dtos.PresignUploadsItem, error) {
-	key, mime, err := resolveUpload(file.Filename)
+	if file == nil {
+		return nil, errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "thiếu file đính kèm")
+	}
+	head, err := utils.ReadPartHead(file)
+	if err != nil {
+		return nil, errors.NewCustomHttpError(http.StatusInternalServerError, errors.Internal, "không đọc được file đính kèm")
+	}
+	key, mime, err := resolveUploadContent(file.Filename, head)
 	if err != nil {
 		return nil, err
 	}
@@ -130,9 +144,46 @@ func (s *fileService) presign(ctx context.Context, file *multipart.FileHeader) (
 		UploadURL:   url,
 		Key:         key,
 		Method:      http.MethodPut,
-		ContentType: file.Header["Content-Type"][0],
+		ContentType: mime,
 		ExpiresAt:   time.Now().Add(presignExpiry),
 	}, nil
+}
+
+// sniffAllow là các MIME nội dung chấp nhận được cho từng đuôi file, vì
+// utils.SniffContentType không phân biệt được họ hàng nhà zip (.docx/.xlsx/
+// .pptx đều sniff ra application/zip) và text thật vẫn sniff ra text/plain.
+// Đây là policy nghiệp vụ nên ở lại service, không vào utils.
+var sniffAllow = map[string][]string{
+	".docx": {"application/zip"},
+	".xlsx": {"application/zip"},
+	".pptx": {"application/zip"},
+	".txt":  {"text/plain"},
+	".md":   {"text/plain", "text/markdown"},
+	".csv":  {"text/plain", "text/csv"},
+	".json": {"text/plain", "application/json"},
+}
+
+// resolveUploadContent validate filename rồi đối chiếu loại nội dung sniff từ
+// bytes thật với MIME của đuôi file — .exe đổi tên .pdf bị chặn ở đây vì
+// sniff ra application/octet-stream. Trả key + MIME đã verify để ký.
+func resolveUploadContent(filename string, head []byte) (key string, mime string, err error) {
+	if len(head) == 0 {
+		return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "file rỗng")
+	}
+	key, mime, err = resolveUpload(filename)
+	if err != nil {
+		return "", "", err
+	}
+	sniffed := utils.SniffContentType(head)
+	if sniffed == mime {
+		return key, mime, nil
+	}
+	for _, allow := range sniffAllow[utils.FileExt(key)] {
+		if sniffed == allow {
+			return key, mime, nil
+		}
+	}
+	return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "nội dung file không khớp loại file: "+sniffed)
 }
 
 // resolveUpload validate filename của client rồi trả key + MIME do BE tự suy ra
@@ -143,7 +194,7 @@ func resolveUpload(filename string) (key string, mime string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	ext := fileExt(key)
+	ext := utils.FileExt(key)
 	m, ok := allowedExts[ext]
 	if !ok {
 		label := ext
@@ -156,63 +207,24 @@ func resolveUpload(filename string) (key string, mime string, err error) {
 }
 
 // buildUploadKey biến filename của client thành key an toàn: bỏ mọi đường dẫn,
-// lọc ký tự lạ, thêm chuỗi ngẫu nhiên để không ghi đè file người khác.
+// lọc ký tự lạ (utils), thêm UUIDv7 để không ghi đè file người khác.
 func buildUploadKey(filename string) (string, error) {
 	name := strings.TrimSpace(filename)
 	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
 		name = name[i+1:] // chỉ giữ phần tên file, bỏ mọi thư mục
 	}
-	name = sanitize(name)
+	name = utils.SanitizeFileName(name)
 	name = strings.Trim(name, ".")
 	// name toàn dấu . - _ (vd "...", ".   .") cũng coi là rỗng
 	if name == "" || strings.Trim(name, "._-") == "" || len(name) > maxFilenameLen {
 		return "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "filename không hợp lệ")
 	}
 
-	ext := fileExt(name)
+	ext := utils.FileExt(name)
 
-	id, err := GenerateUUIDv7()
+	id, err := utils.NewUUIDv7()
 	if err != nil {
-		return "", err
+		return "", errors.NewCustomHttpError(http.StatusInternalServerError, errors.Internal, "không sinh được key upload")
 	}
 	return uploadPrefix + id + ext, nil
-}
-
-// fileExt trả về phần mở rộng đã viết thường ("bao-cao.pdf" -> ".pdf"),
-// chuỗi không có dấu chấm hoặc toàn dấu chấm thì trả rỗng.
-func fileExt(name string) string {
-	i := strings.LastIndex(name, ".")
-	if i <= 0 || i == len(name)-1 {
-		return ""
-	}
-	ext := name[i:]
-	if len(ext) > 11 { // ".tar.gz" là hợp lý, ".quaidaronbaomongquylong" thì không
-		return ""
-	}
-	return strings.ToLower(ext)
-}
-
-// sanitize giữ lại chữ, số và . - _ , mọi ký tự khác (khoảng trắng, ký tự lạ,
-// dấu phân cách) đều thành "_" để key luôn an toàn cho URL.
-func sanitize(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('_')
-		}
-	}
-	return b.String()
-}
-
-// GenerateUUIDv7 sinh ra một UUID version 7 (có thể sắp xếp theo thời gian)
-func GenerateUUIDv7() (string, error) {
-	id, err := uuid.NewV7()
-	if err != nil {
-		return "", errors.NewCustomHttpError(http.StatusInternalServerError, errors.Internal, "không sinh được UUIDv7")
-	}
-	return id.String(), nil
 }
