@@ -43,6 +43,7 @@ func loadAdapter() []fx.Option {
 		fx.Invoke(func(domain.Embedder) {}),
 		//
 		fx.Provide(repository.NewUserRepository),
+		fx.Provide(repository.NewCategoryRepository),
 	}
 }
 
@@ -51,6 +52,7 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewPingPongService),
 		fx.Provide(services.NewUserService),
 		fx.Provide(services.NewFileService),
+		fx.Provide(services.NewCategoryService),
 	}
 }
 
@@ -75,6 +77,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewPingPongAPI),
 		fx.Provide(apis.NewUserAPI),
 		fx.Provide(apis.NewFileAPI),
+		fx.Provide(apis.NewCategoryAPI),
 		fx.Provide(routers.NewRouter),
 	}
 }

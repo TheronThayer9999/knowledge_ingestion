@@ -14,7 +14,7 @@ type Router struct {
 	Engine *gin.Engine
 }
 
-func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI, fileAPI *apis.FileAPI, cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware) *Router {
+func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI, fileAPI *apis.FileAPI, categoryAPI *apis.CategoryAPI, cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware) *Router {
 	if cfg.GetApp().Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -45,6 +45,11 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI,
 		authed.POST("/auth/change-password", userAPI.ChangePassword)
 		authed.POST("/uploads/presign", fileAPI.PresignUpload)
 		authed.POST("/uploads/presign/batch", fileAPI.PresignUploads)
+		authed.POST("/categories", categoryAPI.Create)
+		authed.GET("/categories", categoryAPI.GetAll)
+		authed.GET("/categories/:id", categoryAPI.GetById)
+		authed.PUT("/categories/:id", categoryAPI.Update)
+		authed.DELETE("/categories/:id", categoryAPI.Delete)
 	}
 
 	return &Router{Engine: engine}

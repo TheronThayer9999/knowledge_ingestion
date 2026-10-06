@@ -13,6 +13,23 @@ definitions:
     - new_password
     - old_password
     type: object
+  dtos.CreateCategoryRequest:
+    properties:
+      description:
+        example: Tài liệu khoa học
+        maxLength: 500
+        type: string
+      name:
+        example: Khoa học
+        maxLength: 100
+        minLength: 1
+        type: string
+      parent_id:
+        example: 1
+        type: integer
+    required:
+    - name
+    type: object
   dtos.CreateUserRequest:
     properties:
       avatar:
@@ -62,6 +79,21 @@ definitions:
       status:
         example: true
         type: boolean
+    type: object
+  dtos.UpdateCategoryRequest:
+    properties:
+      description:
+        example: Tài liệu khoa học
+        maxLength: 500
+        type: string
+      name:
+        example: Khoa học
+        maxLength: 100
+        minLength: 1
+        type: string
+      parent_id:
+        example: 1
+        type: integer
     type: object
 info:
   contact: {}
@@ -152,6 +184,149 @@ paths:
       summary: Get my profile
       tags:
       - auth
+  /api/v1/categories:
+    get:
+      description: Returns my taxonomy tree with total count
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: List my categories
+      tags:
+      - categories
+    post:
+      consumes:
+      - application/json
+      description: Creates a new taxonomy category, optionally under a parent
+      parameters:
+      - description: category payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.CreateCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Create a category
+      tags:
+      - categories
+  /api/v1/categories/{id}:
+    delete:
+      description: Deletes a category that has no children
+      parameters:
+      - description: category id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Delete a category
+      tags:
+      - categories
+    get:
+      description: Returns a single category or 404
+      parameters:
+      - description: category id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Get a category by id
+      tags:
+      - categories
+    put:
+      consumes:
+      - application/json
+      description: Partial update — only sent fields change
+      parameters:
+      - description: category id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.UpdateCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Update a category
+      tags:
+      - categories
   /api/v1/ping:
     get:
       description: Returns pong with server timestamp

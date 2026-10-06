@@ -40,7 +40,7 @@ func NewConnection(cfg config.IConfig) (IDB, error) {
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
 	}
 	//add struct migrate
-	err = db.AutoMigrate(domain.User{})
+	err = db.AutoMigrate(domain.User{}, domain.Category{})
 	if err != nil {
 		return nil, err
 	}
