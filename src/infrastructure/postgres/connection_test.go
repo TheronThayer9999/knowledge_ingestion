@@ -20,6 +20,10 @@ type testConfig struct {
 
 func (c *testConfig) GetRedis() config.RedisConfig { return c.inner.GetRedis() }
 
+func (c *testConfig) GetJWT() config.JWTConfig { return c.inner.GetJWT() }
+
+func (c *testConfig) GetCORS() config.CorsConfig { return c.inner.GetCORS() }
+
 func (c *testConfig) GetApp() config.AppConfig { return c.inner.GetApp() }
 
 func (c *testConfig) GetDatabase() config.DBConfig {

@@ -2,6 +2,7 @@ package loader
 
 import (
 	"knowledge_ingestion/src/controller/apis"
+	"knowledge_ingestion/src/controller/middlewares"
 	"knowledge_ingestion/src/controller/routers"
 	"knowledge_ingestion/src/controller/services"
 	"knowledge_ingestion/src/domain"
@@ -20,6 +21,7 @@ func Load() []fx.Option {
 	return []fx.Option{
 		fx.Options(loadAdapter()...),
 		fx.Options(loadService()...),
+		fx.Options(loadMiddleware()...),
 		fx.Options(loadValidator()...),
 		fx.Options(loadEngine()...),
 	}
@@ -49,6 +51,15 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewPingPongService),
 		fx.Provide(services.NewUserService),
 		fx.Provide(services.NewFileService),
+	}
+}
+
+// loadMiddleware đăng ký middleware HTTP — thêm middleware mới (rate limit...)
+// thì Provide constructor ở đây, router/service nhận interface là có.
+func loadMiddleware() []fx.Option {
+	return []fx.Option{
+		fx.Provide(middlewares.NewCORSMiddleware),
+		fx.Provide(middlewares.NewAuthMiddleware),
 	}
 }
 

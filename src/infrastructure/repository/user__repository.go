@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"knowledge_ingestion/src/domain"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -29,8 +30,33 @@ func (u *UserRepository) UpdateUser(ctx context.Context, user *domain.User) (*do
 }
 
 func (u *UserRepository) GetUserById(ctx context.Context, id int64) (*domain.User, error) {
-	// TODO implement me
-	panic("implement me")
+	var user domain.User
+	if err := u.db.WithContext(ctx).First(&user, id).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (u *UserRepository) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
+	var user domain.User
+	if err := u.db.WithContext(ctx).Where("user_name = ?", username).First(&user).Error; err != nil {
+		return nil, err // gorm.ErrRecordNotFound khi không tồn tại — service tự map 401
+	}
+	return &user, nil
+}
+
+// TouchLastLogin cập nhật mốc login gần nhất — login vẫn thành công dù bước này lỗi.
+func (u *UserRepository) TouchLastLogin(ctx context.Context, id int64, at time.Time) error {
+	return u.db.WithContext(ctx).Model(&domain.User{}).Where("id = ?", id).Update("last_login", at).Error
+}
+
+// UpdatePassword đổi hash mật khẩu đồng thời chốt mốc PasswordChangedAt —
+// mốc này làm mọi JWT ký trước đó hết hiệu lực ngay lập tức.
+func (u *UserRepository) UpdatePassword(ctx context.Context, id int64, hash string, changedAt time.Time) error {
+	return u.db.WithContext(ctx).Model(&domain.User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"password":            hash,
+		"password_changed_at": changedAt,
+	}).Error
 }
 
 func (u *UserRepository) DeleteUser(ctx context.Context, id int64) error {

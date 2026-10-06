@@ -67,6 +67,28 @@ type UserListResponse struct {
 	Total int64           `json:"total" example:"10"`
 }
 
+// LoginUserRequest là payload đăng nhập — tìm user theo username rồi so
+// hash bcrypt, đúng thì phát JWT.
+type LoginUserRequest struct {
+	Username string `json:"username" binding:"required" example:"johndoe"`
+	Password string `json:"password" binding:"required" example:"secret123"`
+}
+
+// LoginUserResponse trả token + hạn + thông tin user (không bao giờ có password).
+type LoginUserResponse struct {
+	Token     string        `json:"token" example:"eyJhbGciOiJIUzI1NiIs..."`
+	ExpiresAt time.Time     `json:"expires_at" example:"2026-10-07T10:00:00+07:00"`
+	User      *UserResponse `json:"user"`
+}
+
+// ChangePasswordRequest đổi mật khẩu của chính mình — userId lấy từ token
+// (middleware đã nhét vào context), không nhận id từ client để tránh đổi
+// pass hộ người khác.
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required" example:"secret123"`
+	NewPassword string `json:"new_password" binding:"required,min=8" example:"newsecret456"`
+}
+
 func ToUserResponse(user *domain.User) *UserResponse {
 	if user == nil {
 		return &UserResponse{}

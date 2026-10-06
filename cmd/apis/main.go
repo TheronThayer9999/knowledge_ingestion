@@ -2,6 +2,10 @@
 // @version 1.0
 // @description Knowledge ingestion service
 // @BasePath /
+// @securitydefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT, e.g. "Bearer eyJhbGciOi..."
 package main
 
 import (

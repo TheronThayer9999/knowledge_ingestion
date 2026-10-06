@@ -39,5 +39,12 @@
     "password": "",
     "socket_timeout": 5,
     "retry_on_timeout": true
+  },
+  "jwt": {
+    "secret": "dev-only-change-me-via-JWT_SECRET-env",
+    "expiry_minutes": 1440
+  },
+  "cors": {
+    "allowed_origins": ["http://localhost:4200"]
   }
 }

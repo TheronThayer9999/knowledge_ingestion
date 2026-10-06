@@ -29,6 +29,7 @@ func NewFileAPI(base *baseController, svc services.IFileService) *FileAPI {
 // @Success 200 {object} dtos.ResponseResource
 // @Failure 400 {object} dtos.ResponseResource
 // @Failure 500 {object} dtos.ResponseResource
+// @Security BearerAuth
 // @Router /api/v1/uploads/presign [post]
 func (a *FileAPI) PresignUpload(c *gin.Context) {
 	mr, err := c.Request.MultipartReader()
@@ -77,10 +78,11 @@ func (a *FileAPI) PresignUpload(c *gin.Context) {
 // @Tags files
 // @Accept multipart/form-data
 // @Produce json
-// @Param files formData file true "files to presign (field name \"files\", up to 20)"
+// @Param files formData file true "files to presign (field name "files", up to 20)"
 // @Success 200 {object} dtos.ResponseResource
 // @Failure 400 {object} dtos.ResponseResource
 // @Failure 500 {object} dtos.ResponseResource
+// @Security BearerAuth
 // @Router /api/v1/uploads/presign/batch [post]
 func (a *FileAPI) PresignUploads(c *gin.Context) {
 	mr, err := c.Request.MultipartReader()

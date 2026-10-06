@@ -13,6 +13,8 @@ type IConfig interface {
 	GetStorage() S3Config
 	GetEmbedding() EmbeddingConfig
 	GetRedis() RedisConfig // Thêm method này
+	GetJWT() JWTConfig
+	GetCORS() CorsConfig
 }
 
 // Implementations
@@ -22,6 +24,8 @@ type appConfig struct {
 	Storage   S3Config        `json:"storage"`
 	Embedding EmbeddingConfig `json:"embedding"`
 	RedisCli  RedisConfig     `json:"redis"`
+	JWTCli    JWTConfig       `json:"jwt"`
+	Cors      CorsConfig      `json:"cors"`
 }
 
 type AppConfig struct {
@@ -65,6 +69,18 @@ type RedisConfig struct {
 	RetryOnTimeout bool   `json:"retry_on_timeout"`
 }
 
+// JWTConfig giữ bí mật ký token và thời hạn sống (phút). Secret ưu tiên
+// lấy từ env JWT_SECRET để production không commit secret vào file.
+type JWTConfig struct {
+	Secret        string `json:"secret"`
+	ExpiryMinutes int    `json:"expiry_minutes"`
+}
+
+// CorsConfig giữ danh sách origin được phép gọi API (Angular dev/prod).
+type CorsConfig struct {
+	AllowedOrigins []string `json:"allowed_origins"`
+}
+
 // Load đọc file JSON và trả về IConfig
 func Load(path string) (IConfig, error) {
 	data, err := os.ReadFile(path)
@@ -96,6 +112,19 @@ func Load(path string) (IConfig, error) {
 	if cfg.RedisCli.Host == "" {
 		return nil, fmt.Errorf("redis.host is required")
 	}
+	// Secret ưu tiên env để production không phải commit secret vào file
+	if envSecret := os.Getenv("JWT_SECRET"); envSecret != "" {
+		cfg.JWTCli.Secret = envSecret
+	}
+	if cfg.JWTCli.Secret == "" {
+		return nil, fmt.Errorf("jwt.secret is required (hoặc env JWT_SECRET)")
+	}
+	if cfg.JWTCli.ExpiryMinutes <= 0 {
+		cfg.JWTCli.ExpiryMinutes = 1440 // mặc định 1 ngày
+	}
+	if len(cfg.Cors.AllowedOrigins) == 0 {
+		cfg.Cors.AllowedOrigins = []string{"http://localhost:4200"} // mặc định Angular dev
+	}
 
 	return &cfg, nil
 }
@@ -106,3 +135,5 @@ func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
 func (c *appConfig) GetStorage() S3Config          { return c.Storage }
 func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }
 func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }
+func (c *appConfig) GetJWT() JWTConfig             { return c.JWTCli }
+func (c *appConfig) GetCORS() CorsConfig           { return c.Cors }
