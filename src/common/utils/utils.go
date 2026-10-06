@@ -1,10 +1,8 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"strings"
 
@@ -57,18 +55,14 @@ func SniffContentType(head []byte) string {
 	return sniffed
 }
 
-// ReadPartHead đọc tối đa SniffHeadLen byte đầu của file part để đoán loại
-// nội dung — không load cả file vào RAM. Trả plain error để tầng gọi tự map
-// sang mã lỗi của nó (service map lỗi đọc thành 500 internal).
-func ReadPartHead(file *multipart.FileHeader) ([]byte, error) {
-	f, err := file.Open()
-	if err != nil {
-		return nil, fmt.Errorf("mở file đính kèm: %w", err)
-	}
-	defer func() { _ = f.Close() }()
+// ReadHead đọc tối đa SniffHeadLen byte đầu từ r (thường là part đang stream)
+// để đoán loại nội dung — không buffer cả file vào RAM hay đĩa. Trả plain
+// error để tầng gọi tự map sang mã lỗi của nó (service map lỗi đọc thành
+// 500 internal).
+func ReadHead(r io.Reader) ([]byte, error) {
 	buf := make([]byte, SniffHeadLen)
-	n, err := io.ReadFull(f, buf)
-	if err != nil && err != io.EOF && !errors.Is(io.ErrUnexpectedEOF, err) {
+	n, err := io.ReadFull(r, buf)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		return nil, fmt.Errorf("đọc file đính kèm: %w", err)
 	}
 	return buf[:n], nil

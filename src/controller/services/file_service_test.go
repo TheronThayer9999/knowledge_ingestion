@@ -1,13 +1,11 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/controller/dtos"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -51,32 +49,15 @@ var (
 	exeContent = []byte{'M', 'Z', 0x90, 0x00, 0x03, 0x00, 0x00, 0x00}
 )
 
-// newFileHeader dựng *multipart.FileHeader như gin nhận từ form —
-// CreateFormFile luôn khai Content-Type part là application/octet-stream,
-// đúng ý test: service phải lờ header này.
-func newFileHeader(t *testing.T, filename string, content []byte) *multipart.FileHeader {
+func must400(t *testing.T, err error) {
 	t.Helper()
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	part, err := w.CreateFormFile("file", filename)
-	if err != nil {
-		t.Fatalf("CreateFormFile error: %v", err)
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
-	if _, err := part.Write(content); err != nil {
-		t.Fatalf("write part error: %v", err)
+	var e interface{ GetHttpCode() int }
+	if !errors.As(err, &e) || e.GetHttpCode() != http.StatusBadRequest {
+		t.Errorf("expected 400 client error, got %v", err)
 	}
-	if err := w.Close(); err != nil {
-		t.Fatalf("close writer error: %v", err)
-	}
-	form, err := multipart.NewReader(&buf, w.Boundary()).ReadForm(1 << 20)
-	if err != nil {
-		t.Fatalf("ReadForm error: %v", err)
-	}
-	files := form.File["file"]
-	if len(files) == 0 {
-		t.Fatal("no file parsed from multipart form")
-	}
-	return files[0]
 }
 
 func TestBuildUploadKeyStripsPath(t *testing.T) {
@@ -131,7 +112,8 @@ func TestPresignUploadReturnsPUTURL(t *testing.T) {
 	svc := NewFileService(st)
 
 	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{
-		File: newFileHeader(t, "bao-cao.pdf", pdfContent),
+		Filename: "bao-cao.pdf",
+		Head:     pdfContent,
 	})
 	if res.Err != nil {
 		t.Fatalf("PresignUpload error: %v", res.Err)
@@ -165,29 +147,8 @@ func TestPresignUploadReturnsPUTURL(t *testing.T) {
 func TestPresignUploadRejectsBadFilename(t *testing.T) {
 	svc := NewFileService(&fakeStorage{})
 
-	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{
-		File: newFileHeader(t, "...", pdfContent),
-	})
-	if res.Err == nil {
-		t.Fatal("expected error for invalid filename")
-	}
-	var e interface{ GetHttpCode() int }
-	if !errors.As(res.Err, &e) || e.GetHttpCode() != http.StatusBadRequest {
-		t.Errorf("expected 400 client error, got %v", res.Err)
-	}
-}
-
-func TestPresignUploadRejectsNilFile(t *testing.T) {
-	svc := NewFileService(&fakeStorage{})
-
-	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{})
-	if res.Err == nil {
-		t.Fatal("expected error for nil file")
-	}
-	var e interface{ GetHttpCode() int }
-	if !errors.As(res.Err, &e) || e.GetHttpCode() != http.StatusBadRequest {
-		t.Errorf("expected 400 client error, got %v", res.Err)
-	}
+	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{Filename: "...", Head: pdfContent})
+	must400(t, res.Err)
 }
 
 func TestPresignUploadRejectsContentMismatch(t *testing.T) {
@@ -195,16 +156,8 @@ func TestPresignUploadRejectsContentMismatch(t *testing.T) {
 	svc := NewFileService(st)
 
 	// .exe đổi tên thành .pdf — đuôi lọt whitelist nhưng magic bytes tố cáo.
-	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{
-		File: newFileHeader(t, "bao-cao.pdf", exeContent),
-	})
-	if res.Err == nil {
-		t.Fatal("expected error for exe content named .pdf")
-	}
-	var e interface{ GetHttpCode() int }
-	if !errors.As(res.Err, &e) || e.GetHttpCode() != http.StatusBadRequest {
-		t.Errorf("expected 400 client error, got %v", res.Err)
-	}
+	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{Filename: "bao-cao.pdf", Head: exeContent})
+	must400(t, res.Err)
 	if st.calls != 0 {
 		t.Errorf("không được ký URL khi nội dung lệch đuôi, storage called %d times", st.calls)
 	}
@@ -213,21 +166,15 @@ func TestPresignUploadRejectsContentMismatch(t *testing.T) {
 func TestPresignUploadRejectsEmptyFile(t *testing.T) {
 	svc := NewFileService(&fakeStorage{})
 
-	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{
-		File: newFileHeader(t, "rong.pdf", nil),
-	})
-	if res.Err == nil {
-		t.Fatal("expected error for empty file")
-	}
+	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{Filename: "rong.pdf"})
+	must400(t, res.Err)
 }
 
 func TestPresignUploadAcceptsOfficeZip(t *testing.T) {
 	svc := NewFileService(&fakeStorage{})
 
 	// .docx thật là file zip — DetectContentType chỉ thấy application/zip.
-	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{
-		File: newFileHeader(t, "hop-dong.docx", zipContent),
-	})
+	res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{Filename: "hop-dong.docx", Head: zipContent})
 	if res.Err != nil {
 		t.Fatalf("PresignUpload(.docx zip) error: %v", res.Err)
 	}
@@ -242,10 +189,10 @@ func TestPresignUploadsKeepsOrderAndUniqueKeys(t *testing.T) {
 
 	res := svc.PresignUploads(context.Background(), &dtos.PresignUploadsRequest{
 		Files: []*dtos.PresignUploadFile{
-			{File: newFileHeader(t, "a.pdf", pdfContent)},
-			{File: newFileHeader(t, "b.jpg", jpgContent)},
-			{File: newFileHeader(t, "c.png", pngContent)},
-			{File: newFileHeader(t, "d.txt", txtContent)},
+			{Filename: "a.pdf", Head: pdfContent},
+			{Filename: "b.jpg", Head: jpgContent},
+			{Filename: "c.png", Head: pngContent},
+			{Filename: "d.txt", Head: txtContent},
 		},
 	})
 	if res.Err != nil {
@@ -290,19 +237,13 @@ func TestPresignUploadsValidatesAllBeforeSigning(t *testing.T) {
 
 	res := svc.PresignUploads(context.Background(), &dtos.PresignUploadsRequest{
 		Files: []*dtos.PresignUploadFile{
-			{File: newFileHeader(t, "tot.pdf", pdfContent)},
-			{File: newFileHeader(t, "...", pdfContent)},
+			{Filename: "tot.pdf", Head: pdfContent},
+			{Filename: "...", Head: pdfContent},
 		},
 	})
-	if res.Err == nil {
-		t.Fatal("expected error for invalid filename in batch")
-	}
+	must400(t, res.Err)
 	if st.calls != 0 {
 		t.Errorf("không được ký file nào khi batch còn file sai, storage called %d times", st.calls)
-	}
-	var e interface{ GetHttpCode() int }
-	if !errors.As(res.Err, &e) || e.GetHttpCode() != http.StatusBadRequest {
-		t.Errorf("expected 400 client error, got %v", res.Err)
 	}
 }
 
@@ -312,13 +253,11 @@ func TestPresignUploadsRejectsContentMismatch(t *testing.T) {
 
 	res := svc.PresignUploads(context.Background(), &dtos.PresignUploadsRequest{
 		Files: []*dtos.PresignUploadFile{
-			{File: newFileHeader(t, "tot.pdf", pdfContent)},
-			{File: newFileHeader(t, "doc.pdf", exeContent)},
+			{Filename: "tot.pdf", Head: pdfContent},
+			{Filename: "doc.pdf", Head: exeContent},
 		},
 	})
-	if res.Err == nil {
-		t.Fatal("expected error for mismatched content in batch")
-	}
+	must400(t, res.Err)
 	if st.calls != 0 {
 		t.Errorf("không được ký file nào khi batch còn file sai nội dung, storage called %d times", st.calls)
 	}
@@ -328,14 +267,12 @@ func TestPresignUploadsRejectsTooManyFiles(t *testing.T) {
 	st := &fakeStorage{}
 	svc := NewFileService(st)
 
-	files := make([]*dtos.PresignUploadFile, 0, maxUploadsPerRequest+1)
-	for i := 0; i <= maxUploadsPerRequest; i++ {
-		files = append(files, &dtos.PresignUploadFile{File: newFileHeader(t, "f.pdf", pdfContent)})
+	files := make([]*dtos.PresignUploadFile, 0, MaxUploadsPerRequest+1)
+	for i := 0; i <= MaxUploadsPerRequest; i++ {
+		files = append(files, &dtos.PresignUploadFile{Filename: "f.pdf", Head: pdfContent})
 	}
 	res := svc.PresignUploads(context.Background(), &dtos.PresignUploadsRequest{Files: files})
-	if res.Err == nil {
-		t.Fatal("expected error for batch over the limit")
-	}
+	must400(t, res.Err)
 	if st.calls != 0 {
 		t.Errorf("không được ký file nào khi batch quá giới hạn, storage called %d times", st.calls)
 	}
@@ -346,17 +283,12 @@ func TestResolveUploadBlocksUnallowedExtension(t *testing.T) {
 	svc := NewFileService(st)
 
 	for _, name := range []string{"tool.exe", "script.sh", "index.php", "noext", "whatever.xyz"} {
-		res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{
-			File: newFileHeader(t, name, txtContent),
-		})
+		res := svc.PresignUpload(context.Background(), &dtos.PresignUploadRequest{Filename: name, Head: txtContent})
 		if res.Err == nil {
 			t.Errorf("filename %q phải bị chặn", name)
 			continue
 		}
-		var e interface{ GetHttpCode() int }
-		if !errors.As(res.Err, &e) || e.GetHttpCode() != http.StatusBadRequest {
-			t.Errorf("filename %q: expected 400, got %v", name, res.Err)
-		}
+		must400(t, res.Err)
 	}
 	if st.calls != 0 {
 		t.Errorf("không được ký URL cho file ngoài whitelist, storage called %d times", st.calls)

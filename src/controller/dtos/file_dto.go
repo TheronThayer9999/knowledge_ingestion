@@ -1,17 +1,17 @@
 package dtos
 
 import (
-	"mime/multipart"
 	"time"
 )
 
 // PresignUploadRequest là request service nhận — KHÔNG do client gửi thẳng:
-// handler đọc file part multipart ("file") rồi gắn nguyên FileHeader vào đây.
-// Service tự mở part, sniff magic bytes đối chiếu với đuôi file (đuôi +
-// nội dung phải khớp), rồi chốt MIME ký vào URL. Header Content-Type của
-// part do client khai nên service lờ hoàn toàn.
+// handler lướt multipart stream, chỉ giữ tên file + 512B đầu (Head) rồi điền
+// vào đây. Service sniff Head đối chiếu với đuôi file (đuôi + nội dung phải
+// khớp), rồi chốt MIME ký vào URL. Header Content-Type của part do client
+// khai nên service lờ hoàn toàn.
 type PresignUploadRequest struct {
-	File *multipart.FileHeader `json:"file"`
+	Filename string `json:"filename" binding:"required,min=1,max=255" example:"bao-cao.pdf"`
+	Head     []byte `json:"head"`
 }
 
 // PresignUploadResponse trả về "vé" để client tự PUT file thẳng vào kho,
@@ -26,10 +26,11 @@ type PresignUploadResponse struct {
 	ExpiresAt   time.Time `json:"expires_at" example:"2026-10-05T12:15:00+07:00"`
 }
 
-// PresignUploadFile là 1 file trong request batch xin nhiều URL một lần —
-// handler gắn FileHeader của từng part, service sniff từng file.
+// PresignUploadFile là 1 file trong request batch — handler điền tên +
+// 512B đầu lướt từ stream, service sniff từng file.
 type PresignUploadFile struct {
-	File *multipart.FileHeader `json:"file"`
+	Filename string `json:"filename" example:"bao-cao.pdf"`
+	Head     []byte `json:"head"`
 }
 
 // PresignUploadsRequest xin nhiều URL cùng lúc, để client không phải gọi

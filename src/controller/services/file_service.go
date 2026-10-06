@@ -6,8 +6,8 @@ import (
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
-	"mime/multipart"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -21,10 +21,11 @@ const uploadPrefix = "uploads/"
 // maxFilenameLen chốt độ dài tên file, tránh key quá to.
 const maxFilenameLen = 100
 
-// maxUploadsPerRequest chốt số file tối đa mỗi request batch. Check tay ở
-// service vì tag binding max=20 trên DTO không chạy qua đường multipart
-// (validator dùng tag "validate", gin binding mới đọc tag "binding").
-const maxUploadsPerRequest = 20
+// MaxUploadsPerRequest chốt số file tối đa mỗi request batch. Check tay ở
+// service (và handler chặn sớm khi stream) vì tag binding max=20 trên DTO
+// không chạy qua đường multipart (validator dùng tag "validate", gin binding
+// mới đọc tag "binding"). Export để handler dùng chung một hằng số.
+const MaxUploadsPerRequest = 20
 
 // allowedExts là whitelist loại file được upload — BE chốt, không tin content_type
 // client gửi (client khai bừa cũng không ảnh hưởng vì MIME gắn với phần mở rộng).
@@ -61,7 +62,7 @@ func NewFileService(st storage.IStorage) IFileService {
 // PresignUpload sinh key mới (client không được tự chọn key — chống path
 // traversal và ghi đè), ký URL PUT tạm thời, trả về cho client tự upload.
 func (s *fileService) PresignUpload(ctx context.Context, req *dtos.PresignUploadRequest) dtos.Result[*dtos.PresignUploadResponse] {
-	item, err := s.presign(ctx, req.File)
+	item, err := s.presign(ctx, req.Filename, req.Head)
 	if err != nil {
 		return dtos.Fail[*dtos.PresignUploadResponse](err)
 	}
@@ -83,24 +84,20 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 	if len(req.Files) == 0 {
 		return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "thiếu file đính kèm"))
 	}
-	if len(req.Files) > maxUploadsPerRequest {
+	if len(req.Files) > MaxUploadsPerRequest {
 		return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "tối đa 20 file mỗi request"))
 	}
 
 	prep := make([]prepared, 0, len(req.Files))
 	for _, f := range req.Files {
-		if f == nil || f.File == nil {
+		if f == nil {
 			return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "thiếu file đính kèm"))
 		}
-		head, err := utils.ReadPartHead(f.File)
-		if err != nil {
-			return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusInternalServerError, errors.Internal, "không đọc được file đính kèm"))
-		}
-		key, mime, err := resolveUploadContent(f.File.Filename, head)
+		key, mime, err := resolveUploadContent(f.Filename, f.Head)
 		if err != nil {
 			return dtos.Fail[*dtos.PresignUploadsResponse](err)
 		}
-		prep = append(prep, prepared{filename: f.File.Filename, key: key, mime: mime})
+		prep = append(prep, prepared{filename: f.Filename, key: key, mime: mime})
 	}
 
 	items := make([]dtos.PresignUploadsItem, 0, len(prep))
@@ -121,17 +118,10 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 	return dtos.Ok(&dtos.PresignUploadsResponse{Items: items})
 }
 
-// presign đọc nội dung file để chốt MIME (đuôi + magic bytes phải khớp),
+// presign chốt MIME từ tên + head sniff được (đuôi + magic bytes phải khớp),
 // sinh key rồi ký 1 URL, dùng chung cho PresignUpload.
-func (s *fileService) presign(ctx context.Context, file *multipart.FileHeader) (*dtos.PresignUploadsItem, error) {
-	if file == nil {
-		return nil, errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "thiếu file đính kèm")
-	}
-	head, err := utils.ReadPartHead(file)
-	if err != nil {
-		return nil, errors.NewCustomHttpError(http.StatusInternalServerError, errors.Internal, "không đọc được file đính kèm")
-	}
-	key, mime, err := resolveUploadContent(file.Filename, head)
+func (s *fileService) presign(ctx context.Context, filename string, head []byte) (*dtos.PresignUploadsItem, error) {
+	key, mime, err := resolveUploadContent(filename, head)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +130,7 @@ func (s *fileService) presign(ctx context.Context, file *multipart.FileHeader) (
 		return nil, err
 	}
 	return &dtos.PresignUploadsItem{
-		Filename:    file.Filename,
+		Filename:    filename,
 		UploadURL:   url,
 		Key:         key,
 		Method:      http.MethodPut,
@@ -178,10 +168,8 @@ func resolveUploadContent(filename string, head []byte) (key string, mime string
 	if sniffed == mime {
 		return key, mime, nil
 	}
-	for _, allow := range sniffAllow[utils.FileExt(key)] {
-		if sniffed == allow {
-			return key, mime, nil
-		}
+	if slices.Contains(sniffAllow[utils.FileExt(key)], sniffed) {
+		return key, mime, nil
 	}
 	return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "nội dung file không khớp loại file: "+sniffed)
 }
