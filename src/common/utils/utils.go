@@ -68,6 +68,26 @@ func ReadHead(r io.Reader) ([]byte, error) {
 	return buf[:n], nil
 }
 
+// ReadHeadAndSize đọc tối đa SniffHeadLen byte đầu để đoán loại nội dung
+// rồi drain phần còn lại ra /dev/null để đo tổng size thật — không buffer
+// toàn bộ vào RAM hay đĩa. Dừng ở maxSize+1 byte để bên gọi phát hiện vượt
+// ngưỡng sớm thay vì nuốt hết stream. Trả head + tổng size (gồm head).
+func ReadHeadAndSize(r io.Reader, maxSize int64) (head []byte, size int64, err error) {
+	head, err = ReadHead(r)
+	if err != nil {
+		return nil, 0, err
+	}
+	// head đã vượt ngưỡng thì khỏi drain tiếp
+	if int64(len(head)) > maxSize {
+		return head, int64(len(head)) + 1, nil
+	}
+	drained, err := io.Copy(io.Discard, io.LimitReader(r, maxSize+1-int64(len(head))))
+	if err != nil {
+		return nil, 0, err
+	}
+	return head, int64(len(head)) + drained, nil
+}
+
 // NewUUIDv7 sinh chuỗi UUID version 7 (có thể sắp xếp theo thời gian) để làm
 // tên duy nhất chống ghi đè. Trả plain error để tầng gọi tự map mã lỗi.
 func NewUUIDv7() (string, error) {

@@ -6,7 +6,6 @@ import (
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/controller/services"
-	"mime/multipart"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,25 +17,6 @@ type FileAPI struct {
 
 func NewFileAPI(base *baseController, svc services.IFileService) *FileAPI {
 	return &FileAPI{baseController: base, svc: svc}
-}
-
-// readHeadAndSize đọc 512B đầu để sniff rồi drain phần còn lại ra /dev/null
-// để đo tổng size thật — không buffer file vào RAM hay đĩa. Dừng ở
-// MAX_FILE_SIZE+1 byte để file vượt ngưỡng 400 sớm thay vì nuốt hết stream.
-func readHeadAndSize(part *multipart.Part) (head []byte, size int64, err error) {
-	head, err = utils.ReadHead(part)
-	if err != nil {
-		return nil, 0, err
-	}
-	// head đã vượt ngưỡng thì khỏi drain tiếp
-	if int64(len(head)) > constants.MAX_FILE_SIZE {
-		return head, int64(len(head)) + 1, nil
-	}
-	drained, err := io.Copy(io.Discard, io.LimitReader(part, constants.MAX_FILE_SIZE+1-int64(len(head))))
-	if err != nil {
-		return nil, 0, err
-	}
-	return head, int64(len(head)) + drained, nil
 }
 
 // PresignUpload godoc
@@ -72,7 +52,7 @@ func (a *FileAPI) PresignUpload(c *gin.Context) {
 		if part.FormName() != "file" || part.FileName() == "" {
 			continue
 		}
-		head, size, err := readHeadAndSize(part)
+		head, size, err := utils.ReadHeadAndSize(part, constants.MAX_FILE_SIZE)
 		if err != nil {
 			a.BadRequest(c, "không đọc được file đính kèm")
 			return
@@ -125,7 +105,7 @@ func (a *FileAPI) PresignUploads(c *gin.Context) {
 		if part.FormName() != "files" || part.FileName() == "" {
 			continue
 		}
-		head, size, err := readHeadAndSize(part)
+		head, size, err := utils.ReadHeadAndSize(part, constants.MAX_FILE_SIZE)
 		if err != nil {
 			a.BadRequest(c, "không đọc được file đính kèm")
 			return

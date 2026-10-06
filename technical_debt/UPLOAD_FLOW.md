@@ -17,7 +17,7 @@ Tài liệu này mô tả 2 cách đẩy file lên SeaweedFS: **luồng hiện t
 
 ## Interface `IStorage` — 4 method
 
-Định nghĩa tại `src/common/storage/storage.go`. Đây là **hợp đồng với kho file blob** — `key` trong cả 4 method là tên file trong bucket (vd `uploads/2026/abc.pdf`), không phải URL. Nhờ gom vào interface, sau này đổi SeaweedFS → S3/MinIO/local chỉ cần viết adapter mới, code nghiệp vụ không đổi.
+Định nghĩa tại `../src/common/storage/storage.go`. Đây là **hợp đồng với kho file blob** — `key` trong cả 4 method là tên file trong bucket (vd `uploads/2026/abc.pdf`), không phải URL. Nhờ gom vào interface, sau này đổi SeaweedFS → S3/MinIO/local chỉ cần viết adapter mới, code nghiệp vụ không đổi.
 
 ```go
 Upload(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
@@ -273,7 +273,7 @@ http://seaweedfs-s3:8333/app-uploads/550e8400-e29b-41d4-a716-446655440000.pdf
 
 ## Trạng thái hiện tại trong repo
 
-`IStorage` (`src/common/storage/storage.go`) đã có đủ 4 method:
+`IStorage` (`../src/common/storage/storage.go`) đã có đủ 4 method:
 
 ```go
 Upload(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
@@ -282,7 +282,7 @@ Delete(ctx context.Context, key string) error
 PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error)
 ```
 
-- `Upload` / `Download` / `Delete` — đã cài trong `src/infrastructure/seaweedfs/storage.go` (luồng 1)
+- `Upload` / `Download` / `Delete` — đã cài trong `../src/infrastructure/seaweedfs/storage.go` (luồng 1)
 - `PresignedURL` — đã cài bằng `s3.NewPresignClient(...).PresignPutObject`, **trả về URL PUT** (dùng cho upload, đúng luồng 2). Cần URL GET để tải file thì đổi `PresignPutObject` → `PresignGetObject`.
 - `src/controller/routers/router.go:28-31` — chỉ có `/ping`, `/pong`, `/users`, **chưa có `/uploads/presign`**
 
@@ -290,9 +290,9 @@ PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, err
 
 1. ~~`PresignedURL` trong `IStorage`~~ — ✅ xong
 2. ~~Cài `PresignPutObject` trong seaweedfs~~ — ✅ xong
-3. `configs/config.json` + `src/config/config.go` — thêm `public_endpoint` (hiện URL sẽ mang host `seaweedfs-s3:8333` của Docker network, client ngoài không mở được)
-4. `src/controller/dtos/` — `PresignUploadRequest` / `PresignUploadResponse` (snake_case, không hậu tố `Dto`)
-5. `src/controller/services/` + `src/controller/apis/` — handler `POST /uploads/presign`: sinh key (UUID), kiểm quyền, gọi `PresignedURL`, `Render`
-6. `src/controller/routers/router.go` — đăng ký route
+3. `../configs/config.json` + `src/config/config.go` — thêm `public_endpoint` (hiện URL sẽ mang host `seaweedfs-s3:8333` của Docker network, client ngoài không mở được)
+4. `../src/controller/dtos` — `PresignUploadRequest` / `PresignUploadResponse` (snake_case, không hậu tố `Dto`)
+5. `../src/controller/services` + `src/controller/apis/` — handler `POST /uploads/presign`: sinh key (UUID), kiểm quyền, gọi `PresignedURL`, `Render`
+6. `../src/controller/routers/router.go` — đăng ký route
 7. Xác thực sau upload: `HeadObject` trước khi lưu DB / đẩy đi embed
 8. Swagger annotation + `swag init -g cmd/main.go`
