@@ -12,6 +12,7 @@ type IConfig interface {
 	GetDatabase() DBConfig
 	GetStorage() S3Config
 	GetEmbedding() EmbeddingConfig
+	GetRedis() RedisConfig // Thêm method này
 }
 
 // Implementations
@@ -20,6 +21,7 @@ type appConfig struct {
 	Database  DBConfig        `json:"database"`
 	Storage   S3Config        `json:"storage"`
 	Embedding EmbeddingConfig `json:"embedding"`
+	RedisCli  RedisConfig     `json:"redis"`
 }
 
 type AppConfig struct {
@@ -53,6 +55,16 @@ type EmbeddingConfig struct {
 	Dim      int    `json:"dim"`
 }
 
+// redis cli
+type RedisConfig struct {
+	Host           string `json:"host"` // Đổi từ Addr sang Host để dễ quản lý
+	Port           int    `json:"port"` // Thêm Port
+	Password       string `json:"password"`
+	DB             int    `json:"db"`
+	SocketTimeout  int    `json:"socket_timeout"`
+	RetryOnTimeout bool   `json:"retry_on_timeout"`
+}
+
 // Load đọc file JSON và trả về IConfig
 func Load(path string) (IConfig, error) {
 	data, err := os.ReadFile(path)
@@ -81,6 +93,10 @@ func Load(path string) (IConfig, error) {
 	if cfg.Embedding.Dim <= 0 {
 		return nil, fmt.Errorf("embedding.dim must be > 0")
 	}
+	if cfg.RedisCli.Host == "" {
+		return nil, fmt.Errorf("redis.host is required")
+	}
+
 	return &cfg, nil
 }
 
@@ -89,3 +105,4 @@ func (c *appConfig) GetApp() AppConfig             { return c.App }
 func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
 func (c *appConfig) GetStorage() S3Config          { return c.Storage }
 func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }
+func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }

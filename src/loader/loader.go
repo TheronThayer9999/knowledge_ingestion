@@ -5,6 +5,7 @@ import (
 	"knowledge_ingestion/src/controller/routers"
 	"knowledge_ingestion/src/controller/services"
 	"knowledge_ingestion/src/domain"
+	"knowledge_ingestion/src/infrastructure/caches"
 	"knowledge_ingestion/src/infrastructure/embedding"
 	"knowledge_ingestion/src/infrastructure/postgres"
 	"knowledge_ingestion/src/infrastructure/repository"
@@ -26,13 +27,20 @@ func Load() []fx.Option {
 
 func loadAdapter() []fx.Option {
 	return []fx.Option{
+		//pgsql
 		fx.Provide(postgres.NewConnection),
 		fx.Provide(func(db postgres.IDB) *gorm.DB { return db.GetDB() }), // unwrap IDB -> *gorm.DB cho repository
+		fx.Invoke(func(postgres.IDB) {}),                                 // init database
+		//redis
+		fx.Provide(caches.NewConnection),
+		fx.Invoke(func(caches.ICache) {}),
+		//s3
 		fx.Provide(seaweedfs.NewStorage),
-		fx.Provide(repository.NewUserRepository),
-		fx.Invoke(func(postgres.IDB) {}), // init database
+		// embedding
 		fx.Provide(embedding.NewEmbedder),
 		fx.Invoke(func(domain.Embedder) {}),
+		//
+		fx.Provide(repository.NewUserRepository),
 	}
 }
 

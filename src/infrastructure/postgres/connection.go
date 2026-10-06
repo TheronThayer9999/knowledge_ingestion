@@ -39,6 +39,7 @@ func NewConnection(cfg config.IConfig) (IDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
 	}
+	//add struct migrate
 	err = db.AutoMigrate(domain.User{})
 	if err != nil {
 		return nil, err
