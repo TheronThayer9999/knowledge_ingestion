@@ -1,44 +1,28 @@
-# ==========================================
-# STAGE 1: BUILDER (Chỉ dùng để compile code)
-# ==========================================
-# Dùng image có đầy đủ Golang compiler
-FROM golang:1.23-alpine AS builder
+# ========== STAGE 1: BUILDER ==========
+# Lưu ý: mọi đường dẫn COPY bên dưới tính từ GỐC REPO (build context)
+FROM golang:1.26-alpine AS builder
 
-# Tạo thư mục làm việc
 WORKDIR /app
 
-# Copy file go.mod và go.sum vào trước để tận dụng Docker Cache
-# (Chỉ cài lại dependencies khi file go.mod thay đổi)
+# Copy module files trước để tận dụng cache dependencies
 COPY go.mod go.sum ./
-
-# Tải dependencies
 RUN go mod download
 
-# Copy toàn bộ source code vào
+# Copy source code (cmd/, src/, configs/, schema/... đều nằm ở gốc repo)
 COPY . .
 
-# Build ứng dụng
-# CGO_ENABLED=0: Biên dịch tĩnh (static binary) để chạy được trên Alpine/Scratch
-# GOOS=linux: Đảm bảo build ra binary chạy trên môi trường Linux
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+# Build binary worker (build theo package, KHÔNG build theo file .go)
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/worker ./cmd/worker
 
+# ========== STAGE 2: RUNNER ==========
+FROM alpine:3.21
 
-# ==========================================
-# STAGE 2: RUNNER (Môi trường chạy thực tế)
-# ==========================================
-# Dùng image Alpine siêu nhẹ (chỉ khoảng 5MB)
-FROM alpine:latest
+RUN apk --no-cache add ca-certificates tzdata
 
-# Cài đặt CA certificates (Rất quan trọng nếu app của bạn có gọi API HTTPS ra bên ngoài)
-RUN apk --no-cache add ca-certificates
+WORKDIR /app
+COPY --from=builder /out/worker ./worker
 
-WORKDIR /root/
+# Nếu worker đọc file config khi chạy thì mở dòng này:
+# COPY configs/ ./configs/
 
-# Chỉ copy DUY NHẤT file binary 'main' từ Stage 1 sang Stage 2
-COPY --from=builder /app/main .
-
-# Khai báo port (Giả sử app Go của bạn chạy port 8080)
-EXPOSE 8080
-
-# Chạy ứng dụng khi container start
-CMD ["./main"]
+ENTRYPOINT ["./worker"]

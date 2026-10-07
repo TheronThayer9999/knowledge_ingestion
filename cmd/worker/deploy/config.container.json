@@ -1,0 +1,59 @@
+{
+  "app": {
+    "name": "manager_docker_compose",
+    "port": 9001,
+    "env": "development"
+  },
+  "database": {
+    "host": "host.docker.internal",
+    "port": 5432,
+    "port": 5432,
+    "user": "theron_user",
+    "password": "theron_db_pass",
+    "dbname": "manager_db",
+    "sslmode": "disable"
+  },
+  "storage": {
+    "type": "seaweedfs",
+    "s3_endpoint": "http://host.docker.internal:8333",
+    "access_key": "theron_access_key",
+    "secret_key": "theron_secret_key_123",
+    "bucket_name": "app-uploads"
+  },
+  "qdrant": {
+    "host": "host.docker.internal",
+    "port": 6333,
+    "token": "theron_qdrant_token"
+  },
+  "embedding": {
+    "provider": "ollama",
+    "model": "nomic-embed-text",
+    "base_url": "http://host.docker.internal:11434",
+    "api_key": "",
+    "dim": 1024
+  },
+  "redis": {
+    "host": "host.docker.internal",
+    "port": 6379,
+    "db": 0,
+    "password": "",
+    "socket_timeout": 5,
+    "retry_on_timeout": true
+  },
+  "rabbitmq": {
+    "host": "host.docker.internal",
+    "port": 5672,
+    "user": "admin",
+    "password": "admin123",
+    "vhost": "/",
+    "exchange": "knowledge.events",
+    "queue": "knowledge.outbox"
+  },
+  "jwt": {
+    "secret": "dev-only-change-me-via-JWT_SECRET-env",
+    "expiry_minutes": 1440
+  },
+  "cors": {
+    "allowed_origins": ["http://localhost:4200"]
+  }
+}

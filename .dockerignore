@@ -1,0 +1,9 @@
+.git
+.github
+.idea
+docs/
+docker/
+technical_debt/
+**/deploy/
+**/*.exe
+*.md
