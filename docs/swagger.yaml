@@ -13,6 +13,34 @@ definitions:
     - new_password
     - old_password
     type: object
+  dtos.CreateArticleRequest:
+    properties:
+      category_id:
+        example: 1
+        type: integer
+      content_type:
+        example: text/html
+        maxLength: 100
+        type: string
+      description:
+        example: Tài liệu về dependency injection trong Go
+        maxLength: 1000
+        type: string
+      name:
+        example: Giới thiệu Go Fx
+        maxLength: 255
+        minLength: 1
+        type: string
+      url:
+        example: https://example.com/docs/go-fx
+        maxLength: 2048
+        type: string
+    required:
+    - category_id
+    - content_type
+    - name
+    - url
+    type: object
   dtos.CreateCategoryRequest:
     properties:
       description:
@@ -80,6 +108,25 @@ definitions:
         example: true
         type: boolean
     type: object
+  dtos.UpdateArticleRequest:
+    properties:
+      category_id:
+        example: 2
+        type: integer
+      content_type:
+        example: text/html
+        maxLength: 100
+        type: string
+      description:
+        example: Tài liệu về dependency injection trong Go
+        maxLength: 1000
+        type: string
+      name:
+        example: Giới thiệu Go Fx
+        maxLength: 255
+        minLength: 1
+        type: string
+    type: object
   dtos.UpdateCategoryRequest:
     properties:
       description:
@@ -101,6 +148,171 @@ info:
   title: Knowledge Ingestion API
   version: "1.0"
 paths:
+  /api/v1/articles:
+    get:
+      description: Lists my articles filtered by exactly one of category_id or category_name
+      parameters:
+      - description: filter by category id (one of category_id/category_name required)
+        in: query
+        name: category_id
+        type: integer
+      - description: filter by exact category name (one of category_id/category_name
+          required)
+        in: query
+        name: category_name
+        type: string
+      - description: page size (default 20, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: page offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: List my articles
+      tags:
+      - articles
+    post:
+      consumes:
+      - application/json
+      description: Creates a knowledge article inside one of my categories
+      parameters:
+      - description: article payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.CreateArticleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Create an article
+      tags:
+      - articles
+  /api/v1/articles/{id}:
+    delete:
+      description: Deletes one of my articles
+      parameters:
+      - description: article id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Delete an article
+      tags:
+      - articles
+    get:
+      description: Returns a single article or 404
+      parameters:
+      - description: article id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Get an article by id
+      tags:
+      - articles
+    put:
+      consumes:
+      - application/json
+      description: Partial update — only sent fields change (URL is immutable)
+      parameters:
+      - description: article id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.UpdateArticleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Update an article
+      tags:
+      - articles
   /api/v1/auth/change-password:
     post:
       consumes:

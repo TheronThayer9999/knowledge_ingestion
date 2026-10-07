@@ -125,6 +125,9 @@ func (m *authMiddleware) Handler() gin.HandlerFunc {
 		}
 		c.Set(CtxUserID, claims.UserID)
 		c.Set(CtxUsername, claims.Username)
+		// Nhét tiếp vào request context chuẩn để tầng service đọc qua
+		// ICurrentUser mà không cần biết gin.
+		c.Request = c.Request.WithContext(withUserID(c.Request.Context(), claims.UserID))
 		c.Next()
 	}
 }

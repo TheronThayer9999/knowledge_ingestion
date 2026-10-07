@@ -44,6 +44,7 @@ func loadAdapter() []fx.Option {
 		//
 		fx.Provide(repository.NewUserRepository),
 		fx.Provide(repository.NewCategoryRepository),
+		fx.Provide(repository.NewArticleRepository),
 	}
 }
 
@@ -53,6 +54,7 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewUserService),
 		fx.Provide(services.NewFileService),
 		fx.Provide(services.NewCategoryService),
+		fx.Provide(services.NewArticleService),
 	}
 }
 
@@ -62,6 +64,7 @@ func loadMiddleware() []fx.Option {
 	return []fx.Option{
 		fx.Provide(middlewares.NewCORSMiddleware),
 		fx.Provide(middlewares.NewAuthMiddleware),
+		fx.Provide(middlewares.NewCurrentUser),
 	}
 }
 
@@ -78,6 +81,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewUserAPI),
 		fx.Provide(apis.NewFileAPI),
 		fx.Provide(apis.NewCategoryAPI),
+		fx.Provide(apis.NewArticleAPI),
 		fx.Provide(routers.NewRouter),
 	}
 }

@@ -97,3 +97,24 @@ func NewUUIDv7() (string, error) {
 	}
 	return id.String(), nil
 }
+
+// Ngưỡng phân trang chung cho các endpoint list.
+const (
+	DefaultListLimit = 20
+	MaxListLimit     = 100
+)
+
+// NormalizePagination kẹp limit/offset về ngưỡng an toàn — limit <= 0 thì
+// lấy mặc định, vượt trần thì cắt, offset âm thì về 0.
+func NormalizePagination(limit, offset int) (int, int) {
+	if limit <= 0 {
+		limit = DefaultListLimit
+	}
+	if limit > MaxListLimit {
+		limit = MaxListLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
+}
