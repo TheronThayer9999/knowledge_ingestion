@@ -40,6 +40,15 @@
     "socket_timeout": 5,
     "retry_on_timeout": true
   },
+  "rabbitmq": {
+    "host": "127.0.0.1",
+    "port": 5672,
+    "user": "admin",
+    "password": "admin123",
+    "vhost": "/",
+    "exchange": "knowledge.events",
+    "queue": "knowledge.outbox"
+  },
   "jwt": {
     "secret": "dev-only-change-me-via-JWT_SECRET-env",
     "expiry_minutes": 1440

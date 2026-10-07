@@ -13,6 +13,7 @@ type IConfig interface {
 	GetStorage() S3Config
 	GetEmbedding() EmbeddingConfig
 	GetRedis() RedisConfig // Thêm method này
+	GetRabbitMQ() RabbitMQConfig
 	GetJWT() JWTConfig
 	GetCORS() CorsConfig
 }
@@ -24,6 +25,7 @@ type appConfig struct {
 	Storage   S3Config        `json:"storage"`
 	Embedding EmbeddingConfig `json:"embedding"`
 	RedisCli  RedisConfig     `json:"redis"`
+	Rabbit    RabbitMQConfig  `json:"rabbitmq"`
 	JWTCli    JWTConfig       `json:"jwt"`
 	Cors      CorsConfig      `json:"cors"`
 }
@@ -69,6 +71,22 @@ type RedisConfig struct {
 	RetryOnTimeout bool   `json:"retry_on_timeout"`
 }
 
+// RabbitMQConfig giữ kết nối broker + topology cho relay outbox (worker
+// publish/consume event). Khớp docker/rabbit_mq/docker-compose.yml
+// (user admin/admin123, vhost /, AMQP 5672, management UI 15672).
+type RabbitMQConfig struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	Vhost    string `json:"vhost"`
+	// Exchange worker tự declare lúc boot (direct, durable) — relay publish
+	// event vào đây, queue bind theo event_type.
+	Exchange string `json:"exchange"`
+	// Queue hàng đợi chính của relay — worker tự declare + bind lúc boot.
+	Queue string `json:"queue"`
+}
+
 // JWTConfig giữ bí mật ký token và thời hạn sống (phút). Secret ưu tiên
 // lấy từ env JWT_SECRET để production không commit secret vào file.
 type JWTConfig struct {
@@ -112,6 +130,28 @@ func Load(path string) (IConfig, error) {
 	if cfg.RedisCli.Host == "" {
 		return nil, fmt.Errorf("redis.host is required")
 	}
+	if cfg.Rabbit.Host == "" {
+		return nil, fmt.Errorf("rabbitmq.host is required")
+	}
+	if cfg.Rabbit.Port == 0 {
+		cfg.Rabbit.Port = 5672 // AMQP mặc định
+	}
+	if cfg.Rabbit.User == "" {
+		cfg.Rabbit.User = "guest"
+	}
+	// Password ưu tiên env để production không commit secret vào file
+	if envPass := os.Getenv("RABBITMQ_PASSWORD"); envPass != "" {
+		cfg.Rabbit.Password = envPass
+	}
+	if cfg.Rabbit.Vhost == "" {
+		cfg.Rabbit.Vhost = "/"
+	}
+	if cfg.Rabbit.Exchange == "" {
+		cfg.Rabbit.Exchange = "knowledge.events"
+	}
+	if cfg.Rabbit.Queue == "" {
+		cfg.Rabbit.Queue = "knowledge.outbox"
+	}
 	// Secret ưu tiên env để production không phải commit secret vào file
 	if envSecret := os.Getenv("JWT_SECRET"); envSecret != "" {
 		cfg.JWTCli.Secret = envSecret
@@ -135,5 +175,6 @@ func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
 func (c *appConfig) GetStorage() S3Config          { return c.Storage }
 func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }
 func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }
+func (c *appConfig) GetRabbitMQ() RabbitMQConfig   { return c.Rabbit }
 func (c *appConfig) GetJWT() JWTConfig             { return c.JWTCli }
 func (c *appConfig) GetCORS() CorsConfig           { return c.Cors }

@@ -189,8 +189,8 @@ func (s *articleService) Delete(ctx context.Context, id int64) dtos.Result[*dtos
 			return dtos.Fail[*dtos.ArticleResponse](err)
 		}
 	}
-	if err := s.articleRepo.Delete(ctx, article); err != nil {
-		return dtos.Fail[*dtos.ArticleResponse](err)
-	}
+	//if err := s.articleRepo.Delete(ctx, article); err != nil {
+	//	return dtos.Fail[*dtos.ArticleResponse](err)
+	//}
 	return dtos.Ok(dtos.ToArticleResponse(article))
 }

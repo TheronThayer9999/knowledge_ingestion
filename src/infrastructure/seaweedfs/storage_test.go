@@ -18,6 +18,8 @@ func (f *fakeConfig) GetEmbedding() config.EmbeddingConfig { return config.Embed
 
 func (f *fakeConfig) GetRedis() config.RedisConfig { return config.RedisConfig{} }
 
+func (f *fakeConfig) GetRabbitMQ() config.RabbitMQConfig { return config.RabbitMQConfig{} }
+
 func (f *fakeConfig) GetJWT() config.JWTConfig { return config.JWTConfig{} }
 
 func (f *fakeConfig) GetCORS() config.CorsConfig { return config.CorsConfig{} }

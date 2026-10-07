@@ -20,6 +20,8 @@ type testConfig struct {
 
 func (c *testConfig) GetRedis() config.RedisConfig { return c.inner.GetRedis() }
 
+func (c *testConfig) GetRabbitMQ() config.RabbitMQConfig { return c.inner.GetRabbitMQ() }
+
 func (c *testConfig) GetJWT() config.JWTConfig { return c.inner.GetJWT() }
 
 func (c *testConfig) GetCORS() config.CorsConfig { return c.inner.GetCORS() }
