@@ -30,3 +30,9 @@ ALTER TABLE categories
 DROP INDEX IF EXISTS idx_categories_single_root;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_single_root_per_user
     ON categories (user_id) WHERE parent_id IS NULL;
+
+
+ALTER TABLE articles
+    ADD CONSTRAINT fk_articles_category
+        FOREIGN KEY (category_id) REFERENCES categories(id)
+            ON DELETE RESTRICT;
