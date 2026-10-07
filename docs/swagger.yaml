@@ -31,6 +31,10 @@ definitions:
         maxLength: 255
         minLength: 1
         type: string
+      storage_key:
+        example: uploads/550e8400-e29b-41d4-a716-446655440000.pdf
+        maxLength: 500
+        type: string
       url:
         example: https://example.com/docs/go-fx
         maxLength: 2048
@@ -39,7 +43,6 @@ definitions:
     - category_id
     - content_type
     - name
-    - url
     type: object
   dtos.CreateCategoryRequest:
     properties:
@@ -192,7 +195,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Creates a knowledge article inside one of my categories
+      description: 'Creates a knowledge article inside one of my categories. Source
+        is exactly one of: url (external web link) or storage_key (object already
+        uploaded via presign, e.g. uploads/<uuid>.pdf — server verifies it with HeadObject
+        before saving)'
       parameters:
       - description: article payload
         in: body
@@ -280,7 +286,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Partial update — only sent fields change (URL is immutable)
+      description: Partial update — only sent fields change (source url/storage_key
+        is immutable)
       parameters:
       - description: article id
         in: path

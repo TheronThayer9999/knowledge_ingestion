@@ -15,15 +15,16 @@ Tài liệu này mô tả 2 cách đẩy file lên SeaweedFS: **luồng hiện t
 
 ---
 
-## Interface `IStorage` — 4 method
+## Interface `IStorage` — 5 method
 
-Định nghĩa tại `../src/common/storage/storage.go`. Đây là **hợp đồng với kho file blob** — `key` trong cả 4 method là tên file trong bucket (vd `uploads/2026/abc.pdf`), không phải URL. Nhờ gom vào interface, sau này đổi SeaweedFS → S3/MinIO/local chỉ cần viết adapter mới, code nghiệp vụ không đổi.
+Định nghĩa tại `../src/common/storage/storage.go`. Đây là **hợp đồng với kho file blob** — `key` trong mọi method là tên file trong bucket (vd `uploads/2026/abc.pdf`), không phải URL. Nhờ gom vào interface, sau này đổi SeaweedFS → S3/MinIO/local chỉ cần viết adapter mới, code nghiệp vụ không đổi.
 
 ```go
 Upload(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
 Download(ctx context.Context, key string) (io.ReadCloser, error)
 Delete(ctx context.Context, key string) error
 PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error)
+Exists(ctx context.Context, key string) (bool, error)
 ```
 
 | Method | Việc làm | Analog | Trả về |
@@ -32,6 +33,7 @@ PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, err
 | `Download` | Đọc file ra từ kho | lấy hàng từ kho | stream `io.ReadCloser` |
 | `Delete` | Xóa vĩnh viễn file | hủy hàng | `error` |
 | `PresignedURL` | Ký URL tạm cho client tự upload | phát phiếu ra cửa | `string` (URL) |
+| `Exists` | Hỏi kho bằng `HeadObject` (không tải bytes) | ngó vào kho xem hàng có không | `(bool, error)` |
 
 ### 1. `Upload(ctx, key, reader, size, contentType)`
 
@@ -73,6 +75,21 @@ url, _ := storage.PresignedURL(ctx, "uploads/abc.pdf", 15*time.Minute)
 **Không đụng tới file**, chỉ tính HMAC tạo URL có hạn. Trả `string` — chính là thứ đưa về client để nó tự upload (mục ② luồng 2).
 
 **Dùng khi:** luồng 2 — client tự đẩy file thẳng vào kho.
+
+### 5. `Exists(ctx, key)`
+
+```go
+ok, _ := storage.Exists(ctx, "uploads/abc.pdf")
+// true = object có thật; false = S3 báo NotFound (chưa PUT hoặc sai key)
+```
+
+**Không tải bytes**, chỉ `HeadObject` lấy metadata. Lỗi mạng/quyền/bucket sai trả `error` thật để fail rõ.
+
+**Dùng khi:** bước "confirm" luồng presign — `POST /articles {storage_key}` verify object tồn tại rồi mới lưu DB (xem article service).
+
+### Lifetime-init host S3
+
+`NewStorage` (`../src/infrastructure/seaweedfs/storage.go`) ngoài dựng client còn **ensure bucket 1 lần lúc startup** (`HeadBucket`, chưa có thì `CreateBucket`, timeout 10s) — fail-fast giống postgres: S3 chết hoặc bucket thiếu thì app không boot, khỏi chạy trong trạng thái upload mù. Dựng client thuần túy tách riêng ở `buildClient` để unit test không cần S3 thật.
 
 ### `Upload` vs `PresignedURL` — 2 cách đưa file vào, thay thế nhau
 

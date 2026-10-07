@@ -56,6 +56,16 @@ func (a *ArticleRepository) ExistsByURL(ctx context.Context, url string, userID 
 	return count > 0, nil
 }
 
+func (a *ArticleRepository) ExistsByStorageKey(ctx context.Context, storageKey string, userID int64) (bool, error) {
+	var count int64
+	if err := a.db.WithContext(ctx).Model(&domain.Article{}).
+		Where("storage_key = ? AND user_id = ?", storageKey, userID).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (a *ArticleRepository) ListByCategoryID(ctx context.Context, categoryID int64, userID int64, limit, offset int) ([]*domain.Article, error) {
 	var articles = make([]*domain.Article, 0)
 	err := a.db.WithContext(ctx).

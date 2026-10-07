@@ -13,11 +13,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Context key lưu thông tin user đã xác thực — handler lấy qua GetUserID/GetUsername.
-const (
-	CtxUserID   = "user_id"
-	CtxUsername = "username"
-)
+// Context key lưu thông tin user đã xác thực — handler lấy qua GetUserID.
+const CtxUserID = "user_id"
 
 // Claims là payload nhét vào JWT: ai (user_id/username) + hết hạn khi nào +
 // PwdChangedAt là mốc đổi pass lúc ký — Handler so với DB để đá token cũ.
@@ -124,7 +121,6 @@ func (m *authMiddleware) Handler() gin.HandlerFunc {
 			return
 		}
 		c.Set(CtxUserID, claims.UserID)
-		c.Set(CtxUsername, claims.Username)
 		// Nhét tiếp vào request context chuẩn để tầng service đọc qua
 		// ICurrentUser mà không cần biết gin.
 		c.Request = c.Request.WithContext(withUserID(c.Request.Context(), claims.UserID))
@@ -140,16 +136,6 @@ func GetUserID(c *gin.Context) (int64, bool) {
 	}
 	uid, ok := id.(int64)
 	return uid, ok
-}
-
-// GetUsername lấy username mà Handler đã nhét vào context.
-func GetUsername(c *gin.Context) (string, bool) {
-	name, ok := c.Get(CtxUsername)
-	if !ok {
-		return "", false
-	}
-	username, ok := name.(string)
-	return username, ok
 }
 
 // abortUnauthorized trả envelope lỗi chuẩn của project với status 401.

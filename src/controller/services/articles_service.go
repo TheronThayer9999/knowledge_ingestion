@@ -3,13 +3,15 @@ package services
 import (
 	"context"
 	stderrors "errors"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
-	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/controller/middlewares"
 	"knowledge_ingestion/src/domain"
 	"net/http"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -17,8 +19,7 @@ import (
 type IArticleService interface {
 	Create(ctx context.Context, dto *dtos.CreateArticleRequest) dtos.Result[*dtos.ArticleResponse]
 	GetByID(ctx context.Context, id int64) dtos.Result[*dtos.ArticleResponse]
-	ListByCategoryID(ctx context.Context, categoryID int64, limit, offset int) dtos.Result[dtos.ArticleListResponse]
-	ListByCategoryName(ctx context.Context, categoryName string, limit, offset int) dtos.Result[dtos.ArticleListResponse]
+	List(ctx context.Context, q *dtos.ListArticlesQuery) dtos.Result[dtos.ArticleListResponse]
 	Update(ctx context.Context, id int64, dto *dtos.UpdateArticleRequest) dtos.Result[*dtos.ArticleResponse]
 	Delete(ctx context.Context, id int64) dtos.Result[*dtos.ArticleResponse]
 }
@@ -27,18 +28,23 @@ type articleService struct {
 	articleRepo  domain.IArticleRepository
 	categoryRepo domain.ICategoryRepositoryImpl
 	currentUser  middlewares.ICurrentUser
+	storage      storage.IStorage
 }
 
-func NewArticleService(articleRepo domain.IArticleRepository, categoryRepo domain.ICategoryRepositoryImpl, currentUser middlewares.ICurrentUser) IArticleService {
+func NewArticleService(articleRepo domain.IArticleRepository, categoryRepo domain.ICategoryRepositoryImpl, currentUser middlewares.ICurrentUser, storage storage.IStorage) IArticleService {
 	return &articleService{
 		articleRepo:  articleRepo,
 		categoryRepo: categoryRepo,
 		currentUser:  currentUser,
+		storage:      storage,
 	}
 }
 
 // Create tạo bài viết trong một danh mục của chính mình — danh mục phải
-// tồn tại VÀ cùng owner. URL dedup theo từng user, trùng thì 400.
+// tồn tại VÀ cùng owner. Nguồn đúng 1 trong 2: URL là link ngoài; còn
+// StorageKey là bước "confirm" luồng presign — server HeadObject verify
+// object thật sự tồn tại (không tin lời client) + key phải do server sinh
+// (prefix uploads/) rồi mới lưu row.
 func (s *articleService) Create(ctx context.Context, dto *dtos.CreateArticleRequest) dtos.Result[*dtos.ArticleResponse] {
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
@@ -48,12 +54,37 @@ func (s *articleService) Create(ctx context.Context, dto *dtos.CreateArticleRequ
 		}
 		return dtos.Fail[*dtos.ArticleResponse](err)
 	}
-	exists, err := s.articleRepo.ExistsByURL(ctx, dto.URL, userID)
-	if err != nil {
-		return dtos.Fail[*dtos.ArticleResponse](err)
+	hasURL := strings.TrimSpace(dto.URL) != ""
+	hasKey := strings.TrimSpace(dto.StorageKey) != ""
+	if hasURL == hasKey {
+		return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "chỉ dùng một trong url hoặc storage_key"))
 	}
-	if exists {
-		return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "bài viết với URL này đã tồn tại"))
+	if hasURL {
+		exists, err := s.articleRepo.ExistsByURL(ctx, dto.URL, userID)
+		if err != nil {
+			return dtos.Fail[*dtos.ArticleResponse](err)
+		}
+		if exists {
+			return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "bài viết với URL này đã tồn tại"))
+		}
+	} else {
+		if !strings.HasPrefix(dto.StorageKey, constants.UPLOAD_PREFIX) {
+			return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "storage_key không hợp lệ"))
+		}
+		exists, err := s.storage.Exists(ctx, dto.StorageKey)
+		if err != nil {
+			return dtos.Fail[*dtos.ArticleResponse](err)
+		}
+		if !exists {
+			return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "file chưa được upload lên kho"))
+		}
+		dup, err := s.articleRepo.ExistsByStorageKey(ctx, dto.StorageKey, userID)
+		if err != nil {
+			return dtos.Fail[*dtos.ArticleResponse](err)
+		}
+		if dup {
+			return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "file này đã được tạo bài viết"))
+		}
 	}
 	article := dto.ToModel()
 	article.UserID = userID
@@ -77,35 +108,35 @@ func (s *articleService) GetByID(ctx context.Context, id int64) dtos.Result[*dto
 	return dtos.Ok(dtos.ToArticleResponse(article))
 }
 
-// ListByCategoryID liệt kê bài trong một danh mục của mình — danh mục
-// của người khác trả về rỗng, không lộ gì.
-func (s *articleService) ListByCategoryID(ctx context.Context, categoryID int64, limit, offset int) dtos.Result[dtos.ArticleListResponse] {
+// List liệt kê bài của mình theo đúng 1 bộ lọc: category_id hoặc
+// category_name (tên chính xác). Không khớp gì thì trả rỗng, không 404.
+// Danh mục của người khác cũng trả rỗng, không lộ gì.
+func (s *articleService) List(ctx context.Context, q *dtos.ListArticlesQuery) dtos.Result[dtos.ArticleListResponse] {
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
-	logs.Info("userId:", userID)
-	limit, offset = utils.NormalizePagination(limit, offset)
-	articles, err := s.articleRepo.ListByCategoryID(ctx, categoryID, userID, limit, offset)
+	hasID := q.CategoryID > 0
+	hasName := strings.TrimSpace(q.CategoryName) != ""
+	if hasID == hasName {
+		return dtos.Fail[dtos.ArticleListResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "chỉ dùng một trong category_id hoặc category_name"))
+	}
+	limit, offset := utils.NormalizePagination(q.Limit, q.Offset)
+	var (
+		articles []*domain.Article
+		err      error
+	)
+	if hasID {
+		articles, err = s.articleRepo.ListByCategoryID(ctx, q.CategoryID, userID, limit, offset)
+	} else {
+		articles, err = s.articleRepo.ListByCategoryName(ctx, strings.TrimSpace(q.CategoryName), userID, limit, offset)
+	}
 	if err != nil {
 		return dtos.Fail[dtos.ArticleListResponse](err)
 	}
 	return dtos.Ok(dtos.ToArticleListResponse(articles))
 }
 
-// ListByCategoryName liệt kê bài theo tên danh mục chính xác trong phạm
-// vi owner — không khớp tên nào thì trả rỗng.
-func (s *articleService) ListByCategoryName(ctx context.Context, categoryName string, limit, offset int) dtos.Result[dtos.ArticleListResponse] {
-	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
-	userID, _ := s.currentUser.UserID(ctx)
-	limit, offset = utils.NormalizePagination(limit, offset)
-	articles, err := s.articleRepo.ListByCategoryName(ctx, categoryName, userID, limit, offset)
-	if err != nil {
-		return dtos.Fail[dtos.ArticleListResponse](err)
-	}
-	return dtos.Ok(dtos.ToArticleListResponse(articles))
-}
-
-// Update sửa từng phần — field nil giữ nguyên. URL là identity dedup nên
-// không cho sửa. Đổi danh mục thì danh mục mới phải cùng owner.
+// Update sửa từng phần — field nil giữ nguyên. Nguồn (URL/StorageKey) là
+// identity nên không cho sửa. Đổi danh mục thì danh mục mới phải cùng owner.
 func (s *articleService) Update(ctx context.Context, id int64, dto *dtos.UpdateArticleRequest) dtos.Result[*dtos.ArticleResponse] {
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
@@ -141,7 +172,8 @@ func (s *articleService) Update(ctx context.Context, id int64, dto *dtos.UpdateA
 }
 
 // Delete xóa bài viết của mình — row load đã scope owner nên không thể
-// xóa hộ.
+// xóa hộ. Article loại file thì dọn luôn blob trên kho để không còn file
+// mồ côi (S3 xóa key không tồn tại vẫn báo thành công nên an toàn).
 func (s *articleService) Delete(ctx context.Context, id int64) dtos.Result[*dtos.ArticleResponse] {
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
@@ -151,6 +183,11 @@ func (s *articleService) Delete(ctx context.Context, id int64) dtos.Result[*dtos
 			return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "bài viết không tồn tại"))
 		}
 		return dtos.Fail[*dtos.ArticleResponse](err)
+	}
+	if article.StorageKey != "" {
+		if err := s.storage.Delete(ctx, article.StorageKey); err != nil {
+			return dtos.Fail[*dtos.ArticleResponse](err)
+		}
 	}
 	if err := s.articleRepo.Delete(ctx, article); err != nil {
 		return dtos.Fail[*dtos.ArticleResponse](err)

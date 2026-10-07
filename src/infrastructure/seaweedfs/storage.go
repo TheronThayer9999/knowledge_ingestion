@@ -2,6 +2,7 @@ package seaweedfs
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"knowledge_ingestion/src/common/logs"
@@ -12,6 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 const storageType = "seaweedfs"
@@ -22,15 +25,36 @@ type Storage struct {
 }
 
 func NewStorage(cfg config.IConfig) (storage.IStorage, error) {
+	client, bucket, err := buildClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	// Lifetime-init của host S3: ping bucket, chưa có thì tạo — chạy 1 lần
+	// lúc fx dựng graph (startup), fail-fast giống postgres để không boot
+	// app trong trạng thái upload mù.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := ensureBucket(ctx, client, bucket); err != nil {
+		return nil, err
+	}
+
+	logs.Infow("seaweedfs storage ready", "endpoint", cfg.GetStorage().Endpoint, "bucket", bucket)
+
+	return &Storage{client: client, bucket: bucket}, nil
+}
+
+// buildClient dựng s3.Client thuần túy (không I/O) — tách riêng để unit
+// test được mà không cần SeaweedFS chạy.
+func buildClient(cfg config.IConfig) (*s3.Client, string, error) {
 	s := cfg.GetStorage()
 	if s.Type != storageType {
-		return nil, fmt.Errorf("unsupported storage type %q, expected %q", s.Type, storageType)
+		return nil, "", fmt.Errorf("unsupported storage type %q, expected %q", s.Type, storageType)
 	}
 	if s.Endpoint == "" {
-		return nil, fmt.Errorf("storage endpoint is required")
+		return nil, "", fmt.Errorf("storage endpoint is required")
 	}
 	if s.Bucket == "" {
-		return nil, fmt.Errorf("storage bucket_name is required")
+		return nil, "", fmt.Errorf("storage bucket_name is required")
 	}
 
 	awsCfg := aws.Config{
@@ -42,10 +66,30 @@ func NewStorage(cfg config.IConfig) (storage.IStorage, error) {
 		o.BaseEndpoint = aws.String(s.Endpoint)
 		o.UsePathStyle = true
 	})
+	return client, s.Bucket, nil
+}
 
-	logs.Infow("seaweedfs storage ready", "endpoint", s.Endpoint, "bucket", s.Bucket)
-
-	return &Storage{client: client, bucket: s.Bucket}, nil
+// ensureBucket HeadBucket trước — bucket có rồi thì xong; chưa có thì tạo.
+// Race 2 instance cùng tạo thì S3 báo AlreadyExists/OwnedByYou, coi như
+// thành công. Lỗi mạng/quyền thì trả error để fail-fast lúc startup.
+func ensureBucket(ctx context.Context, client *s3.Client, bucket string) error {
+	if _, err := client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(bucket),
+	}); err == nil {
+		return nil
+	}
+	if _, err := client.CreateBucket(ctx, &s3.CreateBucketInput{
+		Bucket: aws.String(bucket),
+	}); err != nil {
+		var alreadyExists *types.BucketAlreadyExists
+		var ownedByYou *types.BucketAlreadyOwnedByYou
+		if stderrors.As(err, &alreadyExists) || stderrors.As(err, &ownedByYou) {
+			return nil
+		}
+		return fmt.Errorf("seaweedfs ensure bucket %s: %w", bucket, err)
+	}
+	logs.Infow("seaweedfs bucket created", "bucket", bucket)
+	return nil
 }
 
 // Upload ghi file bằng PutObject tới SeaweedFS S3 gateway (path-style, static creds, region us-east-1).
@@ -93,6 +137,22 @@ func (s *Storage) PresignedURL(ctx context.Context, key string, contentType stri
 		return "", fmt.Errorf("seaweedfs presign %s: %w", key, err)
 	}
 	return res.URL, nil
+}
+
+// Exists hỏi kho bằng HeadObject — object có thì true, S3 báo NotFound thì
+// (false, nil), còn lại (mạng/quyền/bucket sai) là error thật.
+func (s *Storage) Exists(ctx context.Context, key string) (bool, error) {
+	if _, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}); err != nil {
+		var apiErr smithy.APIError
+		if stderrors.As(err, &apiErr) && apiErr.ErrorCode() == "NotFound" {
+			return false, nil
+		}
+		return false, fmt.Errorf("seaweedfs exists %s: %w", key, err)
+	}
+	return true, nil
 }
 
 // Delete xóa object bằng DeleteObject; S3 trả thành công cả khi key không tồn tại.

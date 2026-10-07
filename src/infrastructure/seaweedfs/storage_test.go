@@ -31,15 +31,17 @@ func TestNewStorageBuildsClient(t *testing.T) {
 		Bucket:    "app-uploads",
 	}}
 
-	st, err := NewStorage(cfg)
+	// NewStorage giờ lifetime-init (HeadBucket/CreateBucket) nên cần S3
+	// thật — unit test chỉ cover buildClient thuần túy (không I/O).
+	client, bucket, err := buildClient(cfg)
 	if err != nil {
-		t.Fatalf("NewStorage returned error: %v", err)
+		t.Fatalf("buildClient returned error: %v", err)
 	}
-	if st == nil {
-		t.Fatal("NewStorage returned nil storage")
+	if client == nil {
+		t.Fatal("buildClient returned nil client")
 	}
-	if _, ok := st.(*Storage); !ok {
-		t.Fatalf("expected *Storage, got %T", st)
+	if bucket != "app-uploads" {
+		t.Fatalf("expected bucket app-uploads, got %q", bucket)
 	}
 }
 

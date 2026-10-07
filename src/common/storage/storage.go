@@ -23,6 +23,12 @@ type IStorage interface {
 	// Delete xóa vĩnh viễn file tại key. S3 báo thành công cả khi key không tồn tại.
 	Delete(ctx context.Context, key string) error
 
+	// Exists kiểm tra object có thật trong kho không (HeadObject — không tải
+	// bytes). Dùng ở bước "confirm" luồng presign: client báo upload xong thì
+	// server tự verify chứ không tin lời client. Key không tồn tại trả
+	// (false, nil); lỗi mạng/quyền thì trả error.
+	Exists(ctx context.Context, key string) (bool, error)
+
 	// PresignedURL ký một URL PUT có hạn expiry để client upload thẳng vào kho
 	// mà không đi qua server — luồng 2. Không có I/O mạng, chỉ tính HMAC cục bộ.
 	// contentType được nhét vào chữ ký: client PUT mà gửi Content-Type khác

@@ -3,14 +3,14 @@ package apis
 import (
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/controller/services"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
 
 // ArticleAPI là controller tài liệu tri thức theo từng user — owner lấy từ
-// token (route đã qua RequiredAuth), controller chỉ validate (Bind + parse
-// id/query) rồi Render, mọi nghiệp vụ nằm ở service.
+// token (route đã qua RequiredAuth cho ICurrentUser, service tự đọc),
+// controller chỉ validate (Bind/BindUri/BindQuery) rồi Render, mọi nghiệp
+// vụ nằm ở service.
 type ArticleAPI struct {
 	*baseController
 	svc services.IArticleService
@@ -20,20 +20,9 @@ func NewArticleAPI(base *baseController, svc services.IArticleService) *ArticleA
 	return &ArticleAPI{baseController: base, svc: svc}
 }
 
-// parseArticleID đọc :id trên path thành int64 — sai format thì 400 sớm,
-// khỏi gọi service.
-func (a *ArticleAPI) parseArticleID(c *gin.Context) (int64, bool) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		a.BadRequest(c, "id bài viết không hợp lệ")
-		return 0, false
-	}
-	return id, true
-}
-
 // Create godoc
 // @Summary Create an article
-// @Description Creates a knowledge article inside one of my categories
+// @Description Creates a knowledge article inside one of my categories. Source is exactly one of: url (external web link) or storage_key (object already uploaded via presign, e.g. uploads/<uuid>.pdf — server verifies it with HeadObject before saving)
 // @Tags articles
 // @Accept json
 // @Produce json
@@ -63,11 +52,11 @@ func (a *ArticleAPI) Create(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/articles/{id} [get]
 func (a *ArticleAPI) GetByID(c *gin.Context) {
-	id, ok := a.parseArticleID(c)
-	if !ok {
+	var p dtos.IDParam
+	if !a.BindUri(c, &p, "id bài viết không hợp lệ") {
 		return
 	}
-	Render(c, a, a.svc.GetByID(c, id))
+	Render(c, a, a.svc.GetByID(c, p.ID))
 }
 
 // List godoc
@@ -85,34 +74,16 @@ func (a *ArticleAPI) GetByID(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/articles [get]
 func (a *ArticleAPI) List(c *gin.Context) {
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "0"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-
-	rawID := c.Query("category_id")
-	name := c.Query("category_name")
-	if rawID != "" && name != "" {
-		a.BadRequest(c, "chỉ dùng một trong category_id hoặc category_name")
+	var q dtos.ListArticlesQuery
+	if !a.BindQuery(c, &q) {
 		return
 	}
-	if rawID != "" {
-		categoryID, err := strconv.ParseInt(rawID, 10, 64)
-		if err != nil || categoryID <= 0 {
-			a.BadRequest(c, "category_id không hợp lệ")
-			return
-		}
-		Render(c, a, a.svc.ListByCategoryID(c, categoryID, limit, offset))
-		return
-	}
-	if name == "" {
-		a.BadRequest(c, "cần category_id hoặc category_name")
-		return
-	}
-	Render(c, a, a.svc.ListByCategoryName(c, name, limit, offset))
+	Render(c, a, a.svc.List(c, &q))
 }
 
 // Update godoc
 // @Summary Update an article
-// @Description Partial update — only sent fields change (URL is immutable)
+// @Description Partial update — only sent fields change (source url/storage_key is immutable)
 // @Tags articles
 // @Accept json
 // @Produce json
@@ -124,15 +95,15 @@ func (a *ArticleAPI) List(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/articles/{id} [put]
 func (a *ArticleAPI) Update(c *gin.Context) {
-	id, ok := a.parseArticleID(c)
-	if !ok {
+	var p dtos.IDParam
+	if !a.BindUri(c, &p, "id bài viết không hợp lệ") {
 		return
 	}
 	req := &dtos.UpdateArticleRequest{}
 	if !a.Bind(c, req) {
 		return
 	}
-	Render(c, a, a.svc.Update(c, id, req))
+	Render(c, a, a.svc.Update(c, p.ID, req))
 }
 
 // Delete godoc
@@ -147,9 +118,9 @@ func (a *ArticleAPI) Update(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/articles/{id} [delete]
 func (a *ArticleAPI) Delete(c *gin.Context) {
-	id, ok := a.parseArticleID(c)
-	if !ok {
+	var p dtos.IDParam
+	if !a.BindUri(c, &p, "id bài viết không hợp lệ") {
 		return
 	}
-	Render(c, a, a.svc.Delete(c, id))
+	Render(c, a, a.svc.Delete(c, p.ID))
 }

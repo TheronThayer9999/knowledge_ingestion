@@ -4,7 +4,6 @@ import (
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/controller/middlewares"
 	"knowledge_ingestion/src/controller/services"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,17 +18,6 @@ type CategoryAPI struct {
 
 func NewCategoryAPI(base *baseController, svc services.ICategoryService) *CategoryAPI {
 	return &CategoryAPI{baseController: base, svc: svc}
-}
-
-// parseCategoryID đọc :id trên path thành int64 — sai format thì 400 sớm,
-// khỏi gọi service.
-func (a *CategoryAPI) parseCategoryID(c *gin.Context) (int64, bool) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		a.BadRequest(c, "id danh mục không hợp lệ")
-		return 0, false
-	}
-	return id, true
 }
 
 // Create godoc
@@ -80,12 +68,12 @@ func (a *CategoryAPI) GetAll(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/categories/{id} [get]
 func (a *CategoryAPI) GetById(c *gin.Context) {
-	id, ok := a.parseCategoryID(c)
-	if !ok {
+	var p dtos.IDParam
+	if !a.BindUri(c, &p, "id danh mục không hợp lệ") {
 		return
 	}
 	userID, _ := middlewares.GetUserID(c)
-	Render(c, a, a.svc.GetById(c, id, userID))
+	Render(c, a, a.svc.GetById(c, p.ID, userID))
 }
 
 // Update godoc
@@ -102,8 +90,8 @@ func (a *CategoryAPI) GetById(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/categories/{id} [put]
 func (a *CategoryAPI) Update(c *gin.Context) {
-	id, ok := a.parseCategoryID(c)
-	if !ok {
+	var p dtos.IDParam
+	if !a.BindUri(c, &p, "id danh mục không hợp lệ") {
 		return
 	}
 	req := &dtos.UpdateCategoryRequest{}
@@ -111,7 +99,7 @@ func (a *CategoryAPI) Update(c *gin.Context) {
 		return
 	}
 	userID, _ := middlewares.GetUserID(c)
-	Render(c, a, a.svc.Update(c, id, userID, req))
+	Render(c, a, a.svc.Update(c, p.ID, userID, req))
 }
 
 // Delete godoc
@@ -126,10 +114,10 @@ func (a *CategoryAPI) Update(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/categories/{id} [delete]
 func (a *CategoryAPI) Delete(c *gin.Context) {
-	id, ok := a.parseCategoryID(c)
-	if !ok {
+	var p dtos.IDParam
+	if !a.BindUri(c, &p, "id danh mục không hợp lệ") {
 		return
 	}
 	userID, _ := middlewares.GetUserID(c)
-	Render(c, a, a.svc.Delete(c, id, userID))
+	Render(c, a, a.svc.Delete(c, p.ID, userID))
 }

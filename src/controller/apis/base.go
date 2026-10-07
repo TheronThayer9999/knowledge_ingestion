@@ -34,6 +34,31 @@ func (b *baseController) Bind(c *gin.Context, request interface{}) bool {
 	return true
 }
 
+// BindQuery bind query string (?limit=&offset=...) bằng tag `form` của gin
+// — sai format hoặc vi phạm `binding` thì 400 sớm, khỏi gọi service.
+func (b *baseController) BindQuery(c *gin.Context, request interface{}) bool {
+	if err := c.ShouldBindQuery(request); err != nil {
+		b.BadRequest(c, err.Error())
+		return false
+	}
+	if err := b.validateRequest(request); err != nil {
+		b.BadRequest(c, err.Error())
+		return false
+	}
+	return true
+}
+
+// BindUri bind path param (vd :id) bằng tag `uri` của gin — sai format,
+// thiếu hoặc vi phạm `binding` (vd gt=0) thì 400 sớm, khỏi gọi service.
+// Gin tự chạy validator cho tag `binding` nên không cần validate tay.
+func (b *baseController) BindUri(c *gin.Context, request interface{}, msg string) bool {
+	if err := c.ShouldBindUri(request); err != nil {
+		b.BadRequest(c, msg)
+		return false
+	}
+	return true
+}
+
 func (b *baseController) Success(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, dtos.Success(data))
 }

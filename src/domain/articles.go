@@ -5,7 +5,11 @@ import "context"
 type Article struct {
 	BaseModel
 
+	// Article có đúng 1 trong 2 nguồn — service bắt đúng 1, không tin client:
+	// URL là link web bên ngoài (worker fetch sau), StorageKey là object đã
+	// upload lên kho qua presign (key dạng "uploads/<uuid>.<ext>").
 	URL         string `json:"url" gorm:"not null"`
+	StorageKey  string `json:"storage_key" gorm:"not null;index"`
 	Name        string `json:"name" gorm:"not null"`
 	ContentType string `json:"content_type" gorm:"not null"`
 	Description string `json:"description,omitempty"`
@@ -23,11 +27,15 @@ type IArticleRepository interface {
 	Update(ctx context.Context, article *Article) error
 	Delete(ctx context.Context, article *Article) error
 
-	// GetByID chỉ thấy bài của đúng owner — id чужой thì 404 như không tồn tại.
+	// GetByID chỉ thấy bài của đúng owner — id của người khác thì 404 như không tồn tại.
 	GetByID(ctx context.Context, id int64, userID int64) (*Article, error)
 
 	// ExistsByURL dedup URL trong phạm vi từng user.
 	ExistsByURL(ctx context.Context, url string, userID int64) (bool, error)
+
+	// ExistsByStorageKey dedup object kho trong phạm vi từng user — 1 blob
+	// chỉ map tới 1 article.
+	ExistsByStorageKey(ctx context.Context, storageKey string, userID int64) (bool, error)
 
 	ListByCategoryID(ctx context.Context, categoryID int64, userID int64, limit, offset int) ([]*Article, error)
 

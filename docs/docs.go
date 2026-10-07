@@ -83,7 +83,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates a knowledge article inside one of my categories",
+                "description": "Creates a knowledge article inside one of my categories. Source is exactly one of: url (external web link) or storage_key (object already uploaded via presign, e.g. uploads/\u003cuuid\u003e.pdf — server verifies it with HeadObject before saving)",
                 "consumes": [
                     "application/json"
                 ],
@@ -178,7 +178,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Partial update — only sent fields change (URL is immutable)",
+                "description": "Partial update — only sent fields change (source url/storage_key is immutable)",
                 "consumes": [
                     "application/json"
                 ],
@@ -865,8 +865,7 @@ const docTemplate = `{
             "required": [
                 "category_id",
                 "content_type",
-                "name",
-                "url"
+                "name"
             ],
             "properties": {
                 "category_id": {
@@ -888,6 +887,11 @@ const docTemplate = `{
                     "maxLength": 255,
                     "minLength": 1,
                     "example": "Giới thiệu Go Fx"
+                },
+                "storage_key": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "example": "uploads/550e8400-e29b-41d4-a716-446655440000.pdf"
                 },
                 "url": {
                     "type": "string",
