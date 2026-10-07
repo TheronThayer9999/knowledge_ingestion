@@ -10,7 +10,6 @@ import (
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 type IDB interface {
@@ -34,7 +33,9 @@ func NewConnection(cfg config.IConfig) (IDB, error) {
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Warn),
+		// traceLogger giữ ngưỡng SLOW 200ms như gorm default, thêm trace_id
+		// vào mỗi dòng để truy từ SQL chậm ngược về request/job gây ra nó.
+		Logger: traceLogger{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
@@ -43,6 +44,14 @@ func NewConnection(cfg config.IConfig) (IDB, error) {
 	err = db.AutoMigrate(domain.User{}, domain.Category{}, domain.Article{}, domain.OutboxEvent{})
 	if err != nil {
 		return nil, err
+	}
+	// Index composite partial cho luồng list article (user_id + category_id
+	// + order created_at): WHERE deleted_at IS NULL vì mọi query gorm đều
+	// kèm điều kiện đó nên index gọn và Sort biến mất khi bảng lớn.
+	// AutoMigrate không dựng được partial index nên exec tay, IF NOT EXISTS
+	// để boot lại idempotent.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_owner_list ON articles (user_id, category_id, created_at DESC) WHERE deleted_at IS NULL`).Error; err != nil {
+		return nil, fmt.Errorf("failed to create articles owner index: %w", err)
 	}
 	sqlDB, err := db.DB()
 	if err != nil {

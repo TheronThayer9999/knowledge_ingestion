@@ -2,7 +2,9 @@ package middlewares
 
 import (
 	"strings"
+	"time"
 
+	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/utils"
 
 	"github.com/gin-gonic/gin"
@@ -44,17 +46,27 @@ func (m *traceMiddleware) Handler() gin.HandlerFunc {
 			traceID = traceID[:maxTraceIDLen]
 		}
 		if traceID == "" {
-			var err error
-			traceID, err = utils.NewUUIDv7()
-			if err != nil {
-				c.Next()
-				return
-			}
+			// Sinh ID lỗi (thực tế gần như không bao giờ) thì request đi
+			// tiếp không trace — quan sát không được chặn nghiệp vụ.
+			traceID, _ = utils.NewUUIDv7()
 		}
-		c.Set(CtxTraceID, traceID)
-		c.Header(TraceIDHeader, traceID)
-		c.Request = c.Request.WithContext(utils.ContextWithTraceID(c.Request.Context(), traceID))
+		if traceID != "" {
+			c.Set(CtxTraceID, traceID)
+			c.Header(TraceIDHeader, traceID)
+			c.Request = c.Request.WithContext(utils.ContextWithTraceID(c.Request.Context(), traceID))
+		}
+		// Access log thay gin.Logger (router dùng gin.New trần nên không có
+		// sẵn): ghi sau c.Next để có đủ status + latency cả request, gắn
+		// trace_id để nối với mọi log service/SQL trong cùng request.
+		start := time.Now()
 		c.Next()
+		logs.Infow("HTTP request",
+			"trace_id", traceID,
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"status", c.Writer.Status(),
+			"latency", time.Since(start).String(),
+		)
 	}
 }
 
