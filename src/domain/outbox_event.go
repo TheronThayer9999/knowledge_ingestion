@@ -26,7 +26,12 @@ const (
 	OutboxDead       = "dead"
 )
 
+// Event type cho relay xóa blob — worker switch theo type này để route.
+const OutboxEventArticleBlobDelete = "article.blob_delete_requested"
+
 type IOutboxRepository interface {
+	// Create ghi event — gọi trong InTx thì chung tx với các op khác,
+	// gọi ngoài thì chạy autocommit thường.
 	Create(ctx context.Context, e *OutboxEvent) error
 	// ClaimPending hốt batch event tới hạn cho worker (FOR UPDATE SKIP
 	// LOCKED) — nhiều worker không giẫm nhau.
