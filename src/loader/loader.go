@@ -9,6 +9,7 @@ import (
 	"knowledge_ingestion/src/infrastructure/caches"
 	"knowledge_ingestion/src/infrastructure/embedding"
 	"knowledge_ingestion/src/infrastructure/postgres"
+	"knowledge_ingestion/src/infrastructure/rabbitmq"
 	"knowledge_ingestion/src/infrastructure/repository"
 	"knowledge_ingestion/src/infrastructure/seaweedfs"
 
@@ -41,6 +42,8 @@ func loadAdapter() []fx.Option {
 		// embedding
 		fx.Provide(embedding.NewEmbedder),
 		fx.Invoke(func(domain.Embedder) {}),
+		//rabbirMq
+		fx.Provide(rabbitmq.NewConnection),
 		//
 		fx.Provide(repository.NewUserRepository),
 		fx.Provide(repository.NewCategoryRepository),

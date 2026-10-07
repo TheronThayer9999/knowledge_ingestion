@@ -215,5 +215,6 @@ func (s *articleService) Delete(ctx context.Context, id int64) dtos.Result[*dtos
 	if err != nil {
 		return dtos.Fail[*dtos.ArticleResponse](err)
 	}
+
 	return dtos.Ok(dtos.ToArticleResponse(article))
 }
