@@ -1,0 +1,84 @@
+package main
+
+import (
+	"context"
+	"knowledge_ingestion/src/common/logs"
+	"time"
+
+	"go.uber.org/fx"
+)
+
+// jobRunTimeout trần mỗi lượt chạy 1 job — quá thì hủy để kỳ sau làm lại
+// (janitor retry hội tụ nên hủy giữa chừng không mất gì).
+const jobRunTimeout = time.Minute
+
+// Schedule khai báo 1 tác vụ nền: tên + nhịp chạy + hàm chạy. Thêm job mới
+// = append 1 dòng Schedule lúc dựng Runner trong main.go, không cần
+// interface hay struct adapter riêng.
+type Schedule struct {
+	Name     string
+	Interval time.Duration
+	Run      func(ctx context.Context) error
+}
+
+// asJob bọc method kiểu (int, error) — như PurgeDeleted trả số row đã dọn —
+// thành dạng Run của Schedule (chỉ cần error).
+func asJob(fn func(ctx context.Context) (int, error)) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		_, err := fn(ctx)
+		return err
+	}
+}
+
+// Runner giữ danh sách schedule và gắn vòng chạy vào fx lifecycle — mỗi
+// schedule 1 goroutine + ticker riêng, job nặng không chặn job nhẹ.
+type Runner struct {
+	schedules []Schedule
+}
+
+func NewRunner(schedules []Schedule) *Runner {
+	return &Runner{schedules: schedules}
+}
+
+// Attach đăng ký start/stop vào lifecycle: boot chạy mỗi job 1 phát ngay
+// (khỏi chờ đủ kỳ đầu), stop hủy ctx để các loop thoát.
+func (r *Runner) Attach(lc fx.Lifecycle) {
+	ctx, cancel := context.WithCancel(context.Background())
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			for _, s := range r.schedules {
+				go r.loop(ctx, s)
+			}
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			cancel()
+			return nil
+		},
+	})
+}
+
+func (r *Runner) loop(ctx context.Context, s Schedule) {
+	r.runOnce(ctx, s)
+
+	ticker := time.NewTicker(s.Interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			r.runOnce(ctx, s)
+		}
+	}
+}
+
+func (r *Runner) runOnce(ctx context.Context, s Schedule) {
+	runCtx, cancel := context.WithTimeout(ctx, jobRunTimeout)
+	defer cancel()
+	if err := s.Run(runCtx); err != nil {
+		logs.Error(err, "worker: job lỗi, kỳ sau thử lại", "job", s.Name)
+		return
+	}
+	logs.Infow("worker: job xong", "job", s.Name)
+}

@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	stderrors "errors"
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
@@ -13,7 +12,6 @@ import (
 	"knowledge_ingestion/src/domain"
 	"net/http"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
 )
@@ -31,18 +29,14 @@ type articleService struct {
 	categoryRepo domain.ICategoryRepositoryImpl
 	currentUser  middlewares.ICurrentUser
 	storage      storage.IStorage
-	uow          domain.IUnitOfWork
-	outboxRepo   domain.IOutboxRepository
 }
 
-func NewArticleService(articleRepo domain.IArticleRepository, categoryRepo domain.ICategoryRepositoryImpl, currentUser middlewares.ICurrentUser, storage storage.IStorage, uow domain.IUnitOfWork, outboxRepo domain.IOutboxRepository) IArticleService {
+func NewArticleService(articleRepo domain.IArticleRepository, categoryRepo domain.ICategoryRepositoryImpl, currentUser middlewares.ICurrentUser, storage storage.IStorage) IArticleService {
 	return &articleService{
 		articleRepo:  articleRepo,
 		categoryRepo: categoryRepo,
 		currentUser:  currentUser,
 		storage:      storage,
-		uow:          uow,
-		outboxRepo:   outboxRepo,
 	}
 }
 
@@ -177,11 +171,9 @@ func (s *articleService) Update(ctx context.Context, id int64, dto *dtos.UpdateA
 	return dtos.Ok(dtos.ToArticleResponse(article))
 }
 
-// Delete xóa bài viết của mình — row load đã scope owner nên không thể
-// xóa hộ. Xóa row + ghi event outbox trong đúng 1 transaction: commit là
-// worker kiểu gì cũng dọn blob sau (S3 delete idempotent nên retry an
-// toàn), rollback là như chưa xóa gì. Article loại URL không có blob nên
-// chỉ xóa row.
+// Delete xóa mềm bài viết của mình — row load đã scope owner nên không thể
+// xóa hộ. gorm Delete chỉ set DeletedAt; worker janitor quét định kỳ dọn
+// blob rồi xóa hẳn. Article loại URL không có blob nên worker chỉ xóa row.
 func (s *articleService) Delete(ctx context.Context, id int64) dtos.Result[*dtos.ArticleResponse] {
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
@@ -192,27 +184,7 @@ func (s *articleService) Delete(ctx context.Context, id int64) dtos.Result[*dtos
 		}
 		return dtos.Fail[*dtos.ArticleResponse](err)
 	}
-	err = s.uow.InTx(ctx, func(txCtx context.Context) error {
-		if err := s.articleRepo.Delete(txCtx, article); err != nil {
-			return err
-		}
-		if article.StorageKey == "" {
-			return nil
-		}
-		payload, err := json.Marshal(map[string]string{"storage_key": article.StorageKey})
-		if err != nil {
-			return err
-		}
-		return s.outboxRepo.Create(txCtx, &domain.OutboxEvent{
-			AggregateType: "article",
-			AggregateID:   article.ID,
-			EventType:     domain.OutboxEventArticleBlobDelete,
-			Payload:       string(payload),
-			Status:        domain.OutboxPending,
-			NextRetryAt:   time.Now(),
-		})
-	})
-	if err != nil {
+	if err := s.articleRepo.Delete(ctx, article); err != nil {
 		return dtos.Fail[*dtos.ArticleResponse](err)
 	}
 

@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type Article struct {
 	BaseModel
@@ -40,4 +43,11 @@ type IArticleRepository interface {
 	ListByCategoryID(ctx context.Context, categoryID int64, userID int64, limit, offset int) ([]*Article, error)
 
 	ListByCategoryName(ctx context.Context, categoryName string, userID int64, limit, offset int) ([]*Article, error)
+
+	// ListSoftDeleted trả các bài đã xóa mềm trước mốc before (cũ nhất
+	// trước) để worker dọn blob + xóa hẳn theo đợt.
+	ListSoftDeleted(ctx context.Context, before time.Time, limit int) ([]*Article, error)
+
+	// HardDelete xóa hẳn 1 row đã xóa mềm — chỉ worker janitor gọi.
+	HardDelete(ctx context.Context, id int64) error
 }

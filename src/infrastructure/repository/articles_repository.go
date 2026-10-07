@@ -4,6 +4,7 @@ import (
 	"context"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/domain"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -91,4 +92,26 @@ func (a *ArticleRepository) ListByCategoryName(ctx context.Context, categoryName
 		return nil, err
 	}
 	return articles, nil
+}
+
+// ListSoftDeleted quét bài đã xóa mềm trước mốc before — Unscoped để bypass
+// filter soft-delete mặc định của gorm, lấy cũ nhất trước để dọn dứt điểm.
+func (a *ArticleRepository) ListSoftDeleted(ctx context.Context, before time.Time, limit int) ([]*domain.Article, error) {
+	var articles = make([]*domain.Article, 0)
+	err := dbConn(ctx, a.db).Unscoped().
+		Where("deleted_at IS NOT NULL AND deleted_at < ?", before).
+		Order("deleted_at ASC").
+		Limit(limit).
+		Find(&articles).Error
+	if err != nil {
+		return nil, err
+	}
+	return articles, nil
+}
+
+// HardDelete xóa hẳn row — gorm Delete thường chỉ set DeletedAt nên phải
+// Unscoped. Xóa row không tồn tại cũng không báo lỗi nên 2 worker cùng quét
+// trúng 1 row vẫn an toàn.
+func (a *ArticleRepository) HardDelete(ctx context.Context, id int64) error {
+	return dbConn(ctx, a.db).Unscoped().Where("id = ?", id).Delete(&domain.Article{}).Error
 }

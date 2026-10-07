@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
+	"knowledge_ingestion/src/domain"
 	"net"
 	"net/url"
 	"time"
@@ -68,9 +69,10 @@ func vhostPath(vhost string) string {
 	return vhost
 }
 
-// declareTopology dựng exchange topic durable + queue durable + bind tất cả
-// routing key ("#") — chạy 1 lần lúc boot nên worker/relay khỏi lo topology
-// chưa có. Queue sau này tách theo event_type thì bind thêm, không sửa đây.
+// declareTopology dựng exchange direct durable + queue durable + bind đúng
+// từng routing key (direct chỉ khớp chính xác, không có wildcard) — chạy 1
+// lần lúc boot nên worker/relay khỏi lo topology chưa có. Thêm event type
+// mới thì bind thêm key ở đây, hoặc tách queue riêng cho consumer mới.
 func (c *connection) declareTopology() error {
 	ch, err := c.conn.Channel()
 	if err != nil {
@@ -78,14 +80,16 @@ func (c *connection) declareTopology() error {
 	}
 	defer func() { _ = ch.Close() }()
 
-	if err := ch.ExchangeDeclare(c.exchange, "topic", true, false, false, false, nil); err != nil {
+	if err := ch.ExchangeDeclare(c.exchange, "direct", true, false, false, false, nil); err != nil {
 		return fmt.Errorf("rabbitmq declare exchange %s: %w", c.exchange, err)
 	}
 	if _, err := ch.QueueDeclare(c.queue, true, false, false, false, nil); err != nil {
 		return fmt.Errorf("rabbitmq declare queue %s: %w", c.queue, err)
 	}
-	if err := ch.QueueBind(c.queue, "#", c.exchange, false, nil); err != nil {
-		return fmt.Errorf("rabbitmq bind queue %s: %w", c.queue, err)
+	for _, key := range []string{domain.OutboxEventArticleBlobDelete} {
+		if err := ch.QueueBind(c.queue, key, c.exchange, false, nil); err != nil {
+			return fmt.Errorf("rabbitmq bind queue %s key %s: %w", c.queue, key, err)
+		}
 	}
 	return nil
 }
