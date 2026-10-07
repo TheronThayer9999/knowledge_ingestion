@@ -14,7 +14,11 @@ type Router struct {
 	Engine *gin.Engine
 }
 
-func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI, fileAPI *apis.FileAPI, categoryAPI *apis.CategoryAPI, articleAPI *apis.ArticleAPI, cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware) *Router {
+func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
+	userAPI *apis.UserAPI, fileAPI *apis.FileAPI,
+	categoryAPI *apis.CategoryAPI, articleAPI *apis.ArticleAPI,
+	cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
+	trace middlewares.ITraceMiddleware) *Router {
 	if cfg.GetApp().Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -25,9 +29,9 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI, userAPI *apis.UserAPI,
 	// truyền thẳng `c` xuống service nên service mới đọc được qua ctx.Value.
 	// Mặc định gin tắt cờ này (Value trả nil với key không phải string).
 	engine.ContextWithFallback = true
-	// Middleware global (recovery + CORS) chạy cho mọi request, kể cả
+	// Middleware global (recovery + trace + CORS) chạy cho mọi request, kể cả
 	// preflight OPTIONS không mang token — xem middlewares.Global.
-	engine.Use(middlewares.Global(cors)...)
+	engine.Use(middlewares.Global(cors, trace)...)
 
 	engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

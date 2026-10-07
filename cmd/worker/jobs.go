@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"time"
 
 	"go.uber.org/fx"
@@ -74,11 +75,20 @@ func (r *Runner) loop(ctx context.Context, s Schedule) {
 }
 
 func (r *Runner) runOnce(ctx context.Context, s Schedule) {
-	runCtx, cancel := context.WithTimeout(ctx, jobRunTimeout)
-	defer cancel()
-	if err := s.Run(runCtx); err != nil {
-		logs.Error(err, "worker: job lỗi, kỳ sau thử lại", "job", s.Name)
+	// Runner (middleware) sinh trace_id 1 lần mỗi lượt chạy rồi nhét vào
+	// ctx — service tầng dưới chỉ đọc ra gắn log, không tự sinh. Cùng 1 id
+	// phủ từ log runner tới log service trong cả lượt chạy.
+	traceID, err := utils.NewUUIDv7()
+	if err != nil {
+		logs.Error(err, "worker: không sinh được trace_id, bỏ kỳ này", "job", s.Name)
 		return
 	}
-	logs.Infow("worker: job xong", "job", s.Name)
+	runCtx, cancel := context.WithTimeout(ctx, jobRunTimeout)
+	defer cancel()
+	runCtx = utils.ContextWithTraceID(runCtx, traceID)
+	if err := s.Run(runCtx); err != nil {
+		logs.Error(err, "worker: job lỗi, kỳ sau thử lại", "job", s.Name, "trace_id", traceID)
+		return
+	}
+	logs.Infow("worker: job xong", "job", s.Name, "trace_id", traceID)
 }

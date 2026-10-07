@@ -14,10 +14,11 @@ import (
 
 // Global trả về middleware chạy cho MỌI request, kể cả preflight OPTIONS
 // (preflight không mang token nên Auth không được ở đây). Thứ tự trong
-// slice = thứ tự thực thi.
-func Global(cors ICORSMiddleware) []gin.HandlerFunc {
+// slice = thứ tự thực thi — trace đứng đầu để mọi log sau đều có trace_id.
+func Global(cors ICORSMiddleware, trace ITraceMiddleware) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		gin.Recovery(),
+		trace.Handler(),
 		cors.Handler(),
 	}
 }

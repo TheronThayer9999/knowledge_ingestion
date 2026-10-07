@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -96,6 +97,25 @@ func NewUUIDv7() (string, error) {
 		return "", fmt.Errorf("sinh UUIDv7: %w", err)
 	}
 	return id.String(), nil
+}
+
+// traceIDKey khóa ctx mang trace_id — runner (middleware) sinh 1 ID mỗi lượt
+// chạy job rồi nhét vào ctx, service tầng dưới chỉ đọc ra gắn vào log. Key
+// unexported để không ai ghi đè từ package khác.
+type traceIDKey struct{}
+
+// ContextWithTraceID gắn trace_id vào ctx để lan xuống các tầng dưới.
+func ContextWithTraceID(ctx context.Context, traceID string) context.Context {
+	return context.WithValue(ctx, traceIDKey{}, traceID)
+}
+
+// TraceIDFromCtx đọc trace_id runner đã gắn — trả rỗng nếu ctx không có
+// (caller gọi service trực tiếp như trong test thì service tự sinh fallback).
+func TraceIDFromCtx(ctx context.Context) string {
+	if id, ok := ctx.Value(traceIDKey{}).(string); ok {
+		return id
+	}
+	return ""
 }
 
 // Ngưỡng phân trang chung cho các endpoint list.

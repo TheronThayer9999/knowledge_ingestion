@@ -3,6 +3,7 @@ package apis
 import (
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 	"net/http"
 
@@ -87,7 +88,7 @@ func Render[T any](c *gin.Context, r renderer, res dtos.Result[T]) {
 			r.ErrorData(c, e)
 			return
 		}
-		logs.Error(res.Err, "unhandled error")
+		logs.Error(res.Err, "unhandled error", "trace_id", utils.TraceIDFromCtx(c.Request.Context()))
 		r.ErrorData(c, errors.ErrInternal)
 		return
 	}

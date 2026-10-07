@@ -4,6 +4,7 @@ import (
 	"context"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/storage"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
 	"time"
 )
@@ -58,7 +59,21 @@ func NewArticlePurgeService(articleRepo domain.IArticleRepository, storage stora
 // con trỏ trước khi thứ nó trỏ tới đã biến mất.
 //
 // Row nào lỗi ở bước nào cũng chỉ log + bỏ qua, kỳ sau thử lại.
+//
+// Mỗi lần gọi lấy trace_id runner đã gắn vào ctx (UUIDv7, sort được theo
+// thời gian) gắn vào mọi dòng log của kỳ đó — grep 1 id là thấy trọn vòng
+// đời 1 kỳ quét (bắt đầu → từng row lỗi → xong), kể cả khi 2 container cùng
+// chạy. Gọi trực tiếp không qua runner (test, tool tay) thì ctx trống, lúc
+// đó tự sinh fallback để log vẫn lần được.
 func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
+	traceID := utils.TraceIDFromCtx(ctx)
+	if traceID == "" {
+		var err error
+		if traceID, err = utils.NewUUIDv7(); err != nil {
+			return 0, err
+		}
+	}
+	logs.Infow("purge: bắt đầu kỳ quét", "trace_id", traceID)
 	articles, err := s.articleRepo.ListSoftDeleted(ctx, time.Now().Add(-PurgeGracePeriod), purgeBatchSize)
 	if err != nil {
 		return 0, err
@@ -68,17 +83,19 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 		if article.StorageKey != "" {
 			if err := s.storage.Delete(ctx, article.StorageKey); err != nil {
 				logs.Warnw("purge: xóa blob thất bại, để kỳ sau thử lại",
+					"trace_id", traceID,
 					"article_id", article.ID, "storage_key", article.StorageKey, "error", err)
 				continue
 			}
 		}
 		if err := s.articleRepo.HardDelete(ctx, article.ID); err != nil {
 			logs.Warnw("purge: xóa hẳn row thất bại, để kỳ sau thử lại",
+				"trace_id", traceID,
 				"article_id", article.ID, "error", err)
 			continue
 		}
 		purged++
 	}
-	logs.Infow("purge: xong 1 kỳ quét", "found", len(articles), "purged", purged)
+	logs.Infow("purge: xong 1 kỳ quét", "trace_id", traceID, "found", len(articles), "purged", purged)
 	return purged, nil
 }

@@ -68,6 +68,7 @@ func loadService() []fx.Option {
 func loadMiddleware() []fx.Option {
 	return []fx.Option{
 		fx.Provide(middlewares.NewCORSMiddleware),
+		fx.Provide(middlewares.NewTraceMiddleware),
 		fx.Provide(middlewares.NewAuthMiddleware),
 		fx.Provide(middlewares.NewCurrentUser),
 	}
