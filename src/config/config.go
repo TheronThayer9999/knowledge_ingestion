@@ -12,6 +12,8 @@ type IConfig interface {
 	GetDatabase() DBConfig
 	GetStorage() S3Config
 	GetEmbedding() EmbeddingConfig
+	GetQdrant() QdrantConfig
+	GetOCR() OCRConfig
 	GetRedis() RedisConfig // Thêm method này
 	GetRabbitMQ() RabbitMQConfig
 	GetJWT() JWTConfig
@@ -24,6 +26,8 @@ type appConfig struct {
 	Database  DBConfig        `json:"database"`
 	Storage   S3Config        `json:"storage"`
 	Embedding EmbeddingConfig `json:"embedding"`
+	Qdrant    QdrantConfig    `json:"qdrant"`
+	OCR       OCRConfig       `json:"ocr"`
 	RedisCli  RedisConfig     `json:"redis"`
 	Rabbit    RabbitMQConfig  `json:"rabbitmq"`
 	JWTCli    JWTConfig       `json:"jwt"`
@@ -59,6 +63,32 @@ type EmbeddingConfig struct {
 	BaseURL  string `json:"base_url"`
 	APIKey   string `json:"api_key"` // Ollama để trống
 	Dim      int    `json:"dim"`
+}
+
+// QdrantConfig giữ địa chỉ REST của Qdrant (cổng 6333) + token — worker embed
+// upsert vector vào đây. Local không bật auth thì để token rỗng.
+type QdrantConfig struct {
+	Host  string `json:"host"`
+	Port  int    `json:"port"`
+	Token string `json:"token"`
+}
+
+// OCRConfig giữ công tắc + đường dẫn engine Tesseract — worker chunk gọi qua
+// os/exec cho file ảnh (jpg/png/webp), KHÔNG qua Python trung gian. Binary
+// mặc định "tesseract" (ăn theo PATH, hợp Linux/prod); Windows dev trỏ thẳng
+// "C:\Program Files\Tesseract-OCR\tesseract.exe" trong config.json hoặc env
+// OCR_BINARY. Lang theo model tessdata (file _tesseract.md chốt "vie").
+type OCRConfig struct {
+	Enabled    bool   `json:"enabled"`
+	Binary     string `json:"binary"`
+	Lang       string `json:"lang"`
+	TimeoutSec int    `json:"timeout_sec"`
+	// RenderBinary là renderer PDF→ảnh cho trang scan (vd "pdftoppm") — rỗng
+	// thì trang scan bỏ qua như trước. Cùng pattern os/exec như Binary nên
+	// sau này tách OCR thành API riêng không phải sửa logic.
+	RenderBinary string `json:"render_binary"`
+	// RenderDPI độ phân giải render trang scan — 300 là điểm ngọt Tesseract.
+	RenderDPI int `json:"render_dpi"`
 }
 
 // redis cli
@@ -127,6 +157,36 @@ func Load(path string) (IConfig, error) {
 	if cfg.Embedding.Dim <= 0 {
 		return nil, fmt.Errorf("embedding.dim must be > 0")
 	}
+	if cfg.Qdrant.Host == "" {
+		return nil, fmt.Errorf("qdrant.host is required")
+	}
+	if cfg.Qdrant.Port == 0 {
+		cfg.Qdrant.Port = 6333 // REST mặc định
+	}
+	// Token ưu tiên env để production không commit secret vào file.
+	if envToken := os.Getenv("QDRANT_TOKEN"); envToken != "" {
+		cfg.Qdrant.Token = envToken
+	}
+	if envBin := os.Getenv("OCR_BINARY"); envBin != "" {
+		cfg.OCR.Binary = envBin
+	}
+	if cfg.OCR.Binary == "" {
+		cfg.OCR.Binary = "tesseract" // ăn theo PATH (Linux/prod)
+	}
+	if cfg.OCR.Lang == "" {
+		cfg.OCR.Lang = "vie" // file _tesseract.md chốt model tiếng Việt
+	}
+	if cfg.OCR.TimeoutSec <= 0 {
+		cfg.OCR.TimeoutSec = 120
+	}
+	// Kẹp trần 1 giờ — time.Duration(o.TimeoutSec)*time.Second tràn số với
+	// giá trị khổng lồ (thành âm rồi rơi về default một cách tình cờ).
+	if cfg.OCR.TimeoutSec > 3600 {
+		cfg.OCR.TimeoutSec = 3600
+	}
+	if cfg.OCR.RenderDPI <= 0 {
+		cfg.OCR.RenderDPI = 300
+	}
 	if cfg.RedisCli.Host == "" {
 		return nil, fmt.Errorf("redis.host is required")
 	}
@@ -174,6 +234,8 @@ func (c *appConfig) GetApp() AppConfig             { return c.App }
 func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
 func (c *appConfig) GetStorage() S3Config          { return c.Storage }
 func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }
+func (c *appConfig) GetQdrant() QdrantConfig       { return c.Qdrant }
+func (c *appConfig) GetOCR() OCRConfig             { return c.OCR }
 func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }
 func (c *appConfig) GetRabbitMQ() RabbitMQConfig   { return c.Rabbit }
 func (c *appConfig) GetJWT() JWTConfig             { return c.JWTCli }

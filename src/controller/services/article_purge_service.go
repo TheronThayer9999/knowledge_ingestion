@@ -22,19 +22,21 @@ const (
 
 // IArticlePurgeService janitor dọn bài đã xóa mềm — chỉ worker gọi, không
 // qua HTTP nên trả (int, error) thuần thay vì dtos.Result (envelope đó dành
-// cho handler Render). Mỗi kỳ quét: ListSoftDeleted → từng row xóa blob rồi
-// xóa hẳn.
+// cho handler Render). Mỗi kỳ quét: ListSoftDeleted → từng row xóa blob, xóa
+// vector Qdrant, xóa chunk rows rồi xóa hẳn article row.
 type IArticlePurgeService interface {
 	PurgeDeleted(ctx context.Context) (int, error)
 }
 
 type articlePurgeService struct {
 	articleRepo domain.IArticleRepository
+	chunkRepo   domain.IArticleChunkRepository
+	vectors     domain.IVectorStore
 	storage     storage.IStorage
 }
 
-func NewArticlePurgeService(articleRepo domain.IArticleRepository, storage storage.IStorage) IArticlePurgeService {
-	return &articlePurgeService{articleRepo: articleRepo, storage: storage}
+func NewArticlePurgeService(articleRepo domain.IArticleRepository, chunkRepo domain.IArticleChunkRepository, vectors domain.IVectorStore, storage storage.IStorage) IArticlePurgeService {
+	return &articlePurgeService{articleRepo: articleRepo, chunkRepo: chunkRepo, vectors: vectors, storage: storage}
 }
 
 // PurgeDeleted dọn 1 đợt bài quá grace period, trả số row đã xóa hẳn.
@@ -87,6 +89,23 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 					"article_id", article.ID, "storage_key", article.StorageKey, "error", err)
 				continue
 			}
+		}
+		// Thứ tự dọn sau blob: vector Qdrant → chunk rows → article row.
+		// Qdrant delete idempotent (filter khớp 0 point vẫn success) nên
+		// crash giữa chừng chạy lại chỉ ghi đè/bỏ qua, không mất dấu vết.
+		// Chunk rows xóa trước article row để không còn chunk mồ côi trỏ tới
+		// bài đã mất; bài nào lỗi ở bước nào cũng để kỳ sau thử lại từ đầu.
+		if err := s.vectors.DeleteByArticle(ctx, article.ID); err != nil {
+			logs.Warnw("purge: xóa vector thất bại, để kỳ sau thử lại",
+				"trace_id", traceID,
+				"article_id", article.ID, "error", err)
+			continue
+		}
+		if err := s.chunkRepo.DeleteByArticleID(ctx, article.ID); err != nil {
+			logs.Warnw("purge: xóa chunk thất bại, để kỳ sau thử lại",
+				"trace_id", traceID,
+				"article_id", article.ID, "error", err)
+			continue
 		}
 		if err := s.articleRepo.HardDelete(ctx, article.ID); err != nil {
 			logs.Warnw("purge: xóa hẳn row thất bại, để kỳ sau thử lại",

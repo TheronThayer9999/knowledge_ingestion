@@ -72,3 +72,16 @@ func TestSplitLongWordNoSeparator(t *testing.T) {
 		t.Fatalf("expected 5 chunk, got %d", len(got))
 	}
 }
+
+func TestSplitEmptySeparatorsUsesDefault(t *testing.T) {
+	// Slice rỗng (không phải nil) cũng phải về default, không panic seps[0].
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("panic với Separators rỗng: %v", r)
+		}
+	}()
+	got := Split("xin chào thế giới", Option{Separators: []string{}})
+	if len(got) != 1 || got[0] != "xin chào thế giới" {
+		t.Fatalf("got %q", got)
+	}
+}

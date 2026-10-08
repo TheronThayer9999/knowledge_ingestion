@@ -13,12 +13,15 @@ import (
 // (janitor retry hội tụ nên hủy giữa chừng không mất gì).
 const jobRunTimeout = time.Minute
 
-// Schedule khai báo 1 tác vụ nền: tên + nhịp chạy + hàm chạy. Thêm job mới
-// = append 1 dòng Schedule lúc dựng Runner trong main.go, không cần
-// interface hay struct adapter riêng.
+// Schedule khai báo 1 tác vụ nền: tên + nhịp chạy + hàm chạy + trần thời gian
+// mỗi lượt. Thêm job mới = append 1 dòng Schedule lúc dựng Runner trong
+// main.go, không cần interface hay struct adapter riêng. Timeout 0 thì dùng
+// jobRunTimeout — job nặng (chunk/embed file 500 trang) phải set riêng, nếu
+// không kỳ nào cũng bị cancel giữa chừng rồi làm lại từ đầu (đói vĩnh viễn).
 type Schedule struct {
 	Name     string
 	Interval time.Duration
+	Timeout  time.Duration
 	Run      func(ctx context.Context) error
 }
 
@@ -74,6 +77,14 @@ func (r *Runner) loop(ctx context.Context, s Schedule) {
 	}
 }
 
+// jobTimeout lấy trần mỗi lượt chạy — job nào không set thì dùng mặc định.
+func jobTimeout(s Schedule) time.Duration {
+	if s.Timeout > 0 {
+		return s.Timeout
+	}
+	return jobRunTimeout
+}
+
 func (r *Runner) runOnce(ctx context.Context, s Schedule) {
 	// Runner (middleware) sinh trace_id 1 lần mỗi lượt chạy rồi nhét vào
 	// ctx — service tầng dưới chỉ đọc ra gắn log, không tự sinh. Cùng 1 id
@@ -83,7 +94,7 @@ func (r *Runner) runOnce(ctx context.Context, s Schedule) {
 		logs.Error(err, "worker: không sinh được trace_id, bỏ kỳ này", "job", s.Name)
 		return
 	}
-	runCtx, cancel := context.WithTimeout(ctx, jobRunTimeout)
+	runCtx, cancel := context.WithTimeout(ctx, jobTimeout(s))
 	defer cancel()
 	runCtx = utils.ContextWithTraceID(runCtx, traceID)
 	if err := s.Run(runCtx); err != nil {

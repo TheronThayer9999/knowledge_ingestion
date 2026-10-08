@@ -44,7 +44,7 @@ func Split(text string, opt Option) []string {
 		overlap = size - 1
 	}
 	seps := opt.Separators
-	if seps == nil {
+	if len(seps) == 0 {
 		seps = DefaultSeparators
 	}
 	return splitRecursive(strings.TrimSpace(text), size, overlap, seps)

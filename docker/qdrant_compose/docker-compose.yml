@@ -1,0 +1,17 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333" # REST — worker upsert/query vector
+      - "6334:6334" # gRPC — để dành official go-client sau này
+    environment:
+      # Trùng "token" trong configs/config.json — đổi thì đổi cả 2 chỗ.
+      # Local không auth thì xóa dòng này (client gửi api-key rỗng vẫn ok).
+      QDRANT__SERVICE__API_KEY: theron_qdrant_token
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  qdrant_data:

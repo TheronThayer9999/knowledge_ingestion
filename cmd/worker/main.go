@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"go.uber.org/fx"
 )
@@ -33,11 +34,17 @@ func main() {
 		}),
 		fx.Options(loader.LoadWorkerInfra()...),
 		fx.Provide(services.NewArticlePurgeService),
+		fx.Provide(services.NewArticleChunkService),
+		fx.Provide(services.NewArticleEmbedService),
 		// Thêm job mới = inject service ở tham số + append 1 dòng Schedule:
 		// {Name: "...", Interval: ..., Run: asJob(svc.Method)}.
-		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService) {
+		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, chunk services.IArticleChunkService, embed services.IArticleEmbedService) {
 			NewRunner([]Schedule{
 				{Name: "purge-articles", Interval: services.PurgeGracePeriod, Run: asJob(purge.PurgeDeleted)},
+				// Timeout riêng vì bài 500 trang chunk/embed trong 1 phút mặc
+				// định không xong — cancel giữa chừng rồi làm lại là đói.
+				{Name: "chunk-articles", Interval: services.ChunkInterval, Timeout: 12 * time.Minute, Run: asJob(chunk.ChunkPending)},
+				{Name: "embed-articles", Interval: services.EmbedInterval, Timeout: 25 * time.Minute, Run: asJob(embed.EmbedPending)},
 			}).Attach(lc)
 		}),
 	)

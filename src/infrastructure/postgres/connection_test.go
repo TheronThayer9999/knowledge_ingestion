@@ -40,6 +40,10 @@ func (c *testConfig) GetStorage() config.S3Config { return c.inner.GetStorage() 
 
 func (c *testConfig) GetEmbedding() config.EmbeddingConfig { return c.inner.GetEmbedding() }
 
+func (c *testConfig) GetQdrant() config.QdrantConfig { return c.inner.GetQdrant() }
+
+func (c *testConfig) GetOCR() config.OCRConfig { return c.inner.GetOCR() }
+
 func loadTestConfig(t *testing.T) config.IConfig {
 	t.Helper()
 	path := os.Getenv("APP_CONFIG_PATH")

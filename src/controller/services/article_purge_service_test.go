@@ -1,8 +1,9 @@
 package services
 
 // Test logic hội tụ của PurgeDeleted (không test worker/ticker): fake
-// repository + fake storage, assert cả THỨ TỰ gọi S3-trước-DB-sau và kịch bản
-// retry kỳ N/N+1 trong comment của PurgeDeleted. Chạy: go test -race ./src/controller/services/
+// repository + fake storage/vector, assert cả THỨ TỰ gọi blob → vector →
+// chunk → row và kịch bản retry kỳ N/N+1 trong comment của PurgeDeleted.
+// Chạy: go test -race ./src/controller/services/
 
 import (
 	"context"
@@ -41,6 +42,23 @@ func (f *fakeArticleRepo) ListSoftDeleted(ctx context.Context, before time.Time,
 	return f.list, f.listErr
 }
 
+// Các method queue chunk/embed chỉ phục vụ worker chunk/embed — purge không
+// gọi nên stub rỗng.
+func (f *fakeArticleRepo) ClaimChunkPending(ctx context.Context, limit int, lease time.Duration) ([]*domain.Article, error) {
+	return nil, nil
+}
+func (f *fakeArticleRepo) MarkChunkDone(ctx context.Context, id int64) error { return nil }
+func (f *fakeArticleRepo) MarkChunkError(ctx context.Context, id int64, attempts int) error {
+	return nil
+}
+func (f *fakeArticleRepo) ClaimEmbedPending(ctx context.Context, limit int, lease time.Duration) ([]*domain.Article, error) {
+	return nil, nil
+}
+func (f *fakeArticleRepo) MarkEmbedDone(ctx context.Context, id int64) error { return nil }
+func (f *fakeArticleRepo) MarkEmbedError(ctx context.Context, id int64, attempts int) error {
+	return nil
+}
+
 func (f *fakeArticleRepo) HardDelete(ctx context.Context, id int64) error {
 	f.log.add(fmt.Sprintf("db:%d", id))
 	f.hardDeletes = append(f.hardDeletes, id)
@@ -56,6 +74,11 @@ func (f *fakeArticleRepo) Update(ctx context.Context, article *domain.Article) e
 func (f *fakeArticleRepo) Delete(ctx context.Context, article *domain.Article) error { return nil }
 func (f *fakeArticleRepo) GetByID(ctx context.Context, id int64, userID int64) (*domain.Article, error) {
 	return nil, nil
+}
+
+// IsAlive không dùng trong purge — stub.
+func (f *fakeArticleRepo) IsAlive(ctx context.Context, id int64) (bool, error) {
+	return true, nil
 }
 func (f *fakeArticleRepo) ExistsByURL(ctx context.Context, url string, userID int64) (bool, error) {
 	return false, nil
@@ -95,8 +118,50 @@ func (f *fakeStorage) PresignedURL(ctx context.Context, key string, contentType 
 	return "", nil
 }
 
-func newPurgeTest(log *orderLog, repo *fakeArticleRepo, store *fakeStorage) IArticlePurgeService {
-	return NewArticlePurgeService(repo, store)
+// fakePurgeChunkRepo ghi thứ tự xóa chunk để assert pipeline dọn
+// blob → vector → chunk → row.
+type fakePurgeChunkRepo struct {
+	log *orderLog
+	// deleteErr lỗi DeleteByArticleID trả về (mô phỏng DB chết lúc dọn chunk).
+	deleteErr error
+	deletes   []int64
+}
+
+func (f *fakePurgeChunkRepo) CreateBatch(ctx context.Context, chunks []*domain.ArticleChunk) error {
+	return nil
+}
+func (f *fakePurgeChunkRepo) ExistsByArticleID(ctx context.Context, articleID int64) (bool, error) {
+	return false, nil
+}
+func (f *fakePurgeChunkRepo) DeleteByArticleID(ctx context.Context, articleID int64) error {
+	f.log.add(fmt.Sprintf("chunks:%d", articleID))
+	f.deletes = append(f.deletes, articleID)
+	return f.deleteErr
+}
+func (f *fakePurgeChunkRepo) ListUnembeddedByArticle(ctx context.Context, articleID int64) ([]*domain.ChunkWithOwner, error) {
+	return nil, nil
+}
+func (f *fakePurgeChunkRepo) MarkEmbedded(ctx context.Context, ids []int64) error { return nil }
+
+// fakeVectors ghi thứ tự xóa vector Qdrant.
+type fakeVectors struct {
+	log *orderLog
+	// deleteErr lỗi DeleteByArticle trả về (mô phỏng Qdrant chết).
+	deleteErr error
+	deletes   []int64
+}
+
+func (f *fakeVectors) UpsertPoints(ctx context.Context, points []domain.VectorPoint) error {
+	return nil
+}
+func (f *fakeVectors) DeleteByArticle(ctx context.Context, articleID int64) error {
+	f.log.add(fmt.Sprintf("vec:%d", articleID))
+	f.deletes = append(f.deletes, articleID)
+	return f.deleteErr
+}
+
+func newPurgeTest(log *orderLog, repo *fakeArticleRepo, chunks *fakePurgeChunkRepo, vectors *fakeVectors, store *fakeStorage) IArticlePurgeService {
+	return NewArticlePurgeService(repo, chunks, vectors, store)
 }
 
 func equalCalls(t *testing.T, got, want []string) {
@@ -111,15 +176,15 @@ func equalCalls(t *testing.T, got, want []string) {
 	}
 }
 
-// Thứ tự bắt buộc: S3 trước, DB sau — đúng invariant trong comment
-// PurgeDeleted (row là con trỏ duy nhất tới blob).
+// Thứ tự bắt buộc: blob → vector → chunk → row — đúng invariant trong comment
+// PurgeDeleted (row là con trỏ duy nhất tới blob; vector/chunk là dẫn xuất).
 func TestPurgeDeleted_S3BeforeDB(t *testing.T) {
 	log := &orderLog{}
 	repo := &fakeArticleRepo{log: log, list: []*domain.Article{
 		{BaseModel: domain.BaseModel{ID: 5}, StorageKey: "uploads/a.png"},
 	}}
 	store := &fakeStorage{log: log}
-	svc := newPurgeTest(log, repo, store)
+	svc := newPurgeTest(log, repo, &fakePurgeChunkRepo{log: log}, &fakeVectors{log: log}, store)
 
 	purged, err := svc.PurgeDeleted(context.Background())
 	if err != nil {
@@ -128,7 +193,7 @@ func TestPurgeDeleted_S3BeforeDB(t *testing.T) {
 	if purged != 1 {
 		t.Fatalf("purged = %d, want 1", purged)
 	}
-	equalCalls(t, log.calls, []string{"list", "s3:uploads/a.png", "db:5"})
+	equalCalls(t, log.calls, []string{"list", "s3:uploads/a.png", "vec:5", "chunks:5", "db:5"})
 }
 
 // Kịch bản trong comment: DB chết đúng giữa chừng (kỳ N) rồi sống lại
@@ -139,7 +204,7 @@ func TestPurgeDeleted_DBDownThenRetryConverges(t *testing.T) {
 		{BaseModel: domain.BaseModel{ID: 5}, StorageKey: "uploads/a.png"},
 	}}
 	store := &fakeStorage{log: log}
-	svc := newPurgeTest(log, repo, store)
+	svc := newPurgeTest(log, repo, &fakePurgeChunkRepo{log: log}, &fakeVectors{log: log}, store)
 
 	// Kỳ N: S3 xong, DB lỗi — không báo lỗi ra ngoài, row để kỳ sau.
 	if purged, err := svc.PurgeDeleted(context.Background()); err != nil || purged != 0 {
@@ -150,8 +215,8 @@ func TestPurgeDeleted_DBDownThenRetryConverges(t *testing.T) {
 		t.Fatalf("kỳ N+1: purged = %d, err = %v; want 1, nil", purged, err)
 	}
 	equalCalls(t, log.calls, []string{
-		"list", "s3:uploads/a.png", "db:5",
-		"list", "s3:uploads/a.png", "db:5",
+		"list", "s3:uploads/a.png", "vec:5", "chunks:5", "db:5",
+		"list", "s3:uploads/a.png", "vec:5", "chunks:5", "db:5",
 	})
 	if len(store.deletes) != 2 || store.deletes[0] != store.deletes[1] {
 		t.Fatalf("S3 phải bị gọi lại đúng key cũ, got %v", store.deletes)
@@ -165,7 +230,7 @@ func TestPurgeDeleted_S3FailsSkipsDB(t *testing.T) {
 		{BaseModel: domain.BaseModel{ID: 7}, StorageKey: "uploads/b.png"},
 	}}
 	store := &fakeStorage{log: log, deleteErr: errS3Down}
-	svc := newPurgeTest(log, repo, store)
+	svc := newPurgeTest(log, repo, &fakePurgeChunkRepo{log: log}, &fakeVectors{log: log}, store)
 
 	if purged, err := svc.PurgeDeleted(context.Background()); err != nil || purged != 0 {
 		t.Fatalf("purged = %d, err = %v; want 0, nil", purged, err)
@@ -176,19 +241,38 @@ func TestPurgeDeleted_S3FailsSkipsDB(t *testing.T) {
 	}
 }
 
-// Bài loại URL không có blob: bỏ qua S3, xóa hẳn row luôn.
+// Qdrant lỗi thì KHÔNG được đụng tới chunk/row — để kỳ sau thử lại từ đầu.
+func TestPurgeDeleted_VectorFailsSkipsRest(t *testing.T) {
+	log := &orderLog{}
+	repo := &fakeArticleRepo{log: log, list: []*domain.Article{
+		{BaseModel: domain.BaseModel{ID: 8}, StorageKey: "uploads/c.png"},
+	}}
+	store := &fakeStorage{log: log}
+	chunks := &fakePurgeChunkRepo{log: log}
+	svc := newPurgeTest(log, repo, chunks, &fakeVectors{log: log, deleteErr: errS3Down}, store)
+
+	if purged, err := svc.PurgeDeleted(context.Background()); err != nil || purged != 0 {
+		t.Fatalf("purged = %d, err = %v; want 0, nil", purged, err)
+	}
+	equalCalls(t, log.calls, []string{"list", "s3:uploads/c.png", "vec:8"})
+	if len(chunks.deletes) != 0 || len(repo.hardDeletes) != 0 {
+		t.Fatalf("vector lỗi mà vẫn xóa chunk/row")
+	}
+}
+
+// Bài loại URL không có blob: bỏ qua S3, dọn vector + chunk + row luôn.
 func TestPurgeDeleted_URLArticleSkipsS3(t *testing.T) {
 	log := &orderLog{}
 	repo := &fakeArticleRepo{log: log, list: []*domain.Article{
 		{BaseModel: domain.BaseModel{ID: 9}, URL: "https://example.com/x"},
 	}}
 	store := &fakeStorage{log: log}
-	svc := newPurgeTest(log, repo, store)
+	svc := newPurgeTest(log, repo, &fakePurgeChunkRepo{log: log}, &fakeVectors{log: log}, store)
 
 	if purged, err := svc.PurgeDeleted(context.Background()); err != nil || purged != 1 {
 		t.Fatalf("purged = %d, err = %v; want 1, nil", purged, err)
 	}
-	equalCalls(t, log.calls, []string{"list", "db:9"})
+	equalCalls(t, log.calls, []string{"list", "vec:9", "chunks:9", "db:9"})
 }
 
 // Lỗi ở bước quét thì trả lỗi ra ngoài để runner log (không nuốt).
@@ -196,7 +280,7 @@ func TestPurgeDeleted_ListError(t *testing.T) {
 	log := &orderLog{}
 	repo := &fakeArticleRepo{log: log, listErr: errDBDown}
 	store := &fakeStorage{log: log}
-	svc := newPurgeTest(log, repo, store)
+	svc := newPurgeTest(log, repo, &fakePurgeChunkRepo{log: log}, &fakeVectors{log: log}, store)
 
 	if purged, err := svc.PurgeDeleted(context.Background()); err == nil || purged != 0 {
 		t.Fatalf("purged = %d, err = %v; want 0, non-nil", purged, err)
