@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type IUserService interface {
@@ -64,7 +63,7 @@ func (u *userService) GetAllUser(ctx context.Context) dtos.Result[dtos.UserListR
 func (u *userService) Login(ctx context.Context, dto *dtos.LoginUserRequest) dtos.Result[*dtos.LoginUserResponse] {
 	user, err := u.userRepo.GetUserByUsername(ctx, dto.Username)
 	if err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.LoginUserResponse](errors.NewCustomHttpError(http.StatusUnauthorized, http.StatusUnauthorized, "sai tài khoản hoặc mật khẩu"))
 		}
 		return dtos.Fail[*dtos.LoginUserResponse](err)
@@ -97,7 +96,7 @@ func (u *userService) Login(ctx context.Context, dto *dtos.LoginUserRequest) dto
 func (u *userService) ChangePassword(ctx context.Context, userID int64, dto *dtos.ChangePasswordRequest) dtos.Result[*dtos.UserResponse] {
 	user, err := u.userRepo.GetUserById(ctx, userID)
 	if err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.UserResponse](errors.NewCustomHttpError(http.StatusUnauthorized, http.StatusUnauthorized, "token không hợp lệ hoặc đã hết hạn"))
 		}
 		return dtos.Fail[*dtos.UserResponse](err)

@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"time"
 )
 
@@ -27,16 +26,6 @@ const (
 )
 
 // Event type cho relay xóa blob — worker switch theo type này để route.
+// Bảng + repo outbox hiện chưa có consumer (purge xóa blob trực tiếp) nên
+// chỉ giữ model phục vụ AutoMigrate/định danh event, chưa wire repository.
 const OutboxEventArticleBlobDelete = "article.blob_delete_requested"
-
-type IOutboxRepository interface {
-	// Create ghi event — gọi trong InTx thì chung tx với các op khác,
-	// gọi ngoài thì chạy autocommit thường.
-	Create(ctx context.Context, e *OutboxEvent) error
-	// ClaimPending hốt batch event tới hạn cho worker (FOR UPDATE SKIP
-	// LOCKED) — nhiều worker không giẫm nhau.
-	ClaimPending(ctx context.Context, limit int) ([]*OutboxEvent, error)
-	MarkDone(ctx context.Context, id int64) error
-	ScheduleRetry(ctx context.Context, id int64, retryCount int, nextRetry time.Time) error
-	MarkDead(ctx context.Context, id int64) error
-}

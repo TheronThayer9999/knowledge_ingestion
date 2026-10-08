@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"knowledge_ingestion/src/domain"
+	"knowledge_ingestion/src/infrastructure/qdrant"
 )
 
 var errEmbedDown = errors.New("ollama down")
@@ -116,6 +117,9 @@ func (f *fakeEmbedChunkRepo) MarkEmbedded(ctx context.Context, ids []int64) erro
 	f.marked = append(f.marked, ids...)
 	return nil
 }
+func (f *fakeEmbedChunkRepo) DeleteStaleChunks(ctx context.Context, before time.Time) (int64, error) {
+	return 0, nil
+}
 
 type fakeEmbedder struct {
 	mu      sync.Mutex
@@ -152,13 +156,17 @@ func (f *fakeEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]floa
 	}
 	return out, nil
 }
-func (f *fakeEmbedder) Dimension() int    { return f.dim }
-func (f *fakeEmbedder) ModelName() string { return "test-model" }
+func (f *fakeEmbedder) Dimension() int                  { return f.dim }
+func (f *fakeEmbedder) ModelName() string               { return "test-model" }
+func (f *fakeEmbedder) IsPermanentError(err error) bool { return false }
 
 type fakeVectorStore struct {
 	mu        sync.Mutex
 	points    []domain.VectorPoint
 	upsertErr error
+	// permanent mô phỏng vector store báo lỗi vĩnh viễn (sai dim...) — service
+	// phải failed luôn thay vì backoff.
+	permanent bool
 	deleted   []int64
 }
 
@@ -174,6 +182,26 @@ func (f *fakeVectorStore) UpsertPoints(ctx context.Context, points []domain.Vect
 func (f *fakeVectorStore) DeleteByArticle(ctx context.Context, articleID int64) error {
 	f.deleted = append(f.deleted, articleID)
 	return nil
+}
+func (f *fakeVectorStore) IsPermanentError(err error) bool { return f.permanent }
+func (f *fakeVectorStore) CountByArticle(ctx context.Context, articleID int64) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, p := range f.points {
+		if p.ArticleID == articleID {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// fakeUnitOfWork chạy fn trực tiếp (không tx thật) — đủ để test composition
+// done + trim trong finishEmbed vì thứ tự và lỗi đã được assert qua fakes.
+type fakeUnitOfWork struct{}
+
+func (fakeUnitOfWork) InTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(ctx)
 }
 
 func embedChunk(id, articleID int64, index int, text string) *domain.ChunkWithOwner {
@@ -195,7 +223,7 @@ func newEmbedTest(articles []*domain.Article, chunks map[int64][]*domain.ChunkWi
 	chunkRepo := &fakeEmbedChunkRepo{byID: chunks}
 	embedder := &fakeEmbedder{dim: 4}
 	vectors := &fakeVectorStore{}
-	return articleRepo, chunkRepo, embedder, vectors, NewArticleEmbedService(articleRepo, chunkRepo, embedder, vectors)
+	return articleRepo, chunkRepo, embedder, vectors, NewArticleEmbedService(articleRepo, chunkRepo, embedder, vectors, fakeUnitOfWork{})
 }
 
 func embedArticle(id int64) *domain.Article {
@@ -236,6 +264,9 @@ func TestEmbedPending_OneArticle(t *testing.T) {
 	if len(articleRepo.done) != 1 || articleRepo.done[0] != 5 {
 		t.Fatalf("done = %v, want [5]", articleRepo.done)
 	}
+	if len(chunkRepo.deleted) != 1 || chunkRepo.deleted[0] != 5 {
+		t.Fatalf("finishEmbed phải dọn chunk bài 5 trong cùng InTx, got %v", chunkRepo.deleted)
+	}
 }
 
 // 40 chunk 1 bài → embed chia 2 đợt (32 + 8), upsert + mark theo đợt.
@@ -265,6 +296,9 @@ func TestEmbedPending_SplitsBatches(t *testing.T) {
 	if len(articleRepo.done) != 1 {
 		t.Fatalf("done = %v, want [6]", articleRepo.done)
 	}
+	if len(chunkRepo.deleted) != 1 || chunkRepo.deleted[0] != 6 {
+		t.Fatalf("finishEmbed phải dọn chunk bài 6 trong cùng InTx, got %v", chunkRepo.deleted)
+	}
 }
 
 func batchLens(b [][]string) []int {
@@ -275,10 +309,35 @@ func batchLens(b [][]string) []int {
 	return out
 }
 
-// Bài không còn chunk dở (crash sau khi mark nhưng trước done) → done luôn.
+// Bài không còn chunk dở nhưng Qdrant đã có point (crash sau upsert/mark
+// mà trước done) → done luôn.
 func TestEmbedPending_NothingLeftMarksDone(t *testing.T) {
-	articleRepo, _, _, vectors, svc := newEmbedTest(
+	articleRepo, chunkRepo, _, vectors, svc := newEmbedTest(
 		[]*domain.Article{embedArticle(7)},
+		map[int64][]*domain.ChunkWithOwner{},
+	)
+	vectors.points = append(vectors.points, domain.VectorPoint{ID: "point-7-0", ArticleID: 7})
+
+	n, err := svc.EmbedPending(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("embedded = %d, want 0", n)
+	}
+	if len(articleRepo.done) != 1 {
+		t.Fatalf("done = %v, want [7]", articleRepo.done)
+	}
+	if len(chunkRepo.deleted) != 1 || chunkRepo.deleted[0] != 7 {
+		t.Fatalf("nhánh rỗng cũng phải trim rồi done, got %v", chunkRepo.deleted)
+	}
+}
+
+// Bài không còn chunk dở mà Qdrant cũng 0 point (chunk mất/vector chưa từng
+// lên) → KHÔNG done, đánh lỗi retry thay vì done âm thầm với search trống.
+func TestEmbedPending_EmptyNoVectorsRetries(t *testing.T) {
+	articleRepo, _, _, _, svc := newEmbedTest(
+		[]*domain.Article{embedArticle(12)},
 		map[int64][]*domain.ChunkWithOwner{},
 	)
 
@@ -289,11 +348,11 @@ func TestEmbedPending_NothingLeftMarksDone(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("embedded = %d, want 0", n)
 	}
-	if len(vectors.points) != 0 {
-		t.Fatalf("không được upsert gì, got %+v", vectors.points)
+	if len(articleRepo.done) != 0 {
+		t.Fatalf("0 point mà vẫn done, got %v", articleRepo.done)
 	}
-	if len(articleRepo.done) != 1 {
-		t.Fatalf("done = %v, want [7]", articleRepo.done)
+	if articleRepo.errs[12] != 1 {
+		t.Fatalf("phải MarkEmbedError attempts=1, got %v", articleRepo.errs)
 	}
 }
 
@@ -305,7 +364,7 @@ func TestEmbedPending_EmbedErrorIsolatesArticle(t *testing.T) {
 	}}
 	embedder := &fakeEmbedder{dim: 4, err: errEmbedDown}
 	vectors := &fakeVectorStore{}
-	svc := NewArticleEmbedService(articleRepo, chunkRepo, embedder, vectors)
+	svc := NewArticleEmbedService(articleRepo, chunkRepo, embedder, vectors, fakeUnitOfWork{})
 
 	n, err := svc.EmbedPending(context.Background())
 	if err != nil {
@@ -328,7 +387,7 @@ func TestEmbedPending_VectorErrorNoMark(t *testing.T) {
 	chunkRepo := &fakeEmbedChunkRepo{byID: map[int64][]*domain.ChunkWithOwner{
 		9: {embedChunk(31, 9, 0, "đoạn")},
 	}}
-	svc := NewArticleEmbedService(articleRepo, chunkRepo, &fakeEmbedder{dim: 4}, &fakeVectorStore{upsertErr: errVectorDown})
+	svc := NewArticleEmbedService(articleRepo, chunkRepo, &fakeEmbedder{dim: 4}, &fakeVectorStore{upsertErr: errVectorDown}, fakeUnitOfWork{})
 
 	n, err := svc.EmbedPending(context.Background())
 	if err != nil {
@@ -342,6 +401,27 @@ func TestEmbedPending_VectorErrorNoMark(t *testing.T) {
 	}
 }
 
+// Qdrant báo sai request vĩnh viễn (sai dim) → failed luôn, không backoff.
+func TestEmbedPending_PermanentVectorErrorFailsFast(t *testing.T) {
+	articleRepo := &fakeEmbedArticleRepo{list: []*domain.Article{embedArticle(13)}}
+	chunkRepo := &fakeEmbedChunkRepo{byID: map[int64][]*domain.ChunkWithOwner{
+		13: {embedChunk(61, 13, 0, "đoạn")},
+	}}
+	svc := NewArticleEmbedService(articleRepo, chunkRepo, &fakeEmbedder{dim: 4},
+		&fakeVectorStore{upsertErr: fmt.Errorf("upsert: %w", qdrant.ErrBadRequest), permanent: true}, fakeUnitOfWork{})
+
+	n, err := svc.EmbedPending(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if n != 0 || len(chunkRepo.marked) != 0 {
+		t.Fatalf("lỗi vĩnh viễn mà vẫn mark: n=%d marked=%v", n, chunkRepo.marked)
+	}
+	if articleRepo.errs[13] != domain.MaxQueueAttempts {
+		t.Fatalf("phải failed luôn, got %v", articleRepo.errs)
+	}
+}
+
 // Bài bị user xóa giữa chừng → dừng ngay không gọi ollama, dọn vector +
 // chunk, không done cũng không đánh lỗi retry.
 func TestEmbedPending_DeletedMidway(t *testing.T) {
@@ -351,7 +431,7 @@ func TestEmbedPending_DeletedMidway(t *testing.T) {
 	}}
 	embedder := &fakeEmbedder{dim: 4}
 	vectors := &fakeVectorStore{}
-	svc := NewArticleEmbedService(articleRepo, chunkRepo, embedder, vectors)
+	svc := NewArticleEmbedService(articleRepo, chunkRepo, embedder, vectors, fakeUnitOfWork{})
 
 	n, err := svc.EmbedPending(context.Background())
 	if err != nil {
@@ -374,14 +454,15 @@ func TestEmbedPending_DeletedMidway(t *testing.T) {
 	}
 }
 
-// Embedder trả thiếu vector → lỗi thay vì panic, không upsert/mark gì.
+// Embedder trả thiếu vector → lỗi contract vĩnh viễn: failed luôn thay vì
+// backoff, không upsert/mark gì, không panic.
 func TestEmbedPending_ShortVectorsNoPanic(t *testing.T) {
 	articleRepo := &fakeEmbedArticleRepo{list: []*domain.Article{embedArticle(11)}}
 	chunkRepo := &fakeEmbedChunkRepo{byID: map[int64][]*domain.ChunkWithOwner{
 		11: {embedChunk(51, 11, 0, "một"), embedChunk(52, 11, 1, "hai")},
 	}}
 	vectors := &fakeVectorStore{}
-	svc := NewArticleEmbedService(articleRepo, chunkRepo, &fakeEmbedder{dim: 4, short: true}, vectors)
+	svc := NewArticleEmbedService(articleRepo, chunkRepo, &fakeEmbedder{dim: 4, short: true}, vectors, fakeUnitOfWork{})
 
 	n, err := svc.EmbedPending(context.Background())
 	if err != nil {
@@ -390,15 +471,15 @@ func TestEmbedPending_ShortVectorsNoPanic(t *testing.T) {
 	if n != 0 || len(vectors.points) != 0 || len(chunkRepo.marked) != 0 {
 		t.Fatalf("thiếu vector mà vẫn upsert/mark: n=%d", n)
 	}
-	if articleRepo.errs[11] != 1 {
-		t.Fatalf("phải MarkEmbedError attempts=1, got %v", articleRepo.errs)
+	if articleRepo.errs[11] != domain.MaxQueueAttempts {
+		t.Fatalf("lỗi contract phải failed luôn, got %v", articleRepo.errs)
 	}
 }
 
 // Lỗi ở bước claim thì trả lỗi ra ngoài để runner log (không nuốt).
 func TestEmbedPending_ClaimError(t *testing.T) {
 	articleRepo := &fakeEmbedArticleRepo{listErr: errEmbedDown}
-	svc := NewArticleEmbedService(articleRepo, &fakeEmbedChunkRepo{}, &fakeEmbedder{dim: 4}, &fakeVectorStore{})
+	svc := NewArticleEmbedService(articleRepo, &fakeEmbedChunkRepo{}, &fakeEmbedder{dim: 4}, &fakeVectorStore{}, fakeUnitOfWork{})
 
 	if n, err := svc.EmbedPending(context.Background()); err == nil || n != 0 {
 		t.Fatalf("n = %d, err = %v; want 0, non-nil", n, err)

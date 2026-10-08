@@ -27,4 +27,16 @@ type IVectorStore interface {
 	// DeleteByArticle xóa toàn bộ point của 1 bài (filter article_id) — purge
 	// gọi khi dọn bài để vector không thành rác mồ côi.
 	DeleteByArticle(ctx context.Context, articleID int64) error
+	// CountByArticle đếm point của 1 bài — worker embed dùng để guard nhánh
+	// done-rỗng (chunk hết nhưng chưa chắc vector đã lên): count 0 thì không
+	// được done, phải retry thay vì done âm thầm với search trống.
+	CountByArticle(ctx context.Context, articleID int64) (int64, error)
+	// IsPermanentError báo lỗi có retry cũng vậy không (sai dim, 4xx trừ
+	// 408/429) — service dùng để failed luôn thay vì backoff. Triển khai ở infra.
+	IsPermanentError(err error) bool
 }
+
+// Quy ước cho API search (khi xây): chỉ search bài embed_status=done, kèm
+// score_threshold để không trả lời bừa khi không có đoạn nào gần — giữa lúc
+// embed đang chạy Qdrant phục vụ kết quả thiếu là trạng thái trung gian bình
+// thường, không phải lỗi.

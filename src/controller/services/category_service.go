@@ -7,8 +7,6 @@ import (
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 	"net/http"
-
-	"gorm.io/gorm"
 )
 
 type ICategoryService interface {
@@ -35,7 +33,7 @@ func NewCategoryService(categoryRepo domain.ICategoryRepositoryImpl) ICategorySe
 func (c *categoryService) Create(ctx context.Context, userId int64, dto *dtos.CreateCategoryRequest) dtos.Result[*dtos.CategoryResponse] {
 	if dto.ParentID != nil {
 		if _, err := c.categoryRepo.GetById(ctx, *dto.ParentID, userId); err != nil {
-			if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			if stderrors.Is(err, domain.ErrNotFound) {
 				return dtos.Fail[*dtos.CategoryResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "danh mục cha không tồn tại"))
 			}
 			return dtos.Fail[*dtos.CategoryResponse](err)
@@ -66,7 +64,7 @@ func (c *categoryService) GetAll(ctx context.Context, userId int64) dtos.Result[
 func (c *categoryService) GetById(ctx context.Context, id int64, userId int64) dtos.Result[*dtos.CategoryResponse] {
 	category, err := c.categoryRepo.GetById(ctx, id, userId)
 	if err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.CategoryResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "danh mục không tồn tại"))
 		}
 		return dtos.Fail[*dtos.CategoryResponse](err)
@@ -78,7 +76,7 @@ func (c *categoryService) GetById(ctx context.Context, id int64, userId int64) d
 func (c *categoryService) GetByName(ctx context.Context, name string, userId int64) dtos.Result[*dtos.CategoryResponse] {
 	category, err := c.categoryRepo.GetByName(ctx, name, userId)
 	if err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.CategoryResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "danh mục không tồn tại"))
 		}
 		return dtos.Fail[*dtos.CategoryResponse](err)
@@ -92,7 +90,7 @@ func (c *categoryService) GetByName(ctx context.Context, name string, userId int
 func (c *categoryService) Update(ctx context.Context, id int64, userId int64, dto *dtos.UpdateCategoryRequest) dtos.Result[*dtos.CategoryResponse] {
 	category, err := c.categoryRepo.GetById(ctx, id, userId)
 	if err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.CategoryResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "danh mục không tồn tại"))
 		}
 		return dtos.Fail[*dtos.CategoryResponse](err)
@@ -108,7 +106,7 @@ func (c *categoryService) Update(ctx context.Context, id int64, userId int64, dt
 			return dtos.Fail[*dtos.CategoryResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "danh mục không thể là cha của chính nó"))
 		}
 		if _, err := c.categoryRepo.GetById(ctx, *dto.ParentID, userId); err != nil {
-			if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			if stderrors.Is(err, domain.ErrNotFound) {
 				return dtos.Fail[*dtos.CategoryResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "danh mục cha không tồn tại"))
 			}
 			return dtos.Fail[*dtos.CategoryResponse](err)
@@ -126,7 +124,7 @@ func (c *categoryService) Update(ctx context.Context, id int64, userId int64, dt
 func (c *categoryService) Delete(ctx context.Context, id int64, userId int64) dtos.Result[*dtos.CategoryResponse] {
 	category, err := c.categoryRepo.GetById(ctx, id, userId)
 	if err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.CategoryResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "danh mục không tồn tại"))
 		}
 		return dtos.Fail[*dtos.CategoryResponse](err)

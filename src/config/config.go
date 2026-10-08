@@ -18,6 +18,7 @@ type IConfig interface {
 	GetRabbitMQ() RabbitMQConfig
 	GetJWT() JWTConfig
 	GetCORS() CorsConfig
+	GetWorker() WorkerConfig
 }
 
 // Implementations
@@ -32,6 +33,7 @@ type appConfig struct {
 	Rabbit    RabbitMQConfig  `json:"rabbitmq"`
 	JWTCli    JWTConfig       `json:"jwt"`
 	Cors      CorsConfig      `json:"cors"`
+	Worker    WorkerConfig    `json:"worker"`
 }
 
 type AppConfig struct {
@@ -127,6 +129,14 @@ type JWTConfig struct {
 // CorsConfig giữ danh sách origin được phép gọi API (Angular dev/prod).
 type CorsConfig struct {
 	AllowedOrigins []string `json:"allowed_origins"`
+}
+
+// WorkerConfig giữ nhịp janitor dọn chunk già — chunk đã embedded + chunk mồ
+// côi quá ChunkRetentionHours thì xóa, job quét mỗi TrimIntervalHours. Đổi
+// config + restart worker là ăn ngay, không cần build lại.
+type WorkerConfig struct {
+	ChunkRetentionHours int `json:"chunk_retention_hours"`
+	TrimIntervalHours   int `json:"trim_interval_hours"`
 }
 
 // Load đọc file JSON và trả về IConfig
@@ -225,6 +235,12 @@ func Load(path string) (IConfig, error) {
 	if len(cfg.Cors.AllowedOrigins) == 0 {
 		cfg.Cors.AllowedOrigins = []string{"http://localhost:4200"} // mặc định Angular dev
 	}
+	if cfg.Worker.ChunkRetentionHours <= 0 {
+		cfg.Worker.ChunkRetentionHours = 168 // mặc định 7 ngày
+	}
+	if cfg.Worker.TrimIntervalHours <= 0 {
+		cfg.Worker.TrimIntervalHours = 24 // mặc định mỗi ngày
+	}
 
 	return &cfg, nil
 }
@@ -240,3 +256,4 @@ func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }
 func (c *appConfig) GetRabbitMQ() RabbitMQConfig   { return c.Rabbit }
 func (c *appConfig) GetJWT() JWTConfig             { return c.JWTCli }
 func (c *appConfig) GetCORS() CorsConfig           { return c.Cors }
+func (c *appConfig) GetWorker() WorkerConfig       { return c.Worker }

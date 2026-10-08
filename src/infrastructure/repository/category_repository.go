@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"knowledge_ingestion/src/domain"
 
 	"gorm.io/gorm"
@@ -41,6 +42,9 @@ func (t *CategoryRepository) GetById(ctx context.Context, id int64, userId int64
 	var topic domain.Category
 	err := t.db.WithContext(ctx).First(&topic, "id = ? AND user_id = ?", id, userId).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return &topic, nil
@@ -50,6 +54,9 @@ func (t *CategoryRepository) GetByName(ctx context.Context, name string, userId 
 	var topic domain.Category
 	err := t.db.WithContext(ctx).First(&topic, "name = ? AND user_id = ?", name, userId).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return &topic, nil

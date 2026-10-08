@@ -48,7 +48,6 @@ func loadAdapter() []fx.Option {
 		fx.Provide(repository.NewUserRepository),
 		fx.Provide(repository.NewCategoryRepository),
 		fx.Provide(repository.NewArticleRepository),
-		fx.Provide(repository.NewOutboxRepository),
 		fx.Provide(repository.NewUnitOfWork),
 	}
 }

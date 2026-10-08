@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,17 @@ import (
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/domain"
 )
+
+// ErrBadResponse báo Ollama trả về sai contract (sai model, sai dim, thiếu
+// vector) hoặc từ chối 4xx — retry cũng vậy nên service cho failed luôn thay
+// vì đốt 10 cycle backoff. Lỗi 5xx/timeout/decode không wrap sentinel này,
+// vẫn retry transient bình thường.
+var ErrBadResponse = errors.New("ollama: bad response")
+
+// IsPermanent báo lỗi có retry cũng vậy không — service gặp thì failed luôn.
+func IsPermanent(err error) bool {
+	return errors.Is(err, ErrBadResponse)
+}
 
 // compile-time check: Client phải implement domain.Embedder
 var _ domain.Embedder = (*Client)(nil)
@@ -52,8 +64,9 @@ func New(cfg config.EmbeddingConfig) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) Dimension() int    { return c.dim }
-func (c *Client) ModelName() string { return c.model }
+func (c *Client) Dimension() int                  { return c.dim }
+func (c *Client) ModelName() string               { return c.model }
+func (c *Client) IsPermanentError(err error) bool { return IsPermanent(err) }
 
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	vectors, err := c.EmbedBatch(ctx, []string{text})
@@ -87,7 +100,12 @@ func (c *Client) EmbedBatch(ctx context.Context, texts []string) ([][]float32, e
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("ollama: embed api returned %d: %s", resp.StatusCode, msg)
+		err := fmt.Errorf("ollama: embed api returned %d: %s", resp.StatusCode, msg)
+		// 4xx (trừ 429 hết quota/tốc độ) là client sai — retry vô ích.
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+			err = fmt.Errorf("%w: %w", ErrBadResponse, err)
+		}
+		return nil, err
 	}
 
 	var out embedResponse
@@ -96,11 +114,11 @@ func (c *Client) EmbedBatch(ctx context.Context, texts []string) ([][]float32, e
 	}
 
 	if len(out.Embeddings) != len(texts) {
-		return nil, fmt.Errorf("ollama: expected %d embeddings, got %d", len(texts), len(out.Embeddings))
+		return nil, fmt.Errorf("%w: expected %d embeddings, got %d", ErrBadResponse, len(texts), len(out.Embeddings))
 	}
 	for i, v := range out.Embeddings {
 		if len(v) != c.dim {
-			return nil, fmt.Errorf("ollama: embedding %d has dim %d, config expects %d", i, len(v), c.dim)
+			return nil, fmt.Errorf("%w: embedding %d has dim %d, config expects %d", ErrBadResponse, i, len(v), c.dim)
 		}
 	}
 

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"knowledge_ingestion/src/domain"
 	"time"
 
@@ -32,6 +33,9 @@ func (u *UserRepository) UpdateUser(ctx context.Context, user *domain.User) (*do
 func (u *UserRepository) GetUserById(ctx context.Context, id int64) (*domain.User, error) {
 	var user domain.User
 	if err := u.db.WithContext(ctx).First(&user, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return &user, nil
@@ -40,7 +44,10 @@ func (u *UserRepository) GetUserById(ctx context.Context, id int64) (*domain.Use
 func (u *UserRepository) GetUserByUsername(ctx context.Context, username string) (*domain.User, error) {
 	var user domain.User
 	if err := u.db.WithContext(ctx).Where("user_name = ?", username).First(&user).Error; err != nil {
-		return nil, err // gorm.ErrRecordNotFound khi không tồn tại — service tự map 401
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err // service tự map 401
 	}
 	return &user, nil
 }

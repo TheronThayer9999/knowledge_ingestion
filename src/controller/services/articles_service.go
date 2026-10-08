@@ -12,8 +12,6 @@ import (
 	"knowledge_ingestion/src/domain"
 	"net/http"
 	"strings"
-
-	"gorm.io/gorm"
 )
 
 type IArticleService interface {
@@ -49,7 +47,7 @@ func (s *articleService) Create(ctx context.Context, dto *dtos.CreateArticleRequ
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
 	if _, err := s.categoryRepo.GetById(ctx, dto.CategoryID, userID); err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "danh mục không tồn tại"))
 		}
 		return dtos.Fail[*dtos.ArticleResponse](err)
@@ -100,7 +98,7 @@ func (s *articleService) GetByID(ctx context.Context, id int64) dtos.Result[*dto
 	userID, _ := s.currentUser.UserID(ctx)
 	article, err := s.articleRepo.GetByID(ctx, id, userID)
 	if err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "bài viết không tồn tại"))
 		}
 		return dtos.Fail[*dtos.ArticleResponse](err)
@@ -142,7 +140,7 @@ func (s *articleService) Update(ctx context.Context, id int64, dto *dtos.UpdateA
 	userID, _ := s.currentUser.UserID(ctx)
 	article, err := s.articleRepo.GetByID(ctx, id, userID)
 	if err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "bài viết không tồn tại"))
 		}
 		return dtos.Fail[*dtos.ArticleResponse](err)
@@ -158,7 +156,7 @@ func (s *articleService) Update(ctx context.Context, id int64, dto *dtos.UpdateA
 	}
 	if dto.CategoryID != nil {
 		if _, err := s.categoryRepo.GetById(ctx, *dto.CategoryID, userID); err != nil {
-			if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			if stderrors.Is(err, domain.ErrNotFound) {
 				return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "danh mục không tồn tại"))
 			}
 			return dtos.Fail[*dtos.ArticleResponse](err)
@@ -179,7 +177,7 @@ func (s *articleService) Delete(ctx context.Context, id int64) dtos.Result[*dtos
 	userID, _ := s.currentUser.UserID(ctx)
 	article, err := s.articleRepo.GetByID(ctx, id, userID)
 	if err != nil {
-		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return dtos.Fail[*dtos.ArticleResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "bài viết không tồn tại"))
 		}
 		return dtos.Fail[*dtos.ArticleResponse](err)

@@ -119,6 +119,9 @@ func (f *fakeChunkRepo) ListUnembeddedByArticle(ctx context.Context, articleID i
 }
 
 func (f *fakeChunkRepo) MarkEmbedded(ctx context.Context, ids []int64) error { return nil }
+func (f *fakeChunkRepo) DeleteStaleChunks(ctx context.Context, before time.Time) (int64, error) {
+	return 0, nil
+}
 
 type fakeChunkStorage struct {
 	blobs map[string]string

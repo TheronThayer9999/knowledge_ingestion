@@ -38,13 +38,26 @@ func main() {
 		fx.Provide(services.NewArticleEmbedService),
 		// Thêm job mới = inject service ở tham số + append 1 dòng Schedule:
 		// {Name: "...", Interval: ..., Run: asJob(svc.Method)}.
-		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, chunk services.IArticleChunkService, embed services.IArticleEmbedService) {
+		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, chunk services.IArticleChunkService, embed services.IArticleEmbedService, opts services.PurgeOptions) {
 			NewRunner([]Schedule{
-				{Name: "purge-articles", Interval: services.PurgeGracePeriod, Run: asJob(purge.PurgeDeleted)},
+				{Name: "purge-articles", Interval: services.PurgeGracePeriod, Run: func(ctx context.Context) error {
+					_, err := purge.PurgeDeleted(ctx)
+					return err
+				}},
+				{Name: "trim-old-chunks", Interval: opts.TrimInterval, Run: func(ctx context.Context) error {
+					_, err := purge.TrimOldChunks(ctx)
+					return err
+				}},
 				// Timeout riêng vì bài 500 trang chunk/embed trong 1 phút mặc
 				// định không xong — cancel giữa chừng rồi làm lại là đói.
-				{Name: "chunk-articles", Interval: services.ChunkInterval, Timeout: 12 * time.Minute, Run: asJob(chunk.ChunkPending)},
-				{Name: "embed-articles", Interval: services.EmbedInterval, Timeout: 25 * time.Minute, Run: asJob(embed.EmbedPending)},
+				{Name: "chunk-articles", Interval: services.ChunkInterval, Timeout: 12 * time.Minute, Run: func(ctx context.Context) error {
+					_, err := chunk.ChunkPending(ctx)
+					return err
+				}},
+				{Name: "embed-articles", Interval: services.EmbedInterval, Timeout: 25 * time.Minute, Run: func(ctx context.Context) error {
+					_, err := embed.EmbedPending(ctx)
+					return err
+				}},
 			}).Attach(lc)
 		}),
 	)

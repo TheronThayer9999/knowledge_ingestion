@@ -15,23 +15,15 @@ const jobRunTimeout = time.Minute
 
 // Schedule khai báo 1 tác vụ nền: tên + nhịp chạy + hàm chạy + trần thời gian
 // mỗi lượt. Thêm job mới = append 1 dòng Schedule lúc dựng Runner trong
-// main.go, không cần interface hay struct adapter riêng. Timeout 0 thì dùng
-// jobRunTimeout — job nặng (chunk/embed file 500 trang) phải set riêng, nếu
-// không kỳ nào cũng bị cancel giữa chừng rồi làm lại từ đầu (đói vĩnh viễn).
+// main.go. Timeout 0 thì dùng jobRunTimeout — job nặng (chunk/embed file 500
+// trang) phải set riêng, nếu không kỳ nào cũng bị cancel giữa chừng rồi làm
+// lại từ đầu (đói vĩnh viễn). Run chỉ cần error vì số lượng đã nằm trong log
+// service, mỗi job khai closure tường minh 3 dòng thay vì adapter chung.
 type Schedule struct {
 	Name     string
 	Interval time.Duration
 	Timeout  time.Duration
 	Run      func(ctx context.Context) error
-}
-
-// asJob bọc method kiểu (int, error) — như PurgeDeleted trả số row đã dọn —
-// thành dạng Run của Schedule (chỉ cần error).
-func asJob(fn func(ctx context.Context) (int, error)) func(ctx context.Context) error {
-	return func(ctx context.Context) error {
-		_, err := fn(ctx)
-		return err
-	}
 }
 
 // Runner giữ danh sách schedule và gắn vòng chạy vào fx lifecycle — mỗi
@@ -77,14 +69,6 @@ func (r *Runner) loop(ctx context.Context, s Schedule) {
 	}
 }
 
-// jobTimeout lấy trần mỗi lượt chạy — job nào không set thì dùng mặc định.
-func jobTimeout(s Schedule) time.Duration {
-	if s.Timeout > 0 {
-		return s.Timeout
-	}
-	return jobRunTimeout
-}
-
 func (r *Runner) runOnce(ctx context.Context, s Schedule) {
 	// Runner (middleware) sinh trace_id 1 lần mỗi lượt chạy rồi nhét vào
 	// ctx — service tầng dưới chỉ đọc ra gắn log, không tự sinh. Cùng 1 id
@@ -94,7 +78,13 @@ func (r *Runner) runOnce(ctx context.Context, s Schedule) {
 		logs.Error(err, "worker: không sinh được trace_id, bỏ kỳ này", "job", s.Name)
 		return
 	}
-	runCtx, cancel := context.WithTimeout(ctx, jobTimeout(s))
+	// Timeout 0 thì dùng mặc định — job nặng phải set riêng, nếu không kỳ nào
+	// cũng bị cancel giữa chừng rồi làm lại từ đầu (đói vĩnh viễn).
+	timeout := s.Timeout
+	if timeout <= 0 {
+		timeout = jobRunTimeout
+	}
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	runCtx = utils.ContextWithTraceID(runCtx, traceID)
 	if err := s.Run(runCtx); err != nil {

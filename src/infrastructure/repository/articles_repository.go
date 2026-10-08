@@ -43,6 +43,9 @@ func (a *ArticleRepository) Delete(ctx context.Context, article *domain.Article)
 func (a *ArticleRepository) GetByID(ctx context.Context, id int64, userID int64) (*domain.Article, error) {
 	var article domain.Article
 	if err := dbConn(ctx, a.db).First(&article, "id = ? AND user_id = ?", id, userID).Error; err != nil {
+		if stderrors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return &article, nil
@@ -232,11 +235,13 @@ func (a *ArticleRepository) MarkChunkError(ctx context.Context, id int64, attemp
 	return a.markError(ctx, id, attempts, false)
 }
 
-// MarkEmbedDone đánh dấu embed xong 1 bài.
+// MarkEmbedDone đánh dấu embed xong 1 bài (kèm mốc embedded_at để audit) —
+// service gọi trong InTx cùng DeleteByArticleID để done + dọn chunk nguyên tử.
 func (a *ArticleRepository) MarkEmbedDone(ctx context.Context, id int64) error {
+	now := time.Now()
 	return dbConn(ctx, a.db).Model(&domain.Article{}).
 		Where("id = ?", id).
-		Updates(map[string]any{"embed_status": domain.QueueDone, "updated_at": time.Now()}).Error
+		Updates(map[string]any{"embed_status": domain.QueueDone, "embedded_at": now, "updated_at": now}).Error
 }
 
 // MarkEmbedError ghi lỗi embed 1 bài.

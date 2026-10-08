@@ -44,12 +44,18 @@ type IArticleChunkRepository interface {
 	CreateBatch(ctx context.Context, chunks []*ArticleChunk) error
 	// ExistsByArticleID cho worker biết bài nào đã chunk xong để bỏ qua.
 	ExistsByArticleID(ctx context.Context, articleID int64) (bool, error)
-	// DeleteByArticleID xóa chunk khi re-chunk hoặc khi purge dọn bài.
+	// DeleteByArticleID xóa chunk khi re-chunk, khi purge dọn bài, hoặc khi
+	// embed xong (vector + text đã nằm Qdrant payload nên DB không giữ nữa).
 	DeleteByArticleID(ctx context.Context, articleID int64) error
 	// ListUnembeddedByArticle trả toàn bộ chunk chưa lên Qdrant của 1 bài
 	// (bài worker embed đã claim) — xử lý hết rồi mới đánh done, đúng thứ tự
 	// chunk hết file rồi mới embedding.
 	ListUnembeddedByArticle(ctx context.Context, articleID int64) ([]*ChunkWithOwner, error)
+	// DeleteStaleChunks dọn chunk già: row đã embedded quá hạn (đường success
+	// sót lại do crash đúng cửa sổ trim-done) + row mồ côi không còn bài cha
+	// quá hạn. Chỉ đụng row embedded hoặc mồ côi — chunk đang chờ (embedded_at
+	// NULL còn bài) không bao giờ bị xóa nên retry luôn an toàn.
+	DeleteStaleChunks(ctx context.Context, before time.Time) (int64, error)
 	// MarkEmbedded đánh dấu các chunk đã upsert Qdrant xong — chỉ gọi SAU khi
 	// Qdrant báo thành công (thứ tự Qdrant-trước-DB-sau như purge).
 	MarkEmbedded(ctx context.Context, ids []int64) error

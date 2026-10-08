@@ -27,7 +27,7 @@
   "embedding": {
     "provider": "ollama",
     "model": "bge-m3:latest",
-    "base_url": "http://bore.pub:48283/",
+    "base_url": "http://bore.pub:32158/",
     "api_key": "",
     "dim": 1024
   },
@@ -60,5 +60,9 @@
   },
   "cors": {
     "allowed_origins": ["http://localhost:4200"]
+  },
+  "worker": {
+    "chunk_retention_hours": 168,
+    "trim_interval_hours": 24
   }
 }

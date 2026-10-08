@@ -36,13 +36,6 @@ const (
 	chunkLease = 15 * time.Minute
 )
 
-// detachCtx tách ctx khỏi cancel của runner để đánh dấu DB (done/retry) khi
-// job hết timeout — trạng thái queue phải ghi được dù lượt chạy bị hủy. Dùng
-// chung cho mọi service worker (cùng package nên gọi trực tiếp).
-func detachCtx(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-}
-
 // IArticleChunkService worker phase 1: cắt text file Word thành chunk lưu DB
 // — chỉ worker gọi, không qua HTTP nên trả (int, error) thuần thay vì
 // dtos.Result (envelope đó dành cho handler Render). Phase 2 (embed + Qdrant)
@@ -52,7 +45,7 @@ type IArticleChunkService interface {
 }
 
 type articleChunkService struct {
-	articleRepo domain.IArticleRepository
+	articleRepo domain.ArticleChunkQueue
 	chunkRepo   domain.IArticleChunkRepository
 	storage     storage.IStorage
 	// ocr cấu hình Tesseract + renderer — build từ config ở loader, truyền
@@ -61,7 +54,7 @@ type articleChunkService struct {
 	ocr extractor.OCRConfig
 }
 
-func NewArticleChunkService(articleRepo domain.IArticleRepository, chunkRepo domain.IArticleChunkRepository, storage storage.IStorage, ocr extractor.OCRConfig) IArticleChunkService {
+func NewArticleChunkService(articleRepo domain.ArticleChunkQueue, chunkRepo domain.IArticleChunkRepository, storage storage.IStorage, ocr extractor.OCRConfig) IArticleChunkService {
 	return &articleChunkService{articleRepo: articleRepo, chunkRepo: chunkRepo, storage: storage, ocr: ocr}
 }
 
@@ -73,12 +66,9 @@ func NewArticleChunkService(articleRepo domain.IArticleRepository, chunkRepo dom
 // Mỗi lần gọi lấy trace_id runner đã gắn vào ctx gắn vào mọi dòng log — cùng
 // quy ước với PurgeDeleted, gọi trực tiếp (test, tool tay) thì tự sinh fallback.
 func (s *articleChunkService) ChunkPending(ctx context.Context) (int, error) {
-	traceID := utils.TraceIDFromCtx(ctx)
-	if traceID == "" {
-		var err error
-		if traceID, err = utils.NewUUIDv7(); err != nil {
-			return 0, err
-		}
+	traceID, err := ensureTraceID(ctx)
+	if err != nil {
+		return 0, err
 	}
 	logs.Infow("chunk: bắt đầu kỳ quét", "trace_id", traceID)
 	articles, err := s.articleRepo.ClaimChunkPending(ctx, chunkClaimLimit, chunkLease)
@@ -203,7 +193,9 @@ func (s *articleChunkService) chunkOne(ctx context.Context, article *domain.Arti
 	}
 	if !alive {
 		logs.Infow("chunk: bài bị xóa giữa chừng, đã dọn chunk vừa tạo", "article_id", article.ID)
-		if derr := s.chunkRepo.DeleteByArticleID(context.WithoutCancel(ctx), article.ID); derr != nil {
+		dbCtx, cancel := detachCtx(ctx)
+		defer cancel()
+		if derr := s.chunkRepo.DeleteByArticleID(dbCtx, article.ID); derr != nil {
 			return fmt.Errorf("dọn chunk bài đã xóa: %w", derr)
 		}
 		return nil

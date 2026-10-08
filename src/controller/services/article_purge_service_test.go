@@ -142,6 +142,10 @@ func (f *fakePurgeChunkRepo) ListUnembeddedByArticle(ctx context.Context, articl
 	return nil, nil
 }
 func (f *fakePurgeChunkRepo) MarkEmbedded(ctx context.Context, ids []int64) error { return nil }
+func (f *fakePurgeChunkRepo) DeleteStaleChunks(ctx context.Context, before time.Time) (int64, error) {
+	f.log.add("trim-old")
+	return int64(len(f.deletes)), nil
+}
 
 // fakeVectors ghi thứ tự xóa vector Qdrant.
 type fakeVectors struct {
@@ -159,9 +163,13 @@ func (f *fakeVectors) DeleteByArticle(ctx context.Context, articleID int64) erro
 	f.deletes = append(f.deletes, articleID)
 	return f.deleteErr
 }
+func (f *fakeVectors) CountByArticle(ctx context.Context, articleID int64) (int64, error) {
+	return 0, nil
+}
+func (f *fakeVectors) IsPermanentError(err error) bool { return false }
 
 func newPurgeTest(log *orderLog, repo *fakeArticleRepo, chunks *fakePurgeChunkRepo, vectors *fakeVectors, store *fakeStorage) IArticlePurgeService {
-	return NewArticlePurgeService(repo, chunks, vectors, store)
+	return NewArticlePurgeService(repo, chunks, vectors, store, PurgeOptions{ChunkRetention: time.Hour, TrimInterval: time.Hour})
 }
 
 func equalCalls(t *testing.T, got, want []string) {
@@ -287,5 +295,27 @@ func TestPurgeDeleted_ListError(t *testing.T) {
 	}
 	if len(store.deletes) != 0 || len(repo.hardDeletes) != 0 {
 		t.Fatalf("quét lỗi mà vẫn đụng S3/DB")
+	}
+}
+
+// TrimOldChunks gọi repo đúng 1 lần, trả số row dọn được — không đụng S3,
+// vector hay article row.
+func TestTrimOldChunks_DelegatesToRepo(t *testing.T) {
+	log := &orderLog{}
+	repo := &fakeArticleRepo{log: log}
+	store := &fakeStorage{log: log}
+	chunks := &fakePurgeChunkRepo{log: log, deletes: []int64{1, 2}}
+	svc := newPurgeTest(log, repo, chunks, &fakeVectors{log: log}, store)
+
+	n, err := svc.TrimOldChunks(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("trimmed = %d, want 2", n)
+	}
+	equalCalls(t, log.calls, []string{"trim-old"})
+	if len(store.deletes) != 0 || len(repo.hardDeletes) != 0 {
+		t.Fatalf("trim chunk mà vẫn đụng S3/row")
 	}
 }

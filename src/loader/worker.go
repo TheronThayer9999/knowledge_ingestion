@@ -6,6 +6,8 @@ import (
 	"knowledge_ingestion/src/common/extractor"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
+	"knowledge_ingestion/src/controller/services"
+	"knowledge_ingestion/src/domain"
 	"knowledge_ingestion/src/infrastructure/embedding"
 	"knowledge_ingestion/src/infrastructure/postgres"
 	"knowledge_ingestion/src/infrastructure/qdrant"
@@ -30,6 +32,21 @@ func LoadWorkerInfra() []fx.Option {
 		fx.Provide(qdrant.NewConnection),
 		fx.Provide(repository.NewArticleRepository),
 		fx.Provide(repository.NewArticleChunkRepository),
+		fx.Provide(repository.NewUnitOfWork),
+		// PurgeOptions cho janitor dọn chunk già — map từ config worker để đổi
+		// config + restart là ăn ngay.
+		fx.Provide(func(cfg config.IConfig) services.PurgeOptions {
+			w := cfg.GetWorker()
+			return services.PurgeOptions{
+				ChunkRetention: time.Duration(w.ChunkRetentionHours) * time.Hour,
+				TrimInterval:   time.Duration(w.TrimIntervalHours) * time.Hour,
+			}
+		}),
+		// Role interface hẹp cho worker — cùng 1 instance ArticleRepository,
+		// fx match theo type tường minh nên bind 1 dòng mỗi vai.
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleChunkQueue { return r }),
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleEmbedQueue { return r }),
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleJanitor { return r }),
 		// OCR cho worker chunk — map từ config sang struct của extractor để
 		// extractor không phụ thuộc config (sau này tách OCR thành API riêng
 		// cũng dùng struct này làm contract).

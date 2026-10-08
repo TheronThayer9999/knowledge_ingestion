@@ -78,12 +78,12 @@ func TestEnsureCollection_CreatesWhenMissing(t *testing.T) {
 				t.Fatalf("body tạo collection sai: %v", r.body)
 			}
 		}
-		if r.method == http.MethodPost && strings.HasSuffix(r.path, "/index") {
+		if r.method == http.MethodPut && strings.HasSuffix(r.path, "/index") {
 			index = true
 		}
 	}
 	if !put || !index {
-		t.Fatalf("thiếu PUT create hoặc POST index: %+v", recs)
+		t.Fatalf("thiếu PUT create hoặc PUT index: %+v", recs)
 	}
 }
 
@@ -177,7 +177,43 @@ func TestUpsertPoints_EmptyNoop(t *testing.T) {
 	}
 }
 
-// Xóa theo filter article_id.
+// Count đúng shape: filter article_id + decode result.count.
+func TestCountByArticle_Shape(t *testing.T) {
+	var recs []recordedReq
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if r.Body != nil {
+			data, _ := io.ReadAll(r.Body)
+			if len(data) > 0 {
+				_ = json.Unmarshal(data, &body)
+			}
+		}
+		recs = append(recs, recordedReq{
+			method: r.Method, path: r.URL.RequestURI(),
+			apiKey: r.Header.Get("api-key"), body: body,
+		})
+		_, _ = w.Write([]byte(`{"result":{"count":7},"status":"ok"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient(srv.URL, "", 4)
+	n, err := c.CountByArticle(context.Background(), 5)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if n != 7 {
+		t.Fatalf("count = %d, want 7", n)
+	}
+	if len(recs) != 1 || recs[0].method != http.MethodPost || !strings.Contains(recs[0].path, "/points/count") {
+		t.Fatalf("request sai: %+v", recs)
+	}
+	filter, _ := recs[0].body["filter"].(map[string]any)
+	must, _ := filter["must"].([]any)
+	cond, _ := must[0].(map[string]any)
+	if cond["key"] != "article_id" {
+		t.Fatalf("filter sai key: %v", cond)
+	}
+}
 func TestDeleteByArticle_Filter(t *testing.T) {
 	var recs []recordedReq
 	srv := newTestServer(t, true, 4, &recs)

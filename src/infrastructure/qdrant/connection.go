@@ -106,7 +106,7 @@ func (c *connection) ensureCollection(ctx context.Context) error {
 	// Index payload best-effort — có rồi (409) hay lỗi cũng không chặn boot,
 	// chỉ khiến xóa theo bài chậm hơn.
 	indexBody := map[string]any{"field_name": "article_id", "field_schema": "integer"}
-	if err := c.doJSON(ctx, http.MethodPost, "/collections/"+CollectionName+"/index", indexBody, nil); err != nil {
+	if err := c.doJSON(ctx, http.MethodPut, "/collections/"+CollectionName+"/index", indexBody, nil); err != nil {
 		logs.Warnw("qdrant: tạo payload index thất bại (bỏ qua)", "error", err)
 	}
 	return nil
@@ -120,7 +120,7 @@ func (c *connection) UpsertPoints(ctx context.Context, points []domain.VectorPoi
 	body := map[string]any{"points": make([]upsertPoint, 0, len(points))}
 	for _, p := range points {
 		if len(p.Vector) != c.dim {
-			return fmt.Errorf("qdrant: point %s có dim %d, collection expects %d", p.ID, len(p.Vector), c.dim)
+			return fmt.Errorf("%w: point %s có dim %d, collection expects %d", ErrBadRequest, p.ID, len(p.Vector), c.dim)
 		}
 		body["points"] = append(body["points"].([]upsertPoint), upsertPoint{
 			ID:     p.ID,
@@ -157,6 +157,28 @@ func (c *connection) DeleteByArticle(ctx context.Context, articleID int64) error
 	return nil
 }
 
+// CountByArticle đếm point của 1 bài — worker embed guard nhánh done-rỗng.
+func (c *connection) CountByArticle(ctx context.Context, articleID int64) (int64, error) {
+	body := map[string]any{
+		"filter": map[string]any{
+			"must": []any{
+				map[string]any{"key": "article_id", "match": map[string]any{"value": articleID}},
+			},
+		},
+	}
+	var out struct {
+		Result struct {
+			Count int64 `json:"count"`
+		} `json:"result"`
+	}
+	if err := c.doJSON(ctx, http.MethodPost, "/collections/"+CollectionName+"/points/count", body, &out); err != nil {
+		return 0, fmt.Errorf("qdrant: count points của article %d: %w", articleID, err)
+	}
+	return out.Result.Count, nil
+}
+
+func (c *connection) IsPermanentError(err error) bool { return IsPermanent(err) }
+
 // statusError giữ HTTP status để caller phân biệt 404 (chưa có collection)
 // với lỗi thật.
 type statusError struct {
@@ -165,6 +187,26 @@ type statusError struct {
 }
 
 func (e *statusError) Error() string { return e.msg }
+
+// ErrBadRequest báo request sai từ phía client (sai dim) — retry vô ích.
+var ErrBadRequest = errors.New("qdrant: bad request")
+
+// IsPermanent báo lỗi Qdrant có retry cũng vậy không: 4xx là request sai
+// (sai dim, collection/field không khớp) — trừ 408 timeout và 429 nghẽn thì
+// vẫn transient. Service gặp lỗi này thì failed luôn thay vì backoff 10 lần.
+func IsPermanent(err error) bool {
+	if errors.Is(err, ErrBadRequest) {
+		return true
+	}
+	var se *statusError
+	if !errors.As(err, &se) {
+		return false
+	}
+	if se.status == http.StatusRequestTimeout || se.status == http.StatusTooManyRequests {
+		return false
+	}
+	return se.status >= 400 && se.status < 500
+}
 
 func isNotFound(err error) bool {
 	var se *statusError

@@ -9,6 +9,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// staleTrimBatch trần row dọn mỗi kỳ — janitor làm theo đợt bounded như
+// purgeBatchSize để 1 kỳ không ôm transaction quá to.
+const staleTrimBatch = 100
+
 type ArticleChunkRepository struct {
 	db *gorm.DB
 }
@@ -59,10 +63,12 @@ func (r *ArticleChunkRepository) ExistsByArticleID(ctx context.Context, articleI
 	return count > 0, nil
 }
 
-// DeleteByArticleID xóa toàn bộ chunk của 1 bài — worker re-chunk hoặc
-// purge dọn bài gọi. Xóa bài không có chunk cũng không báo lỗi.
+// DeleteByArticleID xóa HẲN toàn bộ chunk của 1 bài (Unscoped) — worker
+// re-chunk, embed chốt done, hoặc purge dọn bài gọi. Chunk không có giá trị
+// audit sau khi vector đã lên Qdrant nên không giữ rác mềm; xóa bài không có
+// chunk cũng không báo lỗi.
 func (r *ArticleChunkRepository) DeleteByArticleID(ctx context.Context, articleID int64) error {
-	return dbConn(ctx, r.db).Where("article_id = ?", articleID).Delete(&domain.ArticleChunk{}).Error
+	return dbConn(ctx, r.db).Unscoped().Where("article_id = ?", articleID).Delete(&domain.ArticleChunk{}).Error
 }
 
 // unembeddedRow hứng kết quả join chunk + owner — gorm embedded map toàn bộ
@@ -96,6 +102,46 @@ func (r *ArticleChunkRepository) ListUnembeddedByArticle(ctx context.Context, ar
 		})
 	}
 	return out, nil
+}
+
+// DeleteStaleChunks dọn chunk già trong 1 transaction: row đã embedded quá
+// hạn + row mồ côi (không còn bài cha, kể cả bài đã xóa mềm) quá hạn, mỗi
+// loại tối đa staleTrimBatch row/kỳ. Trả số row đã xóa. Row đang chờ
+// (embedded_at NULL còn bài) không bao giờ bị đụng.
+func (r *ArticleChunkRepository) DeleteStaleChunks(ctx context.Context, before time.Time) (int64, error) {
+	var total int64
+	err := dbConn(ctx, r.db).Transaction(func(tx *gorm.DB) error {
+		tx = tx.WithContext(ctx)
+		// 2 bước select-id rồi delete theo id (thay vì DELETE LIMIT trực
+		// tiếp) để chạy chắc trên mọi Postgres — GORM không phải bản nào
+		// cũng dịch Limit trong Delete đúng.
+		var ids []int64
+		// Unscoped ở cả 2 SELECT để nhìn thấy row đã xóa mềm (đường done và
+		// purge soft-delete trước khi hard-delete) — không thì rác mềm tích
+		// mãi vì scope mặc định loại chúng ra.
+		if err := tx.Unscoped().Model(&domain.ArticleChunk{}).
+			Where("embedded_at IS NOT NULL AND embedded_at < ?", before).
+			Order("id ASC").Limit(staleTrimBatch).Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		var orphans []int64
+		if err := tx.Unscoped().Model(&domain.ArticleChunk{}).
+			Where("embedded_at IS NULL AND created_at < ? AND article_id NOT IN (SELECT id FROM articles)", before).
+			Order("id ASC").Limit(staleTrimBatch).Pluck("id", &orphans).Error; err != nil {
+			return err
+		}
+		ids = append(ids, orphans...)
+		if len(ids) == 0 {
+			return nil
+		}
+		res := tx.Unscoped().Where("id IN ?", ids).Delete(&domain.ArticleChunk{})
+		if res.Error != nil {
+			return res.Error
+		}
+		total = res.RowsAffected
+		return nil
+	})
+	return total, err
 }
 
 // MarkEmbedded đánh dấu chunk đã lên Qdrant — chỉ gọi sau Upsert thành công.

@@ -88,29 +88,17 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 
 	items := make([]dtos.PresignUploadsItem, 0, len(prep))
 	for _, p := range prep {
-		url, err := s.storage.PresignedURL(ctx, p.key, p.mime, constants.PRESIGN_EXPIRY)
+		item, err := s.signOne(ctx, p.filename, p.key, p.mime)
 		if err != nil {
 			return dtos.Fail[*dtos.PresignUploadsResponse](err)
 		}
-		items = append(items, dtos.PresignUploadsItem{
-			Filename:    p.filename,
-			UploadURL:   url,
-			Key:         p.key,
-			Method:      http.MethodPut,
-			ContentType: p.mime,
-			ExpiresAt:   time.Now().Add(constants.PRESIGN_EXPIRY),
-		})
+		items = append(items, *item)
 	}
 	return dtos.Ok(&dtos.PresignUploadsResponse{Items: items})
 }
 
-// presign chốt MIME từ tên + head sniff được (đuôi + magic bytes phải khớp),
-// chặn file vượt MAX_FILE_SIZE, sinh key rồi ký 1 URL, dùng chung cho PresignUpload.
-func (s *fileService) presign(ctx context.Context, filename string, head []byte, size int64) (*dtos.PresignUploadsItem, error) {
-	key, mime, err := resolveUploadContent(filename, head, size)
-	if err != nil {
-		return nil, err
-	}
+// signOne ký 1 URL PUT cho key đã verify — dùng chung cho ký đơn và ký nhiều.
+func (s *fileService) signOne(ctx context.Context, filename, key, mime string) (*dtos.PresignUploadsItem, error) {
 	url, err := s.storage.PresignedURL(ctx, key, mime, constants.PRESIGN_EXPIRY)
 	if err != nil {
 		return nil, err
@@ -123,6 +111,16 @@ func (s *fileService) presign(ctx context.Context, filename string, head []byte,
 		ContentType: mime,
 		ExpiresAt:   time.Now().Add(constants.PRESIGN_EXPIRY),
 	}, nil
+}
+
+// presign chốt MIME từ tên + head sniff được (đuôi + magic bytes phải khớp),
+// chặn file vượt MAX_FILE_SIZE, sinh key rồi ký 1 URL, dùng chung cho PresignUpload.
+func (s *fileService) presign(ctx context.Context, filename string, head []byte, size int64) (*dtos.PresignUploadsItem, error) {
+	key, mime, err := resolveUploadContent(filename, head, size)
+	if err != nil {
+		return nil, err
+	}
+	return s.signOne(ctx, filename, key, mime)
 }
 
 // sniffAllow là các MIME nội dung chấp nhận được cho từng đuôi file, vì
@@ -142,8 +140,9 @@ var sniffAllow = map[string][]string{
 // resolveUploadContent validate filename rồi đối chiếu loại nội dung sniff từ
 // bytes thật với MIME của đuôi file — .exe đổi tên .pdf bị chặn ở đây vì
 // sniff ra application/octet-stream. size là tổng dung lượng handler đo trên
-// stream — vượt MAX_FILE_SIZE thì 400 ngay, chưa tới bước ký URL.
-// Trả key + MIME đã verify để ký.
+// stream — vượt MAX_FILE_SIZE thì 400 ngay, chưa tới bước ký URL. Client không
+// gửi/không được gửi content_type — MIME do BE tự suy từ whitelist
+// allowedExts. Trả key + MIME đã verify để ký.
 func resolveUploadContent(filename string, head []byte, size int64) (key string, mime string, err error) {
 	if size <= 0 {
 		return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "file rỗng")
@@ -154,24 +153,6 @@ func resolveUploadContent(filename string, head []byte, size int64) (key string,
 	if len(head) == 0 {
 		return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "file rỗng")
 	}
-	key, mime, err = resolveUpload(filename)
-	if err != nil {
-		return "", "", err
-	}
-	sniffed := utils.SniffContentType(head)
-	if sniffed == mime {
-		return key, mime, nil
-	}
-	if slices.Contains(sniffAllow[utils.FileExt(key)], sniffed) {
-		return key, mime, nil
-	}
-	return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "nội dung file không khớp loại file: "+sniffed)
-}
-
-// resolveUpload validate filename của client rồi trả key + MIME do BE tự suy ra
-// từ whitelist allowedExts. Client không gửi/không được gửi content_type — loại
-// file bị chặn ngay từ đây nếu không có trong whitelist.
-func resolveUpload(filename string) (key string, mime string, err error) {
 	key, err = buildUploadKey(filename)
 	if err != nil {
 		return "", "", err
@@ -185,7 +166,15 @@ func resolveUpload(filename string) (key string, mime string, err error) {
 		}
 		return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "loại file không được hỗ trợ: "+label)
 	}
-	return key, m, nil
+	mime = m
+	sniffed := utils.SniffContentType(head)
+	if sniffed == mime {
+		return key, mime, nil
+	}
+	if slices.Contains(sniffAllow[utils.FileExt(key)], sniffed) {
+		return key, mime, nil
+	}
+	return "", "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "nội dung file không khớp loại file: "+sniffed)
 }
 
 // buildUploadKey biến filename của client thành key an toàn: bỏ mọi đường dẫn,

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "postgres": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://theron_user:theron_db_pass@127.0.0.1:5432/manager_db"
+      ],
+      "enabled": true
+    },
+    "qdrant": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "--python",
+        "3.12",
+        "mcp-server-qdrant"
+      ],
+      "environment": {
+        "QDRANT_URL": "http://127.0.0.1:6333",
+        "QDRANT_API_KEY": "theron_qdrant_token",
+        "COLLECTION_NAME": "article_chunks",
+        "QDRANT_READ_ONLY": "true",
+        "QDRANT_SEARCH_LIMIT": "10"
+      },
+      "enabled": true,
+      "timeout": 120000
+    }
+  }
+}

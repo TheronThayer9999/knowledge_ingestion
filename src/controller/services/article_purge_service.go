@@ -4,7 +4,6 @@ import (
 	"context"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/storage"
-	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
 	"time"
 )
@@ -20,23 +19,38 @@ const (
 	purgeBatchSize = 100
 )
 
+// PurgeOptions nhịp janitor dọn chunk già — loader map từ config worker nên
+// đổi config + restart là ăn ngay, không build lại. Test truyền tay struct này.
+type PurgeOptions struct {
+	// ChunkRetention tuổi tối đa chunk già (embedded sót + mồ côi) trước khi
+	// dọn — row đang chờ retry không bao giờ bị đụng.
+	ChunkRetention time.Duration
+	// TrimInterval nhịp job quét dọn — rẻ (1 câu DELETE có index) nên hàng
+	// ngày là đủ.
+	TrimInterval time.Duration
+}
+
 // IArticlePurgeService janitor dọn bài đã xóa mềm — chỉ worker gọi, không
 // qua HTTP nên trả (int, error) thuần thay vì dtos.Result (envelope đó dành
 // cho handler Render). Mỗi kỳ quét: ListSoftDeleted → từng row xóa blob, xóa
 // vector Qdrant, xóa chunk rows rồi xóa hẳn article row.
 type IArticlePurgeService interface {
 	PurgeDeleted(ctx context.Context) (int, error)
+	// TrimOldChunks dọn chunk già (embedded quá hạn + mồ côi quá hạn), trả số
+	// row đã xóa — janitor chạy hàng ngày, độc lập với purge bài xóa mềm.
+	TrimOldChunks(ctx context.Context) (int64, error)
 }
 
 type articlePurgeService struct {
-	articleRepo domain.IArticleRepository
+	articleRepo domain.ArticleJanitor
 	chunkRepo   domain.IArticleChunkRepository
 	vectors     domain.IVectorStore
 	storage     storage.IStorage
+	retention   time.Duration
 }
 
-func NewArticlePurgeService(articleRepo domain.IArticleRepository, chunkRepo domain.IArticleChunkRepository, vectors domain.IVectorStore, storage storage.IStorage) IArticlePurgeService {
-	return &articlePurgeService{articleRepo: articleRepo, chunkRepo: chunkRepo, vectors: vectors, storage: storage}
+func NewArticlePurgeService(articleRepo domain.ArticleJanitor, chunkRepo domain.IArticleChunkRepository, vectors domain.IVectorStore, storage storage.IStorage, opts PurgeOptions) IArticlePurgeService {
+	return &articlePurgeService{articleRepo: articleRepo, chunkRepo: chunkRepo, vectors: vectors, storage: storage, retention: opts.ChunkRetention}
 }
 
 // PurgeDeleted dọn 1 đợt bài quá grace period, trả số row đã xóa hẳn.
@@ -68,22 +82,23 @@ func NewArticlePurgeService(articleRepo domain.IArticleRepository, chunkRepo dom
 // chạy. Gọi trực tiếp không qua runner (test, tool tay) thì ctx trống, lúc
 // đó tự sinh fallback để log vẫn lần được.
 func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
-	traceID := utils.TraceIDFromCtx(ctx)
-	if traceID == "" {
-		var err error
-		if traceID, err = utils.NewUUIDv7(); err != nil {
-			return 0, err
-		}
+	traceID, err := ensureTraceID(ctx)
+	if err != nil {
+		return 0, err
 	}
+	// Dọn bằng detached ctx để xóa xong dù job hết timeout — thứ tự blob →
+	// vector → chunk → row vẫn hội tụ khi chạy lại vì mọi bước idempotent.
+	dbCtx, cancel := detachCtx(ctx)
+	defer cancel()
 	logs.Infow("purge: bắt đầu kỳ quét", "trace_id", traceID)
-	articles, err := s.articleRepo.ListSoftDeleted(ctx, time.Now().Add(-PurgeGracePeriod), purgeBatchSize)
+	articles, err := s.articleRepo.ListSoftDeleted(dbCtx, time.Now().Add(-PurgeGracePeriod), purgeBatchSize)
 	if err != nil {
 		return 0, err
 	}
 	purged := 0
 	for _, article := range articles {
 		if article.StorageKey != "" {
-			if err := s.storage.Delete(ctx, article.StorageKey); err != nil {
+			if err := s.storage.Delete(dbCtx, article.StorageKey); err != nil {
 				logs.Warnw("purge: xóa blob thất bại, để kỳ sau thử lại",
 					"trace_id", traceID,
 					"article_id", article.ID, "storage_key", article.StorageKey, "error", err)
@@ -95,19 +110,19 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 		// crash giữa chừng chạy lại chỉ ghi đè/bỏ qua, không mất dấu vết.
 		// Chunk rows xóa trước article row để không còn chunk mồ côi trỏ tới
 		// bài đã mất; bài nào lỗi ở bước nào cũng để kỳ sau thử lại từ đầu.
-		if err := s.vectors.DeleteByArticle(ctx, article.ID); err != nil {
+		if err := s.vectors.DeleteByArticle(dbCtx, article.ID); err != nil {
 			logs.Warnw("purge: xóa vector thất bại, để kỳ sau thử lại",
 				"trace_id", traceID,
 				"article_id", article.ID, "error", err)
 			continue
 		}
-		if err := s.chunkRepo.DeleteByArticleID(ctx, article.ID); err != nil {
+		if err := s.chunkRepo.DeleteByArticleID(dbCtx, article.ID); err != nil {
 			logs.Warnw("purge: xóa chunk thất bại, để kỳ sau thử lại",
 				"trace_id", traceID,
 				"article_id", article.ID, "error", err)
 			continue
 		}
-		if err := s.articleRepo.HardDelete(ctx, article.ID); err != nil {
+		if err := s.articleRepo.HardDelete(dbCtx, article.ID); err != nil {
 			logs.Warnw("purge: xóa hẳn row thất bại, để kỳ sau thử lại",
 				"trace_id", traceID,
 				"article_id", article.ID, "error", err)
@@ -117,4 +132,20 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 	}
 	logs.Infow("purge: xong 1 kỳ quét", "trace_id", traceID, "found", len(articles), "purged", purged)
 	return purged, nil
+}
+
+// TrimOldChunks dọn chunk già quá retention: row đã embedded sót lại + row
+// mồ côi. Row đang chờ retry không bị đụng nên chạy lúc nào cũng an toàn;
+// DELETE có index nên kỳ không có gì dọn chỉ tốn 1 câu rẻ.
+func (s *articlePurgeService) TrimOldChunks(ctx context.Context) (int64, error) {
+	traceID, err := ensureTraceID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	n, err := s.chunkRepo.DeleteStaleChunks(ctx, time.Now().Add(-s.retention))
+	if err != nil {
+		return 0, err
+	}
+	logs.Infow("purge: dọn chunk già xong", "trace_id", traceID, "trimmed", n)
+	return n, nil
 }

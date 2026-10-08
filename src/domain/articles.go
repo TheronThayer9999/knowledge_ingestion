@@ -31,6 +31,9 @@ type Article struct {
 	EmbedStatus      string    `json:"-" gorm:"not null;default:'pending'"`
 	EmbedAttempts    int       `json:"-" gorm:"not null;default:0"`
 	EmbedNextRetryAt time.Time `json:"-" gorm:"not null;default:now()"`
+	// EmbeddedAt mốc giờ embed xong (nil khi chưa xong) — audit/tracing, set
+	// cùng transaction với done + trim chunk nên không lệch trạng thái.
+	EmbeddedAt *time.Time `json:"-" gorm:"index"`
 }
 
 // Trạng thái queue dùng chung cho chunk/embed — pending: chờ làm;
@@ -121,5 +124,32 @@ type IArticleRepository interface {
 	MarkEmbedError(ctx context.Context, id int64, attempts int) error
 
 	// HardDelete xóa hẳn 1 row đã xóa mềm — chỉ worker janitor gọi.
+	HardDelete(ctx context.Context, id int64) error
+}
+
+// Role interface cho worker — mỗi service chỉ phụ thuộc đúng phương thức nó
+// gọi (ISP) thay vì ôm cả IArticleRepository ~20 method. Struct
+// ArticleRepository implement tất cả nên loader/test không đổi gì ngoài kiểu
+// tham số constructor.
+
+// ArticleChunkQueue vai queue phase 1 của worker chunk.
+type ArticleChunkQueue interface {
+	ClaimChunkPending(ctx context.Context, limit int, lease time.Duration) ([]*Article, error)
+	MarkChunkDone(ctx context.Context, id int64) error
+	MarkChunkError(ctx context.Context, id int64, attempts int) error
+	IsAlive(ctx context.Context, id int64) (bool, error)
+}
+
+// ArticleEmbedQueue vai queue phase 2 của worker embed.
+type ArticleEmbedQueue interface {
+	ClaimEmbedPending(ctx context.Context, limit int, lease time.Duration) ([]*Article, error)
+	MarkEmbedDone(ctx context.Context, id int64) error
+	MarkEmbedError(ctx context.Context, id int64, attempts int) error
+	IsAlive(ctx context.Context, id int64) (bool, error)
+}
+
+// ArticleJanitor vai dọn dẹp của worker purge.
+type ArticleJanitor interface {
+	ListSoftDeleted(ctx context.Context, before time.Time, limit int) ([]*Article, error)
 	HardDelete(ctx context.Context, id int64) error
 }
