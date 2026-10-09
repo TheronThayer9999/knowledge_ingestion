@@ -1,5 +1,10 @@
 # AGENTS.md
 
+## Memory & MCP
+
+- 3 MCP project (`.opencode/opencode.json`): `postgres` (read-only — ghi DB qua `docker exec -i theron_postgres psql -U theron_user -d manager_db`), `qdrant` (read-only, collection `article_chunks`), `codegraph` (tra cứu symbol/call-path — sửa code xong chạy `codegraph sync`)
+- Đầu việc chạy `/recall <từ khóa>` (quên thì đọc dòng này) — agentmemory giữ quyết định/bug/convention các session trước; xong việc đáng nhớ thì `/remember <nội dung>`
+
 ## Commands
 
 - Verify: `go build ./...` && `go vet ./...` && `golangci-lint run ./...` (default linters, CỐ Ý không có `.golangci.yml` — đừng tạo lại); tests: `go test ./...` (`seaweedfs`, `postgres`, `apis`); CI: `.github/workflows/ci.yml` chạy lint job (golangci-lint-action@v9) + build/test job song song trên push/PR
@@ -35,4 +40,4 @@
 
 - `gofmt -l` flags pre-existing files (`config.go`, `qdrant/connection.go`) only for CRLF line endings (content is formatted) — don't mass-convert line endings
 - `configs/config.json` points at Docker-network hosts (`postgres`, `seaweedfs-s3`) — hosts only resolve inside Docker, and since the fx.Invoke above the app now **fails at startup** if DB is down (run Docker, or switch host to `127.0.0.1` locally); the postgres test falls back to `127.0.0.1` since containers publish 5432; dev port is 9001 because Docker Desktop occupies 8080/18080 on this machine
-- `.gitignore` chỉ có `.idea` và `*.exe` — đã cover built binaries (`ki.exe`), đừng commit file build thủ công khác
+- `.gitignore` cover `.idea`, `*.exe` (built binaries như `ki.exe`), `data/`, `.vscode/`, `.codegraph/` (index máy-local, regen bằng `codegraph sync`) — đừng commit file build thủ công khác
