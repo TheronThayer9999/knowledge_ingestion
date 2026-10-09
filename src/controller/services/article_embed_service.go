@@ -80,16 +80,17 @@ func (s *articleEmbedService) EmbedPending(ctx context.Context) (int, error) {
 // embedClaimed embed hết chunk chưa xong của 1 bài đã claim. Bài không còn
 // chunk dở (mark rồi nhưng crash trước khi done) thì đánh done luôn.
 func (s *articleEmbedService) embedClaimed(ctx context.Context, traceID string, article *domain.Article, embedded *atomic.Int64) {
-	dbCtx, cancel := detachCtx(ctx)
-	defer cancel()
+	// KHÔNG tạo dbCtx dùng chung ở đây: 1 bài 500 trang embed hàng phút,
+	// ctx 30s tạo sớm chết trước khi tới lượt ghi DB (đánh dấu embedded/done
+	// toàn rớt deadline). Mỗi điểm ghi DB tự detach ctx tươi riêng.
 	items, err := s.chunkRepo.ListUnembeddedByArticle(ctx, article.ID)
 	if err != nil {
-		s.markEmbedError(ctx, dbCtx, traceID, article, fmt.Errorf("quét chunk dở: %w", err))
+		s.markEmbedError(ctx, traceID, article, fmt.Errorf("quét chunk dở: %w", err))
 		return
 	}
 	// Check sống TRƯỚC nhánh rỗng: bài chết mà chunk đã sạch (purge dọn hoặc
 	// chưa từng có) thì phải cleanup + bỏ qua, không đánh done bừa.
-	if !s.ensureAlive(ctx, dbCtx, traceID, article) {
+	if !s.ensureAlive(ctx, traceID, article) {
 		return
 	}
 	if len(items) == 0 {
@@ -99,14 +100,14 @@ func (s *articleEmbedService) embedClaimed(ctx context.Context, traceID string, 
 		// vì done âm thầm với search trống.
 		n, err := s.vectors.CountByArticle(ctx, article.ID)
 		if err != nil {
-			s.markEmbedError(ctx, dbCtx, traceID, article, fmt.Errorf("đếm vector: %w", err))
+			s.markEmbedError(ctx, traceID, article, fmt.Errorf("đếm vector: %w", err))
 			return
 		}
 		if n == 0 {
-			s.markEmbedError(ctx, dbCtx, traceID, article, fmt.Errorf("không còn chunk dở mà Qdrant cũng 0 point"))
+			s.markEmbedError(ctx, traceID, article, fmt.Errorf("không còn chunk dở mà Qdrant cũng 0 point"))
 			return
 		}
-		if err := s.finishEmbed(dbCtx, article); err != nil {
+		if err := s.finishEmbed(ctx, article); err != nil {
 			logs.Error(err, "embed: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID)
 		}
 		return
@@ -116,17 +117,17 @@ func (s *articleEmbedService) embedClaimed(ctx context.Context, traceID string, 
 		// vector + chunk đã làm để không còn orphan mà purge không thấy.
 		// Check mỗi batch vì 1 bài 500 trang chạy hàng phút — check 1 SELECT
 		// rẻ hơn nhiều so với gọi ollama thừa.
-		if !s.ensureAlive(ctx, dbCtx, traceID, article) {
+		if !s.ensureAlive(ctx, traceID, article) {
 			return
 		}
-		n, err := s.embedBatch(ctx, dbCtx, batch)
+		n, err := s.embedBatch(ctx, traceID, batch)
 		embedded.Add(int64(n))
 		if err != nil {
-			s.markEmbedError(ctx, dbCtx, traceID, article, err)
+			s.markEmbedError(ctx, traceID, article, err)
 			return
 		}
 	}
-	if err := s.finishEmbed(dbCtx, article); err != nil {
+	if err := s.finishEmbed(ctx, article); err != nil {
 		logs.Error(err, "embed: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID)
 		return
 	}
@@ -137,7 +138,11 @@ func (s *articleEmbedService) embedClaimed(ctx context.Context, traceID string, 
 // transaction qua IUnitOfWork (dbConn của 2 repo cùng nhặt tx từ ctx) — crash
 // giữa chừng rollback sạch, kỳ sau làm lại từ đầu mà không nửa vời. Vector +
 // text đã nằm Qdrant payload nên DB không cần giữ chunk nữa.
-func (s *articleEmbedService) finishEmbed(dbCtx context.Context, article *domain.Article) error {
+func (s *articleEmbedService) finishEmbed(ctx context.Context, article *domain.Article) error {
+	// Detach tươi tại điểm ghi: hàm này chạy sau hàng phút gọi Ollama, ctx
+	// tạo sớm hơn đã chết từ lâu.
+	dbCtx, cancel := detachCtx(ctx)
+	defer cancel()
 	return s.uow.InTx(dbCtx, func(txCtx context.Context) error {
 		if err := s.chunkRepo.DeleteByArticleID(txCtx, article.ID); err != nil {
 			return fmt.Errorf("dọn chunk: %w", err)
@@ -152,22 +157,24 @@ func (s *articleEmbedService) finishEmbed(dbCtx context.Context, article *domain
 // ensureAlive kiểm tra bài còn sống trước khi tốn tiền Ollama: bài chết thì
 // dọn vector + chunk rồi trả false để caller dừng; lỗi DB thì đánh mark lỗi
 // rồi cũng trả false. Gom 1 chỗ để không copy khối check ở đầu hàm và mỗi batch.
-func (s *articleEmbedService) ensureAlive(ctx, dbCtx context.Context, traceID string, article *domain.Article) bool {
+func (s *articleEmbedService) ensureAlive(ctx context.Context, traceID string, article *domain.Article) bool {
 	alive, err := s.articleRepo.IsAlive(ctx, article.ID)
 	if err != nil {
-		s.markEmbedError(ctx, dbCtx, traceID, article, fmt.Errorf("kiểm tra bài còn sống: %w", err))
+		s.markEmbedError(ctx, traceID, article, fmt.Errorf("kiểm tra bài còn sống: %w", err))
 		return false
 	}
 	if !alive {
-		s.cleanupDeleted(dbCtx, traceID, article)
+		s.cleanupDeleted(ctx, traceID, article)
 		return false
 	}
 	return true
 }
 
 // cleanupDeleted dọn vector + chunk của bài đã chết — cả 2 đều idempotent nên
-// chạy đè với purge cũng an toàn. Dùng detached ctx để dọn được dù job hết timeout.
-func (s *articleEmbedService) cleanupDeleted(dbCtx context.Context, traceID string, article *domain.Article) {
+// chạy đè với purge cũng an toàn. Detach tươi để dọn được dù job hết timeout.
+func (s *articleEmbedService) cleanupDeleted(ctx context.Context, traceID string, article *domain.Article) {
+	dbCtx, cancel := detachCtx(ctx)
+	defer cancel()
 	logs.Infow("embed: bài bị xóa giữa chừng, đã dọn vector + chunk", "trace_id", traceID, "article_id", article.ID)
 	if err := s.vectors.DeleteByArticle(dbCtx, article.ID); err != nil {
 		logs.Error(err, "embed: không dọn vector bài đã xóa được", "trace_id", traceID, "article_id", article.ID)
@@ -177,7 +184,7 @@ func (s *articleEmbedService) cleanupDeleted(dbCtx context.Context, traceID stri
 	}
 }
 
-func (s *articleEmbedService) markEmbedError(ctx, dbCtx context.Context, traceID string, article *domain.Article, err error) {
+func (s *articleEmbedService) markEmbedError(ctx context.Context, traceID string, article *domain.Article, err error) {
 	// Job hết timeout (ctx hủy) không phải lỗi của bài — bỏ qua không đánh
 	// lỗi, lease hết hạn bài tự được hốt lại. Đánh lỗi bừa sẽ đốt attempts oan.
 	if ctx.Err() != nil {
@@ -198,15 +205,18 @@ func (s *articleEmbedService) markEmbedError(ctx, dbCtx context.Context, traceID
 		logs.Warnw("embed: bỏ qua bài, thử lại theo backoff",
 			"trace_id", traceID, "article_id", article.ID, "error", err)
 	}
-	if merr := s.articleRepo.MarkEmbedError(dbCtx, article.ID, attempts); merr != nil {
+	// Detach tươi tại điểm ghi — hàm này thường chạy sau hàng phút gọi Ollama.
+	mctx, cancel := detachCtx(ctx)
+	defer cancel()
+	if merr := s.articleRepo.MarkEmbedError(mctx, article.ID, attempts); merr != nil {
 		logs.Error(merr, "embed: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID)
 	}
 }
 
 // embedBatch embed + upsert + mark 1 đợt chunk — point ID lấy từ DB (không
-// sinh mới) nên đợt chạy lại ghi đè đúng point cũ. Mark bằng detached ctx để
-// giữ tiến độ dù job hết timeout.
-func (s *articleEmbedService) embedBatch(ctx, dbCtx context.Context, batch []*domain.ChunkWithOwner) (int, error) {
+// sinh mới) nên đợt chạy lại ghi đè đúng point cũ. Mark detach ctx tươi để
+// giữ tiến độ dù đã tốn hàng chục giây gọi Ollama trước đó.
+func (s *articleEmbedService) embedBatch(ctx context.Context, traceID string, batch []*domain.ChunkWithOwner) (int, error) {
 	texts := make([]string, 0, len(batch))
 	for _, it := range batch {
 		texts = append(texts, it.Chunk.Content)
@@ -214,7 +224,7 @@ func (s *articleEmbedService) embedBatch(ctx, dbCtx context.Context, batch []*do
 	var vectors [][]float32
 	// Log trước/sau mỗi lần gọi để nhìn thấy nhịp batch Ollama trong log
 	// worker (1 dòng/lần gọi, không log từng chunk để khỏi spam).
-	logs.Infow("ollama: gọi embed", "article_id", batch[0].Chunk.ArticleID,
+	logs.Infow("ollama: gọi embed", "trace_id", traceID, "article_id", batch[0].Chunk.ArticleID,
 		"texts", len(texts), "model", s.embedder.ModelName())
 	embedStart := time.Now()
 	if err := withRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY, func(ctx context.Context) error {
@@ -224,7 +234,7 @@ func (s *articleEmbedService) embedBatch(ctx, dbCtx context.Context, batch []*do
 	}); err != nil {
 		return 0, fmt.Errorf("gọi embed: %w", err)
 	}
-	logs.Infow("ollama: embed xong", "article_id", batch[0].Chunk.ArticleID,
+	logs.Infow("ollama: embed xong", "trace_id", traceID, "article_id", batch[0].Chunk.ArticleID,
 		"texts", len(texts), "elapsed_ms", time.Since(embedStart).Milliseconds())
 	// Contract EmbedBatch không đảm bảo số vector trả về — thiếu là lỗi
 	// embedder, không được index mù gây panic cả job.
@@ -251,7 +261,10 @@ func (s *articleEmbedService) embedBatch(ctx, dbCtx context.Context, batch []*do
 	}); err != nil {
 		return 0, fmt.Errorf("upsert qdrant: %w", err)
 	}
-	if err := s.chunkRepo.MarkEmbedded(dbCtx, ids); err != nil {
+	// Detach tươi tại điểm ghi — tới đây đã tốn hàng chục giây gọi Ollama.
+	mctx, cancel := detachCtx(ctx)
+	defer cancel()
+	if err := s.chunkRepo.MarkEmbedded(mctx, ids); err != nil {
 		return 0, fmt.Errorf("đánh dấu embedded: %w", err)
 	}
 	return len(batch), nil

@@ -76,49 +76,52 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	// Dọn bằng detached ctx để xóa xong dù job hết timeout — thứ tự blob →
-	// vector → chunk → row vẫn hội tụ khi chạy lại vì mọi bước idempotent.
-	dbCtx, cancel := detachCtx(ctx)
-	defer cancel()
+	// Detach tươi mỗi bài thay vì 1 ctx chung cả kỳ: xóa blob S3 + Qdrant của
+	// 100 bài tốn hàng phút, ctx 30s tạo sớm chết giữa chừng khiến các bài
+	// sau toàn rớt deadline oan.
 	logs.Infow("purge: bắt đầu kỳ quét", "trace_id", traceID)
-	articles, err := s.articleRepo.ListSoftDeleted(dbCtx, time.Now().Add(-constants.PURGE_GRACE_PERIOD), constants.PURGE_BATCH_SIZE)
+	articles, err := s.articleRepo.ListSoftDeleted(ctx, time.Now().Add(-constants.PURGE_GRACE_PERIOD), constants.PURGE_BATCH_SIZE)
 	if err != nil {
 		return 0, err
 	}
 	purged := 0
 	for _, article := range articles {
-		if article.StorageKey != "" {
-			if err := s.storage.Delete(dbCtx, article.StorageKey); err != nil {
-				logs.Warnw("purge: xóa blob thất bại, để kỳ sau thử lại",
-					"trace_id", traceID,
-					"article_id", article.ID, "storage_key", article.StorageKey, "error", err)
-				continue
+		dbCtx, cancel := detachCtx(ctx)
+		func() {
+			defer cancel()
+			if article.StorageKey != "" {
+				if err := s.storage.Delete(dbCtx, article.StorageKey); err != nil {
+					logs.Warnw("purge: xóa blob thất bại, để kỳ sau thử lại",
+						"trace_id", traceID,
+						"article_id", article.ID, "storage_key", article.StorageKey, "error", err)
+					return
+				}
 			}
-		}
-		// Thứ tự dọn sau blob: vector Qdrant → chunk rows → article row.
-		// Qdrant delete idempotent (filter khớp 0 point vẫn success) nên
-		// crash giữa chừng chạy lại chỉ ghi đè/bỏ qua, không mất dấu vết.
-		// Chunk rows xóa trước article row để không còn chunk mồ côi trỏ tới
-		// bài đã mất; bài nào lỗi ở bước nào cũng để kỳ sau thử lại từ đầu.
-		if err := s.vectors.DeleteByArticle(dbCtx, article.ID); err != nil {
-			logs.Warnw("purge: xóa vector thất bại, để kỳ sau thử lại",
-				"trace_id", traceID,
-				"article_id", article.ID, "error", err)
-			continue
-		}
-		if err := s.chunkRepo.DeleteByArticleID(dbCtx, article.ID); err != nil {
-			logs.Warnw("purge: xóa chunk thất bại, để kỳ sau thử lại",
-				"trace_id", traceID,
-				"article_id", article.ID, "error", err)
-			continue
-		}
-		if err := s.articleRepo.HardDelete(dbCtx, article.ID); err != nil {
-			logs.Warnw("purge: xóa hẳn row thất bại, để kỳ sau thử lại",
-				"trace_id", traceID,
-				"article_id", article.ID, "error", err)
-			continue
-		}
-		purged++
+			// Thứ tự dọn sau blob: vector Qdrant → chunk rows → article row.
+			// Qdrant delete idempotent (filter khớp 0 point vẫn success) nên
+			// crash giữa chừng chạy lại chỉ ghi đè/bỏ qua, không mất dấu vết.
+			// Chunk rows xóa trước article row để không còn chunk mồ côi trỏ tới
+			// bài đã mất; bài nào lỗi ở bước nào cũng để kỳ sau thử lại từ đầu.
+			if err := s.vectors.DeleteByArticle(dbCtx, article.ID); err != nil {
+				logs.Warnw("purge: xóa vector thất bại, để kỳ sau thử lại",
+					"trace_id", traceID,
+					"article_id", article.ID, "error", err)
+				return
+			}
+			if err := s.chunkRepo.DeleteByArticleID(dbCtx, article.ID); err != nil {
+				logs.Warnw("purge: xóa chunk thất bại, để kỳ sau thử lại",
+					"trace_id", traceID,
+					"article_id", article.ID, "error", err)
+				return
+			}
+			if err := s.articleRepo.HardDelete(dbCtx, article.ID); err != nil {
+				logs.Warnw("purge: xóa hẳn row thất bại, để kỳ sau thử lại",
+					"trace_id", traceID,
+					"article_id", article.ID, "error", err)
+				return
+			}
+			purged++
+		}()
 	}
 	logs.Infow("purge: xong 1 kỳ quét", "trace_id", traceID, "found", len(articles), "purged", purged)
 	return purged, nil

@@ -8,6 +8,7 @@ import (
 
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/domain"
 
@@ -108,7 +109,7 @@ func (c *connection) ensureCollection(ctx context.Context) error {
 		}); err != nil {
 			// Index đã tồn tại server trả AlreadyExists — cũng chỉ warn như
 			// mọi lỗi best-effort khác.
-			logs.Warnw("qdrant: tạo payload index thất bại (bỏ qua)", "field", field, "error", err)
+			logs.Warnw("qdrant: tạo payload index thất bại (bỏ qua)", "trace_id", utils.TraceIDFromCtx(ctx), "field", field, "error", err)
 		}
 	}
 	return nil
@@ -136,7 +137,7 @@ func (c *connection) UpsertPoints(ctx context.Context, points []*domain.VectorPo
 		if p == nil {
 			// Không bao giờ xảy ra từ embed (luôn dựng point đầy đủ) — log
 			// để lộ caller nào bắn point rỗng thay vì nuốt thầm lặng.
-			logs.Warnw("qdrant: bỏ qua point nil", "index", i, "total", len(points))
+			logs.Warnw("qdrant: bỏ qua point nil", "trace_id", utils.TraceIDFromCtx(ctx), "index", i, "total", len(points))
 			continue
 		}
 		if len(p.Vector) != c.dim {

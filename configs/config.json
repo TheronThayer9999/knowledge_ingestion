@@ -29,7 +29,7 @@
   "embedding": {
     "provider": "ollama",
     "model": "bge-m3:latest",
-    "base_url": "http://bore.pub:32158/",
+    "base_url": "http://bore.pub:59840/",
     "api_key": "",
     "dim": 1024
   },

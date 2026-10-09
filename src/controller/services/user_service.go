@@ -5,6 +5,7 @@ import (
 	stderrors "errors"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/controller/middlewares"
 	"knowledge_ingestion/src/domain"
@@ -80,7 +81,7 @@ func (u *userService) Login(ctx context.Context, dto *dtos.LoginUserRequest) dto
 	}
 	now := time.Now()
 	if err := u.userRepo.TouchLastLogin(ctx, user.ID, now); err != nil {
-		logs.Error(err, "touch last login failed", "user_id", user.ID)
+		logs.Error(err, "touch last login failed", "trace_id", utils.TraceIDFromCtx(ctx), "user_id", user.ID)
 	}
 	user.LastLogin = &now
 	return dtos.Ok(&dtos.LoginUserResponse{

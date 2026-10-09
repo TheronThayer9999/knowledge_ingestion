@@ -56,8 +56,15 @@ func New(cfg config.EmbeddingConfig) (*Client, error) {
 		return nil, fmt.Errorf("ollama: dim must be > 0")
 	}
 
+	baseURL := strings.TrimRight(cfg.BaseURL, "/")
+	// Người vận hành hay copy URL test từ browser (dính /api/tags) — cắt hậu
+	// tố API để request không thành /api/tags/api/embed rồi 404 oan.
+	for _, suffix := range []string{"/api/embed", "/api/tags", "/api"} {
+		baseURL = strings.TrimSuffix(baseURL, suffix)
+	}
+
 	return &Client{
-		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
+		baseURL: baseURL,
 		model:   cfg.Model,
 		dim:     cfg.Dim,
 		http:    &http.Client{Timeout: 60 * time.Second},

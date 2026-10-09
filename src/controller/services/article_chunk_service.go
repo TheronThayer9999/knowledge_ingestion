@@ -82,9 +82,9 @@ func (s *articleChunkService) ChunkPending(ctx context.Context) (int, error) {
 // MarkChunkDone. Đánh dấu bằng detached ctx để ghi được dù job hết timeout;
 // job hết timeout (ctx hủy) thì bỏ qua không đánh lỗi oan.
 func (s *articleChunkService) chunkClaimed(ctx context.Context, traceID string, article *domain.Article, chunked *atomic.Int64) {
-	dbCtx, cancel := detachCtx(ctx)
-	defer cancel()
-	if err := s.chunkOne(ctx, article); err != nil {
+	// KHÔNG tạo dbCtx dùng chung ở đây: chunkOne tải blob + OCR tốn hàng
+	// phút, ctx 30s tạo sớm chết trước khi tới lượt ghi done/error.
+	if err := s.chunkOne(ctx, traceID, article); err != nil {
 		if ctx.Err() != nil {
 			logs.Infow("chunk: job hết timeout, bỏ qua không đánh lỗi",
 				"trace_id", traceID, "article_id", article.ID)
@@ -99,12 +99,16 @@ func (s *articleChunkService) chunkClaimed(ctx context.Context, traceID string, 
 		logs.Warnw("chunk: bỏ qua bài, thử lại theo backoff",
 			"trace_id", traceID,
 			"article_id", article.ID, "storage_key", article.StorageKey, "error", err)
-		if merr := s.articleRepo.MarkChunkError(dbCtx, article.ID, attempts); merr != nil {
+		mctx, cancel := detachCtx(ctx)
+		defer cancel()
+		if merr := s.articleRepo.MarkChunkError(mctx, article.ID, attempts); merr != nil {
 			logs.Error(merr, "chunk: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID)
 		}
 		return
 	}
-	if err := s.articleRepo.MarkChunkDone(dbCtx, article.ID); err != nil {
+	mctx, cancel := detachCtx(ctx)
+	defer cancel()
+	if err := s.articleRepo.MarkChunkDone(mctx, article.ID); err != nil {
 		logs.Error(err, "chunk: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID)
 		return
 	}
@@ -117,7 +121,7 @@ func (s *articleChunkService) chunkClaimed(ctx context.Context, traceID string, 
 // giả — MarkChunkError lùi giờ thử thay vì mất bài vĩnh viễn. ChunkIndex đếm
 // liên tục xuyên trang để giữ thứ tự đọc, PageNum nhớ trang gốc. Bài đã có
 // chunk (claim trùng do lease race) thì bỏ qua luôn, service đánh done.
-func (s *articleChunkService) chunkOne(ctx context.Context, article *domain.Article) error {
+func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, article *domain.Article) error {
 	done, err := s.chunkRepo.ExistsByArticleID(ctx, article.ID)
 	if err != nil {
 		return fmt.Errorf("kiểm tra chunk: %w", err)
@@ -173,7 +177,7 @@ func (s *articleChunkService) chunkOne(ctx context.Context, article *domain.Arti
 		return fmt.Errorf("kiểm tra bài còn sống: %w", err)
 	}
 	if !alive {
-		logs.Infow("chunk: bài bị xóa giữa chừng, đã dọn chunk vừa tạo", "article_id", article.ID)
+		logs.Infow("chunk: bài bị xóa giữa chừng, đã dọn chunk vừa tạo", "trace_id", traceID, "article_id", article.ID)
 		dbCtx, cancel := detachCtx(ctx)
 		defer cancel()
 		if derr := s.chunkRepo.DeleteByArticleID(dbCtx, article.ID); derr != nil {
@@ -181,6 +185,6 @@ func (s *articleChunkService) chunkOne(ctx context.Context, article *domain.Arti
 		}
 		return nil
 	}
-	logs.Infow("chunk: xong 1 bài", "article_id", article.ID, "pages", len(pages), "chunks", len(chunks))
+	logs.Infow("chunk: xong 1 bài", "trace_id", traceID, "article_id", article.ID, "pages", len(pages), "chunks", len(chunks))
 	return nil
 }
