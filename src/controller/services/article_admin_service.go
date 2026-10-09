@@ -10,7 +10,7 @@ import (
 	"knowledge_ingestion/src/domain"
 )
 
-// IArticleAdminService vận hành hàng đợi tri thức qua HTTP — chỉ API gọi,
+// IArticleAdminService vận hành hàng đợi tri thức — HTTP và gRPC cùng gọi,
 // worker không đụng. Mọi nghiệp vụ nặng vẫn do worker làm, service này chỉ
 // đưa bài về pending để worker hốt lại.
 type IArticleAdminService interface {

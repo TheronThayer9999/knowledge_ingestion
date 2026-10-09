@@ -16,8 +16,6 @@ import (
 	_ "knowledge_ingestion/docs"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
-	"knowledge_ingestion/src/controller/grpchandler"
-	"knowledge_ingestion/src/controller/middlewares"
 	"knowledge_ingestion/src/controller/routers"
 	"knowledge_ingestion/src/loader"
 	"net"
@@ -67,18 +65,12 @@ func main() {
 	logs.Sync()
 }
 
-func serverLifecycle(lc fx.Lifecycle, router *routers.Router, grpcServer *grpchandler.Server, auth middlewares.IAuthMiddleware, cfg config.IConfig) {
+func serverLifecycle(lc fx.Lifecycle, router *routers.Router, cfg config.IConfig) {
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.GetApp().Port),
 		Handler:           router.Engine,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-
-	// gRPC cho AI agent (Python) — cùng service với HTTP, interceptor auth +
-	// trace tương đương middleware gin. Chạy cạnh HTTP trong 1 binary để khỏi
-	// thêm deploy mới.
-	grpcAddr := fmt.Sprintf(":%d", cfg.GetApp().GrpcPort)
-	grpcSrv := grpchandler.NewGRPCServer(grpcServer, auth)
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
@@ -91,21 +83,10 @@ func serverLifecycle(lc fx.Lifecycle, router *routers.Router, grpcServer *grpcha
 					logs.Error(err, "http server stopped", "addr", server.Addr)
 				}
 			}()
-			gln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", grpcAddr)
-			if err != nil {
-				return fmt.Errorf("listen %s: %w", grpcAddr, err)
-			}
-			go func() {
-				logs.Infow("grpc server serving", "addr", grpcAddr)
-				if err := grpcSrv.Serve(gln); err != nil {
-					logs.Error(err, "grpc server stopped", "addr", grpcAddr)
-				}
-			}()
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
 			logs.Infow("http server stopping", "addr", server.Addr)
-			grpcSrv.GracefulStop()
 			return server.Shutdown(ctx)
 		},
 	})

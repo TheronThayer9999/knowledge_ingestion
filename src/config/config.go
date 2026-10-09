@@ -40,7 +40,8 @@ type appConfig struct {
 type AppConfig struct {
 	Name string `json:"name"`
 	Port int    `json:"port"`
-	// GrpcPort cổng gRPC cho AI agent (Python) — 0 thì tắt gRPC, chỉ chạy HTTP.
+	// GrpcPort cổng binary agent-gateway (cmd/agent-gateway) cho AI agent
+	// (Python) — 0 thì default 9002.
 	GrpcPort int `json:"grpc_port"`
 	Env      string `json:"env"`
 }

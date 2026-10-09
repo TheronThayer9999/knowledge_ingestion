@@ -13,7 +13,7 @@ const (
 
 type Error struct {
 	// Code là mã lỗi trung lập transport — HTTP Render đọc HttpCode cho
-	// status line, adapter gRPC sau này map Code sang grpc codes (0→OK,
+	// status line, gRPC map Code sang grpc codes qua grpcStatus (0→OK,
 	// 400→InvalidArgument, 404→NotFound, còn lại→Internal). Đừng nhét mã
 	// riêng cho từng transport vào đây.
 	Code    int    `json:"code"`

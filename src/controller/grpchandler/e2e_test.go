@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestSearch_E2E gọi server gRPC thật (API đang chạy) — skip mặc định, chỉ
+// TestSearch_E2E gọi server gRPC thật (agent-gateway đang chạy) — skip mặc định, chỉ
 // chạy khi set GRPC_E2E_ADDR (vd 127.0.0.1:9002) + GRPC_E2E_JWT (token lấy từ
 // POST /api/v1/auth/login). Dùng để kiểm chứng end-to-end sau khi đổi
 // interceptor/handler, không chạy trong CI thường.

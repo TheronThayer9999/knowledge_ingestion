@@ -12,8 +12,8 @@ import (
 	"knowledge_ingestion/src/domain"
 )
 
-// ISearchService truy hồi tri thức cho agent RAG — chỉ API gọi, trả đoạn
-// text gần câu hỏi nhất trong phạm vi quyền của người gọi.
+// ISearchService truy hồi tri thức cho agent RAG — HTTP và gRPC cùng gọi,
+// trả đoạn text gần câu hỏi nhất trong phạm vi quyền của người gọi.
 type ISearchService interface {
 	// Search embed câu hỏi rồi tìm top chunk: filter user_id (owner từ
 	// token) + category nếu có, chỉ giữ hit thuộc bài đã embed done để
