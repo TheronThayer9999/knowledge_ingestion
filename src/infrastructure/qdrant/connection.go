@@ -11,14 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/domain"
 )
-
-// CollectionName là collection duy nhất worker dùng — 1 collection cho mọi
-// article, phân biệt bằng payload article_id (filter + xóa theo bài).
-const CollectionName = "article_chunks"
 
 // compile-time check: connection phải implement domain.IVectorStore
 var _ domain.IVectorStore = (*connection)(nil)
@@ -58,7 +55,7 @@ func NewConnection(cfg config.IConfig) (domain.IVectorStore, error) {
 	if dim <= 0 {
 		return nil, fmt.Errorf("qdrant: embedding dim must be > 0")
 	}
-	c := newClient(fmt.Sprintf("http://%s:%d", q.Host, q.Port), q.Token, dim)
+	c := newClient(fmt.Sprintf("%s://%s:%d", q.Scheme, q.Host, q.Port), q.Token, dim)
 
 	// Lifetime-init: collection phải tồn tại đúng dim trước khi worker chạy —
 	// fail-fast giống postgres/S3 để không boot trong trạng thái embed mù.
@@ -68,7 +65,7 @@ func NewConnection(cfg config.IConfig) (domain.IVectorStore, error) {
 		return nil, err
 	}
 
-	logs.Infow("qdrant ready", "collection", CollectionName, "dim", dim)
+	logs.Infow("qdrant ready", "collection", constants.QDRANT_COLLECTION, "dim", dim)
 	return c, nil
 }
 
@@ -88,37 +85,47 @@ func newClient(baseURL, token string, dim int) *connection {
 // Cosine + index payload article_id để xóa theo bài nhanh.
 func (c *connection) ensureCollection(ctx context.Context) error {
 	var info collectionInfo
-	if err := c.doJSON(ctx, http.MethodGet, "/collections/"+CollectionName, nil, &info); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, "/collections/"+constants.QDRANT_COLLECTION, nil, &info); err != nil {
 		if !isNotFound(err) {
 			return err
 		}
 		body := map[string]any{
 			"vectors": map[string]any{"size": c.dim, "distance": "Cosine"},
 		}
-		if err := c.doJSON(ctx, http.MethodPut, "/collections/"+CollectionName, body, nil); err != nil {
-			return fmt.Errorf("qdrant: create collection %s: %w", CollectionName, err)
+		if err := c.doJSON(ctx, http.MethodPut, "/collections/"+constants.QDRANT_COLLECTION, body, nil); err != nil {
+			return fmt.Errorf("qdrant: create collection %s: %w", constants.QDRANT_COLLECTION, err)
 		}
-		logs.Infow("qdrant collection created", "collection", CollectionName)
+		logs.Infow("qdrant collection created", "collection", constants.QDRANT_COLLECTION)
 	} else if info.Result.Config.Params.Vectors.Size != c.dim {
 		return fmt.Errorf("qdrant: collection %s có dim %d, config expects %d",
-			CollectionName, info.Result.Config.Params.Vectors.Size, c.dim)
+			constants.QDRANT_COLLECTION, info.Result.Config.Params.Vectors.Size, c.dim)
 	}
 	// Index payload best-effort — có rồi (409) hay lỗi cũng không chặn boot,
-	// chỉ khiến xóa theo bài chậm hơn.
-	indexBody := map[string]any{"field_name": "article_id", "field_schema": "integer"}
-	if err := c.doJSON(ctx, http.MethodPut, "/collections/"+CollectionName+"/index", indexBody, nil); err != nil {
-		logs.Warnw("qdrant: tạo payload index thất bại (bỏ qua)", "error", err)
+	// chỉ khiến xóa/filter theo bài chậm hơn. Index đủ 3 khóa phân quyền để
+	// search gắn filter user_id/category_id/article_id đều ăn index.
+	for _, field := range []string{"article_id", "user_id", "category_id"} {
+		indexBody := map[string]any{"field_name": field, "field_schema": "integer"}
+		if err := c.doJSON(ctx, http.MethodPut, "/collections/"+constants.QDRANT_COLLECTION+"/index", indexBody, nil); err != nil {
+			logs.Warnw("qdrant: tạo payload index thất bại (bỏ qua)", "field", field, "error", err)
+		}
 	}
 	return nil
 }
 
 // UpsertPoints ghi đè point theo ID — idempotent nên embed chạy lại vẫn hội tụ.
-func (c *connection) UpsertPoints(ctx context.Context, points []domain.VectorPoint) error {
+// Nhận slice con trỏ để khỏi copy struct (nhất là map Payload) mỗi lần upsert.
+func (c *connection) UpsertPoints(ctx context.Context, points []*domain.VectorPoint) error {
 	if len(points) == 0 {
 		return nil
 	}
 	body := map[string]any{"points": make([]upsertPoint, 0, len(points))}
-	for _, p := range points {
+	for i, p := range points {
+		if p == nil {
+			// Không bao giờ xảy ra từ embed (luôn dựng point đầy đủ) — log
+			// để lộ caller nào bắn point rỗng thay vì nuốt thầm lặng.
+			logs.Warnw("qdrant: bỏ qua point nil", "index", i, "total", len(points))
+			continue
+		}
 		if len(p.Vector) != c.dim {
 			return fmt.Errorf("%w: point %s có dim %d, collection expects %d", ErrBadRequest, p.ID, len(p.Vector), c.dim)
 		}
@@ -135,7 +142,7 @@ func (c *connection) UpsertPoints(ctx context.Context, points []domain.VectorPoi
 			},
 		})
 	}
-	if err := c.doJSON(ctx, http.MethodPut, "/collections/"+CollectionName+"/points?wait=true", body, nil); err != nil {
+	if err := c.doJSON(ctx, http.MethodPut, "/collections/"+constants.QDRANT_COLLECTION+"/points?wait=true", body, nil); err != nil {
 		return fmt.Errorf("qdrant: upsert %d points: %w", len(points), err)
 	}
 	return nil
@@ -151,7 +158,7 @@ func (c *connection) DeleteByArticle(ctx context.Context, articleID int64) error
 			},
 		},
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/collections/"+CollectionName+"/points/delete?wait=true", body, nil); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/collections/"+constants.QDRANT_COLLECTION+"/points/delete?wait=true", body, nil); err != nil {
 		return fmt.Errorf("qdrant: delete points của article %d: %w", articleID, err)
 	}
 	return nil
@@ -171,7 +178,7 @@ func (c *connection) CountByArticle(ctx context.Context, articleID int64) (int64
 			Count int64 `json:"count"`
 		} `json:"result"`
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/collections/"+CollectionName+"/points/count", body, &out); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/collections/"+constants.QDRANT_COLLECTION+"/points/count", body, &out); err != nil {
 		return 0, fmt.Errorf("qdrant: count points của article %d: %w", articleID, err)
 	}
 	return out.Result.Count, nil

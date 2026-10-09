@@ -7,33 +7,14 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"knowledge_ingestion/src/common/chunker"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/extractor"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
-)
-
-const (
-	// ChunkInterval là nhịp worker quét bài chưa chunk — export để worker lấy
-	// làm chu kỳ ticker: 1 nguồn sự thật duy nhất như PurgeGracePeriod.
-	ChunkInterval = 30 * time.Second
-	// chunkClaimLimit số bài hốt mỗi kỳ — claim là rẻ (1 transaction), làm
-	// không hết thì lease giữ bài lại, kỳ sau hốt tiếp.
-	chunkClaimLimit = 6
-	// chunkPoolSize số bài chunk song song — mỗi bài giữ đồng thời: blob raw
-	// (trần 100MB) + text/XML giải nén (trần 80MB) + text rune khi split (text
-	// 20MB ≈ 80MB rune) + ảnh render/OCR, nên worst-case ~300MB/bài → pool 3
-	// ≈ 1GB nếu 3 file kịch trần cùng lúc. File thật (500 trang ≈ 5-15MB)
-	// chỉ tốn vài chục MB/bài; đặt pool 3 là cân bằng throughput/RAM cho
-	// container vừa, container nhỏ thì giảm số này.
-	chunkPoolSize = 3
-	// chunkLease thời gian giữ claim — file 500 trang chunk trong vài phút là
-	// cùng; worker crash thì quá lease bài tự đủ điều kiện cho lần hốt sau.
-	chunkLease = 15 * time.Minute
 )
 
 // IArticleChunkService worker phase 1: cắt text file Word thành chunk lưu DB
@@ -71,13 +52,13 @@ func (s *articleChunkService) ChunkPending(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	logs.Infow("chunk: bắt đầu kỳ quét", "trace_id", traceID)
-	articles, err := s.articleRepo.ClaimChunkPending(ctx, chunkClaimLimit, chunkLease)
+	articles, err := s.articleRepo.ClaimChunkPending(ctx, constants.CHUNK_CLAIM_LIMIT, constants.CHUNK_LEASE)
 	if err != nil {
 		return 0, err
 	}
 	var chunked atomic.Int64
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, chunkPoolSize)
+	sem := make(chan struct{}, constants.CHUNK_POOL_SIZE)
 	for _, article := range articles {
 		if ctx.Err() != nil {
 			break

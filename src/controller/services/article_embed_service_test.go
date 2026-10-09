@@ -162,7 +162,7 @@ func (f *fakeEmbedder) IsPermanentError(err error) bool { return false }
 
 type fakeVectorStore struct {
 	mu        sync.Mutex
-	points    []domain.VectorPoint
+	points    []*domain.VectorPoint
 	upsertErr error
 	// permanent mô phỏng vector store báo lỗi vĩnh viễn (sai dim...) — service
 	// phải failed luôn thay vì backoff.
@@ -170,7 +170,7 @@ type fakeVectorStore struct {
 	deleted   []int64
 }
 
-func (f *fakeVectorStore) UpsertPoints(ctx context.Context, points []domain.VectorPoint) error {
+func (f *fakeVectorStore) UpsertPoints(ctx context.Context, points []*domain.VectorPoint) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.upsertErr != nil {
@@ -316,7 +316,7 @@ func TestEmbedPending_NothingLeftMarksDone(t *testing.T) {
 		[]*domain.Article{embedArticle(7)},
 		map[int64][]*domain.ChunkWithOwner{},
 	)
-	vectors.points = append(vectors.points, domain.VectorPoint{ID: "point-7-0", ArticleID: 7})
+	vectors.points = append(vectors.points, &domain.VectorPoint{ID: "point-7-0", ArticleID: 7})
 
 	n, err := svc.EmbedPending(context.Background())
 	if err != nil {

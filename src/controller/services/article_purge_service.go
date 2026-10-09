@@ -2,21 +2,11 @@ package services
 
 import (
 	"context"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/domain"
 	"time"
-)
-
-const (
-	// PurgeGracePeriod chỉ dọn bài đã xóa mềm quá 5 phút — cửa sổ undo cho
-	// user đổi ý + tránh đua với request đọc ngay sau khi xóa. Export để
-	// worker lấy làm chu kỳ ticker: 1 nguồn sự thật duy nhất, khỏi 2 hằng
-	// 5-phút ở 2 file lệch nhau lúc nào không hay.
-	PurgeGracePeriod = 5 * time.Minute
-	// purgeBatchSize số row xử lý mỗi kỳ quét — đủ nhỏ để 1 kỳ chạy xong
-	// nhanh, còn tồn thì kỳ sau dọn tiếp.
-	purgeBatchSize = 100
 )
 
 // PurgeOptions nhịp janitor dọn chunk già — loader map từ config worker nên
@@ -91,7 +81,7 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 	dbCtx, cancel := detachCtx(ctx)
 	defer cancel()
 	logs.Infow("purge: bắt đầu kỳ quét", "trace_id", traceID)
-	articles, err := s.articleRepo.ListSoftDeleted(dbCtx, time.Now().Add(-PurgeGracePeriod), purgeBatchSize)
+	articles, err := s.articleRepo.ListSoftDeleted(dbCtx, time.Now().Add(-constants.PURGE_GRACE_PERIOD), constants.PURGE_BATCH_SIZE)
 	if err != nil {
 		return 0, err
 	}

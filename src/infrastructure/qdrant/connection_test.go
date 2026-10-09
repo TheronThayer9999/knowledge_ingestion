@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/domain"
 )
 
@@ -71,7 +72,7 @@ func TestEnsureCollection_CreatesWhenMissing(t *testing.T) {
 		if r.apiKey != "secret-token" {
 			t.Fatalf("thiếu header api-key: %+v", r)
 		}
-		if r.method == http.MethodPut && strings.HasSuffix(r.path, "/collections/"+CollectionName) {
+		if r.method == http.MethodPut && strings.HasSuffix(r.path, "/collections/"+constants.QDRANT_COLLECTION) {
 			put = true
 			vecs, _ := r.body["vectors"].(map[string]any)
 			if vecs["distance"] != "Cosine" || vecs["size"] != float64(1024) {
@@ -106,7 +107,7 @@ func TestUpsertPoints_Shape(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, "", 4)
-	err := c.UpsertPoints(context.Background(), []domain.VectorPoint{{
+	err := c.UpsertPoints(context.Background(), []*domain.VectorPoint{{
 		ID: "550e8400-e29b-41d4-a716-446655440000", Vector: []float32{0.1, 0.2, 0.3, 0.4},
 		ArticleID: 5, UserID: 7, CategoryID: 3, ChunkIndex: 1, Text: "đoạn",
 	}})
@@ -149,7 +150,7 @@ func TestUpsertPoints_DimMismatch(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(srv.URL, "", 4)
-	err := c.UpsertPoints(context.Background(), []domain.VectorPoint{
+	err := c.UpsertPoints(context.Background(), []*domain.VectorPoint{
 		{ID: "x", Vector: []float32{0.1}},
 	})
 	if err == nil {

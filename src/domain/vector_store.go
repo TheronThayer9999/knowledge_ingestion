@@ -23,7 +23,7 @@ type VectorPoint struct {
 type IVectorStore interface {
 	// UpsertPoints ghi đè point theo ID — idempotent, crash giữa chừng chạy
 	// lại vẫn hội tụ.
-	UpsertPoints(ctx context.Context, points []VectorPoint) error
+	UpsertPoints(ctx context.Context, points []*VectorPoint) error
 	// DeleteByArticle xóa toàn bộ point của 1 bài (filter article_id) — purge
 	// gọi khi dọn bài để vector không thành rác mồ côi.
 	DeleteByArticle(ctx context.Context, articleID int64) error

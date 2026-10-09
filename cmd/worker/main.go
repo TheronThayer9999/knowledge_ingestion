@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/services"
@@ -40,7 +41,7 @@ func main() {
 		// {Name: "...", Interval: ..., Run: asJob(svc.Method)}.
 		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, chunk services.IArticleChunkService, embed services.IArticleEmbedService, opts services.PurgeOptions) {
 			NewRunner([]Schedule{
-				{Name: "purge-articles", Interval: services.PurgeGracePeriod, Run: func(ctx context.Context) error {
+				{Name: "purge-articles", Interval: constants.PURGE_GRACE_PERIOD, Run: func(ctx context.Context) error {
 					_, err := purge.PurgeDeleted(ctx)
 					return err
 				}},
@@ -50,11 +51,11 @@ func main() {
 				}},
 				// Timeout riêng vì bài 500 trang chunk/embed trong 1 phút mặc
 				// định không xong — cancel giữa chừng rồi làm lại là đói.
-				{Name: "chunk-articles", Interval: services.ChunkInterval, Timeout: 12 * time.Minute, Run: func(ctx context.Context) error {
+				{Name: "chunk-articles", Interval: constants.CHUNK_INTERVAL, Timeout: 12 * time.Minute, Run: func(ctx context.Context) error {
 					_, err := chunk.ChunkPending(ctx)
 					return err
 				}},
-				{Name: "embed-articles", Interval: services.EmbedInterval, Timeout: 25 * time.Minute, Run: func(ctx context.Context) error {
+				{Name: "embed-articles", Interval: constants.EMBED_INTERVAL, Timeout: 25 * time.Minute, Run: func(ctx context.Context) error {
 					_, err := embed.EmbedPending(ctx)
 					return err
 				}},

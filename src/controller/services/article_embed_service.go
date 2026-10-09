@@ -8,7 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
 )
 
@@ -16,29 +18,6 @@ import (
 // phát hiện) — retry vô ích nên failed luôn, cùng nhóm với lỗi vĩnh viễn của
 // embedder/vector store (hỏi qua domain interface, không import infra).
 var errEmbedContract = errors.New("embed trả thiếu vector")
-
-const (
-	// EmbedInterval là nhịp worker quét bài chưa embed — export để worker lấy
-	// làm chu kỳ ticker. 10s để dev thấy kết quả nhanh; production tải cao
-	// thì nâng lên 1 phút để đỡ quét DB trống.
-	EmbedInterval = 10 * time.Second
-	// embedClaimLimit số bài hốt mỗi kỳ — ollama remote chậm, bài 500 trang
-	// (~1500 chunk ≈ 47 lần gọi) nuốt vài phút nên giữ ít.
-	embedClaimLimit = 3
-	// embedPoolSize số bài embed song song — ollama remote là bottleneck nên
-	// chỉ 2, tránh dội request làm nó nghẽn rồi timeout hàng loạt.
-	embedPoolSize = 2
-	// embedLease thời gian giữ claim — đủ cho bài to nhất (500 trang) embed +
-	// upsert xong trong pool; crash thì quá lease tự reclaim.
-	embedLease = 30 * time.Minute
-	// embedBatchSize số text mỗi lần gọi ollama — khớp giới hạn input 1 lần
-	// gọi của /api/embed, nhiều chunk thì chia nhiều đợt.
-	embedBatchSize = 32
-	// embedCallAttempts số lần thử lại 1 lần gọi ollama/qdrant chập chờn, nghỉ
-	// backoff nhân đôi từ 2s.
-	embedCallAttempts  = 3
-	embedCallBaseDelay = 2 * time.Second
-)
 
 // IArticleEmbedService worker phase 2: đọc chunk phase 1 đã cắt, embed bằng
 // ollama rồi upsert Qdrant — chỉ worker gọi, không qua HTTP nên trả (int,
@@ -70,24 +49,27 @@ func (s *articleEmbedService) EmbedPending(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	logs.Infow("embed: bắt đầu kỳ quét", "trace_id", traceID)
-	articles, err := s.articleRepo.ClaimEmbedPending(ctx, embedClaimLimit, embedLease)
+	articles, err := s.articleRepo.ClaimEmbedPending(ctx, constants.EMBED_CLAIM_LIMIT, constants.EMBED_LEASE)
 	if err != nil {
+		logs.Error(err, "embed: failed to claim pending articles", "trace_id", traceID)
 		return 0, err
 	}
+
 	var embedded atomic.Int64
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, embedPoolSize)
+	sem := make(chan struct{}, constants.EMBED_POOL_SIZE)
+
 	for _, article := range articles {
 		if ctx.Err() != nil {
 			break
 		}
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(a *domain.Article) {
+		go func(ctx context.Context, a *domain.Article) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			s.embedClaimed(ctx, traceID, a, &embedded)
-		}(article)
+		}(ctx, article)
 	}
 	wg.Wait()
 	n := int(embedded.Load())
@@ -107,13 +89,7 @@ func (s *articleEmbedService) embedClaimed(ctx context.Context, traceID string, 
 	}
 	// Check sống TRƯỚC nhánh rỗng: bài chết mà chunk đã sạch (purge dọn hoặc
 	// chưa từng có) thì phải cleanup + bỏ qua, không đánh done bừa.
-	alive, err := s.articleRepo.IsAlive(ctx, article.ID)
-	if err != nil {
-		s.markEmbedError(ctx, dbCtx, traceID, article, fmt.Errorf("kiểm tra bài còn sống: %w", err))
-		return
-	}
-	if !alive {
-		s.cleanupDeleted(dbCtx, traceID, article)
+	if !s.ensureAlive(ctx, dbCtx, traceID, article) {
 		return
 	}
 	if len(items) == 0 {
@@ -135,25 +111,15 @@ func (s *articleEmbedService) embedClaimed(ctx context.Context, traceID string, 
 		}
 		return
 	}
-	for i := 0; i < len(items); i += embedBatchSize {
-		end := i + embedBatchSize
-		if end > len(items) {
-			end = len(items)
-		}
+	for _, batch := range utils.Batch(items, constants.EMBED_BATCH_SIZE) {
 		// Bài bị xóa giữa chừng thì dừng ngay (đỡ tốn tiền ollama), dọn sạch
 		// vector + chunk đã làm để không còn orphan mà purge không thấy.
 		// Check mỗi batch vì 1 bài 500 trang chạy hàng phút — check 1 SELECT
 		// rẻ hơn nhiều so với gọi ollama thừa.
-		alive, err := s.articleRepo.IsAlive(ctx, article.ID)
-		if err != nil {
-			s.markEmbedError(ctx, dbCtx, traceID, article, fmt.Errorf("kiểm tra bài còn sống: %w", err))
+		if !s.ensureAlive(ctx, dbCtx, traceID, article) {
 			return
 		}
-		if !alive {
-			s.cleanupDeleted(dbCtx, traceID, article)
-			return
-		}
-		n, err := s.embedBatch(ctx, dbCtx, items[i:end])
+		n, err := s.embedBatch(ctx, dbCtx, batch)
 		embedded.Add(int64(n))
 		if err != nil {
 			s.markEmbedError(ctx, dbCtx, traceID, article, err)
@@ -181,6 +147,22 @@ func (s *articleEmbedService) finishEmbed(dbCtx context.Context, article *domain
 		}
 		return nil
 	})
+}
+
+// ensureAlive kiểm tra bài còn sống trước khi tốn tiền Ollama: bài chết thì
+// dọn vector + chunk rồi trả false để caller dừng; lỗi DB thì đánh mark lỗi
+// rồi cũng trả false. Gom 1 chỗ để không copy khối check ở đầu hàm và mỗi batch.
+func (s *articleEmbedService) ensureAlive(ctx, dbCtx context.Context, traceID string, article *domain.Article) bool {
+	alive, err := s.articleRepo.IsAlive(ctx, article.ID)
+	if err != nil {
+		s.markEmbedError(ctx, dbCtx, traceID, article, fmt.Errorf("kiểm tra bài còn sống: %w", err))
+		return false
+	}
+	if !alive {
+		s.cleanupDeleted(dbCtx, traceID, article)
+		return false
+	}
+	return true
 }
 
 // cleanupDeleted dọn vector + chunk của bài đã chết — cả 2 đều idempotent nên
@@ -235,7 +217,7 @@ func (s *articleEmbedService) embedBatch(ctx, dbCtx context.Context, batch []*do
 	logs.Infow("ollama: gọi embed", "article_id", batch[0].Chunk.ArticleID,
 		"texts", len(texts), "model", s.embedder.ModelName())
 	embedStart := time.Now()
-	if err := withRetry(ctx, embedCallAttempts, embedCallBaseDelay, func(ctx context.Context) error {
+	if err := withRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY, func(ctx context.Context) error {
 		var err error
 		vectors, err = s.embedder.EmbedBatch(ctx, texts)
 		return err
@@ -249,10 +231,10 @@ func (s *articleEmbedService) embedBatch(ctx, dbCtx context.Context, batch []*do
 	if len(vectors) != len(batch) {
 		return 0, fmt.Errorf("%w: embed trả %d vector cho %d text", errEmbedContract, len(vectors), len(batch))
 	}
-	points := make([]domain.VectorPoint, 0, len(batch))
+	points := make([]*domain.VectorPoint, 0, len(batch))
 	ids := make([]int64, 0, len(batch))
 	for i, it := range batch {
-		points = append(points, domain.VectorPoint{
+		points = append(points, &domain.VectorPoint{
 			ID:         it.Chunk.PointID,
 			Vector:     vectors[i],
 			ArticleID:  it.Chunk.ArticleID,
@@ -264,7 +246,7 @@ func (s *articleEmbedService) embedBatch(ctx, dbCtx context.Context, batch []*do
 		})
 		ids = append(ids, it.Chunk.ID)
 	}
-	if err := withRetry(ctx, embedCallAttempts, embedCallBaseDelay, func(ctx context.Context) error {
+	if err := withRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY, func(ctx context.Context) error {
 		return s.vectors.UpsertPoints(ctx, points)
 	}); err != nil {
 		return 0, fmt.Errorf("upsert qdrant: %w", err)

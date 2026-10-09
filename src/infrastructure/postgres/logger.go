@@ -24,20 +24,20 @@ type traceLogger struct{}
 
 func (traceLogger) LogMode(gormlogger.LogLevel) gormlogger.Interface { return traceLogger{} }
 
-func (traceLogger) Info(context.Context, string, ...interface{}) {}
+func (traceLogger) Info(context.Context, string, ...any) {}
 
-func (traceLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
-	logs.Warnw(msg, append([]interface{}{"trace_id", utils.TraceIDFromCtx(ctx)}, data...)...)
+func (traceLogger) Warn(ctx context.Context, msg string, data ...any) {
+	logs.Warnw(msg, append([]any{"trace_id", utils.TraceIDFromCtx(ctx)}, data...)...)
 }
 
-func (traceLogger) Error(ctx context.Context, msg string, data ...interface{}) {
+func (traceLogger) Error(ctx context.Context, msg string, data ...any) {
 	logs.Errorf(msg+" [trace_id=%s]", append(data, utils.TraceIDFromCtx(ctx))...)
 }
 
 func (traceLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 	elapsed := time.Since(begin)
 	sql, rows := fc()
-	fields := []interface{}{"trace_id", utils.TraceIDFromCtx(ctx), "elapsed", elapsed.String(), "rows", rows, "sql", sql}
+	fields := []any{"trace_id", utils.TraceIDFromCtx(ctx), "elapsed", elapsed.String(), "rows", rows, "sql", sql}
 	switch {
 	case err != nil:
 		// record not found là luồng thường (404 do service map), không phải

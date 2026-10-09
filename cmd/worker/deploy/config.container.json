@@ -23,7 +23,8 @@
   "qdrant": {
     "host": "host.docker.internal",
     "port": 6333,
-    "token": "theron_qdrant_token"
+    "token": "theron_qdrant_token",
+    "scheme": "http"
   },
   "embedding": {
     "provider": "ollama",
@@ -55,5 +56,9 @@
   },
   "cors": {
     "allowed_origins": ["http://localhost:4200"]
+  },
+  "worker": {
+    "chunk_retention_hours": 168,
+    "trim_interval_hours": 24
   }
 }

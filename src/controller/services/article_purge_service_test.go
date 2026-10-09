@@ -155,7 +155,7 @@ type fakeVectors struct {
 	deletes   []int64
 }
 
-func (f *fakeVectors) UpsertPoints(ctx context.Context, points []domain.VectorPoint) error {
+func (f *fakeVectors) UpsertPoints(ctx context.Context, points []*domain.VectorPoint) error {
 	return nil
 }
 func (f *fakeVectors) DeleteByArticle(ctx context.Context, articleID int64) error {

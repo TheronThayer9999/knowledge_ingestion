@@ -138,3 +138,24 @@ func NormalizePagination(limit, offset int) (int, int) {
 	}
 	return limit, offset
 }
+
+// Batch cắt slice thành các đợt tối đa size phần tử — dùng cho gửi Ollama
+// theo đợt (constants.EMBED_BATCH_SIZE) và INSERT theo đợt (chunkInsertBatch). size <= 0
+// thì trả nguyên slice làm 1 đợt để caller lỗi không bao giờ treo/chia 0.
+func Batch[T any](items []T, size int) [][]T {
+	if len(items) == 0 {
+		return nil
+	}
+	if size <= 0 || size >= len(items) {
+		return [][]T{items}
+	}
+	out := make([][]T, 0, (len(items)+size-1)/size)
+	for i := 0; i < len(items); i += size {
+		end := i + size
+		if end > len(items) {
+			end = len(items)
+		}
+		out = append(out, items[i:end])
+	}
+	return out
+}

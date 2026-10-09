@@ -22,7 +22,8 @@
   "qdrant": {
     "host": "127.0.0.1",
     "port": 6333,
-    "token": "theron_qdrant_token"
+    "token": "theron_qdrant_token",
+    "scheme": "http"
   },
   "embedding": {
     "provider": "ollama",

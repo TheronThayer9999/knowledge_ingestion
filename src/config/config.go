@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // IConfig định nghĩa contract cho việc lấy cấu hình
@@ -68,11 +69,13 @@ type EmbeddingConfig struct {
 }
 
 // QdrantConfig giữ địa chỉ REST của Qdrant (cổng 6333) + token — worker embed
-// upsert vector vào đây. Local không bật auth thì để token rỗng.
+// upsert vector vào đây. Local không bật auth thì để token rỗng. Scheme tách
+// riêng (http/https) để production bật TLS chỉ đổi config, không sửa code.
 type QdrantConfig struct {
-	Host  string `json:"host"`
-	Port  int    `json:"port"`
-	Token string `json:"token"`
+	Host   string `json:"host"`
+	Port   int    `json:"port"`
+	Token  string `json:"token"`
+	Scheme string `json:"scheme"`
 }
 
 // OCRConfig giữ công tắc + đường dẫn engine Tesseract — worker chunk gọi qua
@@ -172,6 +175,23 @@ func Load(path string) (IConfig, error) {
 	}
 	if cfg.Qdrant.Port == 0 {
 		cfg.Qdrant.Port = 6333 // REST mặc định
+	}
+	if cfg.Qdrant.Scheme == "" {
+		cfg.Qdrant.Scheme = "http"
+	}
+	cfg.Qdrant.Scheme = strings.ToLower(strings.TrimSpace(cfg.Qdrant.Scheme))
+	if cfg.Qdrant.Scheme != "http" && cfg.Qdrant.Scheme != "https" {
+		return nil, fmt.Errorf("qdrant.scheme phải là http hoặc https, got %q", cfg.Qdrant.Scheme)
+	}
+	// Host dính scheme do copy URL (https://h:6333) thì tách ra để không dựng
+	// thành https://https://... — scheme trong host thắng khi config bỏ trống.
+	if i := strings.Index(cfg.Qdrant.Host, "://"); i >= 0 {
+		if cfg.Qdrant.Scheme == "http" {
+			if s := strings.ToLower(cfg.Qdrant.Host[:i]); s == "http" || s == "https" {
+				cfg.Qdrant.Scheme = s
+			}
+		}
+		cfg.Qdrant.Host = cfg.Qdrant.Host[i+3:]
 	}
 	// Token ưu tiên env để production không commit secret vào file.
 	if envToken := os.Getenv("QDRANT_TOKEN"); envToken != "" {

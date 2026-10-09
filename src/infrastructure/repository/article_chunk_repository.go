@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 )
 
 // staleTrimBatch trần row dọn mỗi kỳ — janitor làm theo đợt bounded như
-// purgeBatchSize để 1 kỳ không ôm transaction quá to.
+// PURGE_BATCH_SIZE để 1 kỳ không ôm transaction quá to.
 const staleTrimBatch = 100
 
 type ArticleChunkRepository struct {
@@ -37,12 +38,7 @@ const (
 func (r *ArticleChunkRepository) CreateBatch(ctx context.Context, chunks []*domain.ArticleChunk) error {
 	return dbConn(ctx, r.db).Transaction(func(tx *gorm.DB) error {
 		tx = tx.WithContext(ctx)
-		for i := 0; i < len(chunks); i += chunkInsertBatch {
-			end := i + chunkInsertBatch
-			if end > len(chunks) {
-				end = len(chunks)
-			}
-			batch := chunks[i:end]
+		for _, batch := range utils.Batch(chunks, chunkInsertBatch) {
 			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&batch).Error; err != nil {
 				return err
 			}

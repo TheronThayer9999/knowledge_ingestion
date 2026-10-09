@@ -24,9 +24,9 @@ func (c *testConfig) GetRabbitMQ() config.RabbitMQConfig { return c.inner.GetRab
 
 func (c *testConfig) GetJWT() config.JWTConfig { return c.inner.GetJWT() }
 
-func (c *testConfig) GetCORS() config.CorsConfig { return c.inner.GetCORS() }
-
-func (c *testConfig) GetApp() config.AppConfig { return c.inner.GetApp() }
+func (c *testConfig) GetCORS() config.CorsConfig     { return c.inner.GetCORS() }
+func (c *testConfig) GetWorker() config.WorkerConfig { return c.inner.GetWorker() }
+func (c *testConfig) GetApp() config.AppConfig       { return c.inner.GetApp() }
 
 func (c *testConfig) GetDatabase() config.DBConfig {
 	db := c.inner.GetDatabase()
