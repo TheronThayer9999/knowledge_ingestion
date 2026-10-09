@@ -1,250 +1,190 @@
 package qdrant
 
-// Test REST client Qdrant bằng httptest — không cần Qdrant thật. Assert
-// ensure/upsert/delete bắn đúng path + body + header api-key.
+// Test integration với Qdrant thật qua gRPC — cần Qdrant chạy ở
+// 127.0.0.1:6334 (docker compose đã mở sẵn). Không chạy thì skip để CI/dev
+// không có Qdrant vẫn xanh, giống pattern connection_test của postgres.
 
 import (
 	"context"
-	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"strings"
+	"errors"
+	"os"
 	"testing"
+	"time"
 
-	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/domain"
+
+	qdrantapi "github.com/qdrant/go-client/qdrant"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-type recordedReq struct {
-	method string
-	path   string
-	apiKey string
-	body   map[string]any
-}
-
-func newTestServer(t *testing.T, collectionExists bool, existingDim int, recs *[]recordedReq) *httptest.Server {
+// dialTest nối Qdrant thật — không nối được thì skip, không fail.
+func dialTest(t *testing.T) *qdrantapi.Client {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		if r.Body != nil {
-			data, _ := io.ReadAll(r.Body)
-			if len(data) > 0 {
-				_ = json.Unmarshal(data, &body)
-			}
-		}
-		*recs = append(*recs, recordedReq{
-			method: r.Method, path: r.URL.RequestURI(),
-			apiKey: r.Header.Get("api-key"), body: body,
-		})
-		switch {
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/collections/"):
-			if !collectionExists {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{
-				"config": map[string]any{"params": map[string]any{
-					"vectors": map[string]any{"size": existingDim, "distance": "Cosine"},
-				}},
-			}})
-		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/collections/"):
-			w.WriteHeader(http.StatusOK)
-		default:
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"status":"ok"}`))
-		}
-	}))
+	host := "127.0.0.1"
+	if h := os.Getenv("QDRANT_TEST_HOST"); h != "" {
+		host = h
+	}
+	token := os.Getenv("QDRANT_TOKEN")
+	if token == "" {
+		token = "theron_qdrant_token" // khớp docker compose local
+	}
+	client, err := qdrantapi.NewClient(&qdrantapi.Config{
+		Host:                   host,
+		Port:                   6334,
+		APIKey:                 token,
+		SkipCompatibilityCheck: true,
+		VersionCheckTimeout:    5 * time.Second,
+	})
+	if err != nil {
+		t.Skipf("không tạo được client qdrant (%s:6334): %v", host, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := client.CollectionExists(ctx, "article_chunks_test_ping"); err != nil {
+		t.Skipf("qdrant không chạy (%s:6334): %v", host, err)
+	}
+	return client
 }
 
-// Collection chưa có → tạo mới với đúng dim + gửi api-key.
-func TestEnsureCollection_CreatesWhenMissing(t *testing.T) {
-	var recs []recordedReq
-	srv := newTestServer(t, false, 0, &recs)
-	defer srv.Close()
+// testConn dựng connection trỏ collection riêng từng test + dọn sau khi xong
+// để không chạm collection production article_chunks.
+func testConn(t *testing.T, client *qdrantapi.Client, collection string, dim int) *connection {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	c := &connection{client: client, dim: dim, collection: collection}
+	if err := c.ensureCollection(ctx); err != nil {
+		t.Fatalf("ensureCollection: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_ = client.DeleteCollection(ctx, collection)
+	})
+	return c
+}
 
-	c := newClient(srv.URL, "secret-token", 1024)
-	if err := c.ensureCollection(context.Background()); err != nil {
-		t.Fatalf("unexpected err: %v", err)
+func testPoint(id string, articleID int64, dim int) *domain.VectorPoint {
+	vec := make([]float32, dim)
+	for i := range vec {
+		vec[i] = 0.1 * float32(i+1)
 	}
-	var put, index bool
-	for _, r := range recs {
-		if r.apiKey != "secret-token" {
-			t.Fatalf("thiếu header api-key: %+v", r)
-		}
-		if r.method == http.MethodPut && strings.HasSuffix(r.path, "/collections/"+constants.QDRANT_COLLECTION) {
-			put = true
-			vecs, _ := r.body["vectors"].(map[string]any)
-			if vecs["distance"] != "Cosine" || vecs["size"] != float64(1024) {
-				t.Fatalf("body tạo collection sai: %v", r.body)
-			}
-		}
-		if r.method == http.MethodPut && strings.HasSuffix(r.path, "/index") {
-			index = true
+	return &domain.VectorPoint{
+		ID: id, Vector: vec,
+		ArticleID: articleID, UserID: 7, CategoryID: 3,
+		ChunkIndex: 1, PageNum: 2, Text: "đoạn test",
+	}
+}
+
+// Upsert → count → đọc payload → xóa → đếm lại: vòng đời đầy đủ 1 bài.
+func TestUpsertCountDelete_Integration(t *testing.T) {
+	client := dialTest(t)
+	c := testConn(t, client, "article_chunks_test_crud", 4)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := c.UpsertPoints(ctx, []*domain.VectorPoint{
+		testPoint("550e8400-e29b-41d4-a716-446655440000", 5, 4),
+		testPoint("550e8400-e29b-41d4-a716-446655440001", 5, 4),
+		testPoint("550e8400-e29b-41d4-a716-446655440002", 6, 4),
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if n, err := c.CountByArticle(ctx, 5); err != nil || n != 2 {
+		t.Fatalf("count bài 5 = %d, err = %v, want 2", n, err)
+	}
+	// Payload đọc lại phải đủ 6 field phân quyền + text.
+	withPayload := true
+	var scrollLimit uint32 = 10
+	got, err := client.Scroll(ctx, &qdrantapi.ScrollPoints{
+		CollectionName: "article_chunks_test_crud",
+		Filter:         articleFilter(5),
+		Limit:          &scrollLimit,
+		WithPayload:    &qdrantapi.WithPayloadSelector{SelectorOptions: &qdrantapi.WithPayloadSelector_Enable{Enable: withPayload}},
+	})
+	if err != nil {
+		t.Fatalf("scroll: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("scroll = %d points, want 2", len(got))
+	}
+	for _, k := range []string{"article_id", "user_id", "category_id", "chunk_index", "page_num", "text"} {
+		if _, ok := got[0].Payload[k]; !ok {
+			t.Fatalf("payload thiếu %s: %v", k, got[0].Payload)
 		}
 	}
-	if !put || !index {
-		t.Fatalf("thiếu PUT create hoặc PUT index: %+v", recs)
+	if err := c.DeleteByArticle(ctx, 5); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if n, err := c.CountByArticle(ctx, 5); err != nil || n != 0 {
+		t.Fatalf("count sau xóa = %d, err = %v, want 0", n, err)
+	}
+	// Bài khác không bị ảnh hưởng.
+	if n, err := c.CountByArticle(ctx, 6); err != nil || n != 1 {
+		t.Fatalf("count bài 6 = %d, err = %v, want 1", n, err)
 	}
 }
 
 // Collection có sẵn sai dim → lỗi fail-fast, không upsert mù.
-func TestEnsureCollection_WrongDimFails(t *testing.T) {
-	var recs []recordedReq
-	srv := newTestServer(t, true, 768, &recs)
-	defer srv.Close()
+func TestEnsureCollection_WrongDimFails_Integration(t *testing.T) {
+	client := dialTest(t)
+	testConn(t, client, "article_chunks_test_dim", 4)
 
-	c := newClient(srv.URL, "", 1024)
-	if err := c.ensureCollection(context.Background()); err == nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	bad := &connection{client: client, dim: 5, collection: "article_chunks_test_dim"}
+	if err := bad.ensureCollection(ctx); err == nil {
 		t.Fatal("sai dim phải lỗi")
 	}
 }
 
-// Upsert đúng shape: id uuid, vector, payload đủ 5 field.
-func TestUpsertPoints_Shape(t *testing.T) {
-	var recs []recordedReq
-	srv := newTestServer(t, true, 4, &recs)
-	defer srv.Close()
-
-	c := newClient(srv.URL, "", 4)
-	err := c.UpsertPoints(context.Background(), []*domain.VectorPoint{{
-		ID: "550e8400-e29b-41d4-a716-446655440000", Vector: []float32{0.1, 0.2, 0.3, 0.4},
-		ArticleID: 5, UserID: 7, CategoryID: 3, ChunkIndex: 1, Text: "đoạn",
-	}})
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	var found bool
-	for _, r := range recs {
-		if r.method != http.MethodPut || !strings.Contains(r.path, "/points") {
-			continue
-		}
-		if !strings.Contains(r.path, "wait=true") {
-			t.Fatalf("upsert phải wait=true: %s", r.path)
-		}
-		found = true
-		pts, _ := r.body["points"].([]any)
-		if len(pts) != 1 {
-			t.Fatalf("points = %v", r.body)
-		}
-		p, _ := pts[0].(map[string]any)
-		if p["id"] != "550e8400-e29b-41d4-a716-446655440000" {
-			t.Fatalf("id sai: %v", p)
-		}
-		payload, _ := p["payload"].(map[string]any)
-		for _, k := range []string{"article_id", "user_id", "category_id", "chunk_index", "page_num", "text"} {
-			if _, ok := payload[k]; !ok {
-				t.Fatalf("payload thiếu %s: %v", k, payload)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("không thấy request upsert")
-	}
-}
-
-// Vector sai dim thì lỗi ngay, không bắn request.
+// Vector sai dim thì lỗi ngay phía client, không cần server.
 func TestUpsertPoints_DimMismatch(t *testing.T) {
-	var recs []recordedReq
-	srv := newTestServer(t, true, 4, &recs)
-	defer srv.Close()
-
-	c := newClient(srv.URL, "", 4)
+	c := &connection{dim: 4}
 	err := c.UpsertPoints(context.Background(), []*domain.VectorPoint{
 		{ID: "x", Vector: []float32{0.1}},
 	})
 	if err == nil {
 		t.Fatal("sai dim phải lỗi")
 	}
-	for _, r := range recs {
-		if strings.Contains(r.path, "/points") {
-			t.Fatalf("sai dim mà vẫn bắn request: %+v", r)
-		}
+	if !IsPermanent(err) {
+		t.Fatalf("sai dim phải là lỗi vĩnh viễn, got %v", err)
 	}
 }
 
-// Upsert rỗng → no-op, không bắn request.
+// Upsert rỗng/nil → no-op, không cần server.
 func TestUpsertPoints_EmptyNoop(t *testing.T) {
-	var recs []recordedReq
-	srv := newTestServer(t, true, 4, &recs)
-	defer srv.Close()
-
-	c := newClient(srv.URL, "", 4)
+	c := &connection{}
 	if err := c.UpsertPoints(context.Background(), nil); err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if len(recs) != 0 {
-		t.Fatalf("không được bắn request, got %+v", recs)
-	}
 }
 
-// Count đúng shape: filter article_id + decode result.count.
-func TestCountByArticle_Shape(t *testing.T) {
-	var recs []recordedReq
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		if r.Body != nil {
-			data, _ := io.ReadAll(r.Body)
-			if len(data) > 0 {
-				_ = json.Unmarshal(data, &body)
-			}
+// Phân loại vĩnh viễn/không qua mã gRPC — không cần server.
+func TestIsPermanent(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"bad request", ErrBadRequest, true},
+		{"invalid argument", status.Error(codes.InvalidArgument, "sai"), true},
+		{"not found", status.Error(codes.NotFound, "mất"), true},
+		{"unauthenticated", status.Error(codes.Unauthenticated, "sai key"), true},
+		{"unavailable", status.Error(codes.Unavailable, "rớt mạng"), false},
+		{"resource exhausted", status.Error(codes.ResourceExhausted, "nghẽn"), false},
+		{"deadline", status.Error(codes.DeadlineExceeded, "timeout"), false},
+		{"lỗi thường", errors.New("boom"), false},
+		{"nil", nil, false},
+	}
+	for _, tc := range cases {
+		if got := IsPermanent(tc.err); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
 		}
-		recs = append(recs, recordedReq{
-			method: r.Method, path: r.URL.RequestURI(),
-			apiKey: r.Header.Get("api-key"), body: body,
-		})
-		_, _ = w.Write([]byte(`{"result":{"count":7},"status":"ok"}`))
-	}))
-	defer srv.Close()
-
-	c := newClient(srv.URL, "", 4)
-	n, err := c.CountByArticle(context.Background(), 5)
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	if n != 7 {
-		t.Fatalf("count = %d, want 7", n)
-	}
-	if len(recs) != 1 || recs[0].method != http.MethodPost || !strings.Contains(recs[0].path, "/points/count") {
-		t.Fatalf("request sai: %+v", recs)
-	}
-	filter, _ := recs[0].body["filter"].(map[string]any)
-	must, _ := filter["must"].([]any)
-	cond, _ := must[0].(map[string]any)
-	if cond["key"] != "article_id" {
-		t.Fatalf("filter sai key: %v", cond)
-	}
-}
-func TestDeleteByArticle_Filter(t *testing.T) {
-	var recs []recordedReq
-	srv := newTestServer(t, true, 4, &recs)
-	defer srv.Close()
-
-	c := newClient(srv.URL, "", 4)
-	if err := c.DeleteByArticle(context.Background(), 9); err != nil {
-		t.Fatalf("unexpected err: %v", err)
-	}
-	var found bool
-	for _, r := range recs {
-		if r.method != http.MethodPost || !strings.Contains(r.path, "/points/delete") {
-			continue
+		// Method trên connection phải cùng kết quả với hàm thuần.
+		if got := (&connection{}).IsPermanentError(tc.err); got != tc.want {
+			t.Errorf("%s (method): got %v, want %v", tc.name, got, tc.want)
 		}
-		found = true
-		filter, _ := r.body["filter"].(map[string]any)
-		must, _ := filter["must"].([]any)
-		if len(must) != 1 {
-			t.Fatalf("filter sai: %v", r.body)
-		}
-		cond, _ := must[0].(map[string]any)
-		if cond["key"] != "article_id" {
-			t.Fatalf("filter sai key: %v", cond)
-		}
-		match, _ := cond["match"].(map[string]any)
-		if match["value"] != float64(9) {
-			t.Fatalf("filter sai value: %v", match)
-		}
-	}
-	if !found {
-		t.Fatal("không thấy request delete")
 	}
 }

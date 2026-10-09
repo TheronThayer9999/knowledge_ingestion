@@ -23,6 +23,7 @@
   "qdrant": {
     "host": "host.docker.internal",
     "port": 6333,
+    "grpc_port": 6334,
     "token": "theron_qdrant_token",
     "scheme": "http"
   },

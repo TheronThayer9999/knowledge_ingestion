@@ -68,14 +68,16 @@ type EmbeddingConfig struct {
 	Dim      int    `json:"dim"`
 }
 
-// QdrantConfig giữ địa chỉ REST của Qdrant (cổng 6333) + token — worker embed
-// upsert vector vào đây. Local không bật auth thì để token rỗng. Scheme tách
-// riêng (http/https) để production bật TLS chỉ đổi config, không sửa code.
+// QdrantConfig giữ địa chỉ Qdrant — worker embed upsert vector qua gRPC
+// (cổng 6334), REST (port 6333) chỉ dùng cho dashboard/MCP. Local không bật
+// auth thì để token rỗng. Scheme tách riêng (http/https): https nghĩa là TLS
+// đã bật ở server, client gRPC bật UseTLS theo.
 type QdrantConfig struct {
-	Host   string `json:"host"`
-	Port   int    `json:"port"`
-	Token  string `json:"token"`
-	Scheme string `json:"scheme"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	GrpcPort int    `json:"grpc_port"`
+	Token    string `json:"token"`
+	Scheme   string `json:"scheme"`
 }
 
 // OCRConfig giữ công tắc + đường dẫn engine Tesseract — worker chunk gọi qua
@@ -175,6 +177,9 @@ func Load(path string) (IConfig, error) {
 	}
 	if cfg.Qdrant.Port == 0 {
 		cfg.Qdrant.Port = 6333 // REST mặc định
+	}
+	if cfg.Qdrant.GrpcPort == 0 {
+		cfg.Qdrant.GrpcPort = 6334 // gRPC mặc định (official go-client)
 	}
 	if cfg.Qdrant.Scheme == "" {
 		cfg.Qdrant.Scheme = "http"

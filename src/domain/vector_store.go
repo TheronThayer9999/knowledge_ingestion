@@ -19,7 +19,7 @@ type VectorPoint struct {
 
 // IVectorStore hợp đồng với kho vector — service chỉ phụ thuộc interface này
 // nên đổi Qdrant → Weaviate/Milvus chỉ cần viết adapter mới. Triển khai ở
-// infrastructure/qdrant (REST cổng 6333, stdlib net/http).
+// infrastructure/qdrant (official go-client, gRPC cổng 6334).
 type IVectorStore interface {
 	// UpsertPoints ghi đè point theo ID — idempotent, crash giữa chừng chạy
 	// lại vẫn hội tụ.
@@ -31,8 +31,9 @@ type IVectorStore interface {
 	// done-rỗng (chunk hết nhưng chưa chắc vector đã lên): count 0 thì không
 	// được done, phải retry thay vì done âm thầm với search trống.
 	CountByArticle(ctx context.Context, articleID int64) (int64, error)
-	// IsPermanentError báo lỗi có retry cũng vậy không (sai dim, 4xx trừ
-	// 408/429) — service dùng để failed luôn thay vì backoff. Triển khai ở infra.
+	// IsPermanentError báo lỗi có retry cũng vậy không (sai dim, mã gRPC
+	// InvalidArgument/NotFound/Unauthenticated...) — service dùng để failed
+	// luôn thay vì backoff. Triển khai ở infra.
 	IsPermanentError(err error) bool
 }
 

@@ -22,6 +22,7 @@
   "qdrant": {
     "host": "127.0.0.1",
     "port": 6333,
+    "grpc_port": 6334,
     "token": "theron_qdrant_token",
     "scheme": "http"
   },
