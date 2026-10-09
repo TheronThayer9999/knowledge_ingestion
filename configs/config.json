@@ -2,6 +2,7 @@
   "app": {
     "name": "manager_docker_compose",
     "port": 9001,
+    "grpc_port": 9002,
     "env": "development"
   },
   "database": {
@@ -29,7 +30,7 @@
   "embedding": {
     "provider": "ollama",
     "model": "bge-m3:latest",
-    "base_url": "http://bore.pub:59840/",
+    "base_url": "http://bore.pub:9203/",
     "api_key": "",
     "dim": 1024
   },

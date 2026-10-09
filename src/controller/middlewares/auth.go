@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -35,6 +36,10 @@ type IAuthMiddleware interface {
 	IssueToken(userID int64, username string, pwdChangedAt time.Time) (token string, expiresAt time.Time, err error)
 	// ParseToken verify chữ ký + hạn của token, trả claims khi hợp lệ.
 	ParseToken(tokenString string) (*Claims, error)
+	// VerifyToken verify trọn vẹn 1 token (chữ ký + hạn + đối chiếu DB: acc
+	// bị khóa hoặc đổi pass sau khi ký đều rớt) — gin Handler và gRPC
+	// interceptor dùng chung để 2 transport thu hồi tức thì như nhau.
+	VerifyToken(ctx context.Context, tokenString string) (int64, error)
 }
 
 type authMiddleware struct {
@@ -89,11 +94,31 @@ func (m *authMiddleware) ParseToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
+// VerifyToken verify trọn vẹn 1 token: chữ ký + hạn + đối chiếu DB (tài
+// khoản bị khóa hoặc đổi pass sau khi ký đều rớt) — trả user_id khi hợp lệ.
+func (m *authMiddleware) VerifyToken(ctx context.Context, tokenString string) (int64, error) {
+	claims, err := m.ParseToken(tokenString)
+	if err != nil {
+		return 0, err
+	}
+	user, err := m.users.GetUserById(ctx, claims.UserID)
+	if err != nil || user == nil {
+		return 0, jwt.ErrTokenInvalidClaims
+	}
+	if !user.Active {
+		return 0, jwt.ErrTokenInvalidClaims
+	}
+	if user.PasswordChangedAt.Unix() != claims.PwdChangedAt {
+		return 0, jwt.ErrTokenInvalidClaims
+	}
+	return claims.UserID, nil
+}
+
 // Handler trả middleware chặn request không có/không đúng JWT — client gửi
 // `Authorization: Bearer <token>` (token lấy từ POST /auth/login).
-// Ngoài chữ ký + hạn còn đối chiếu với DB mỗi request: tài khoản bị khóa
-// hoặc đã đổi pass sau khi token được ký đều 401 ngay. Đánh đổi 1
-// query/request để thu hồi tức thì — sau này cache redis nếu nóng.
+// Verify trọn vẹn qua VerifyToken (chữ ký + hạn + đối chiếu DB mỗi request:
+// tài khoản bị khóa hoặc đã đổi pass sau khi token được ký đều 401 ngay).
+// Đánh đổi 1 query/request để thu hồi tức thì — sau này cache redis nếu nóng.
 func (m *authMiddleware) Handler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
@@ -102,28 +127,15 @@ func (m *authMiddleware) Handler() gin.HandlerFunc {
 			abortUnauthorized(c, "thiếu token xác thực")
 			return
 		}
-		claims, err := m.ParseToken(strings.TrimSpace(token))
+		userID, err := m.VerifyToken(c.Request.Context(), strings.TrimSpace(token))
 		if err != nil {
 			abortUnauthorized(c, "token không hợp lệ hoặc đã hết hạn")
 			return
 		}
-		user, err := m.users.GetUserById(c.Request.Context(), claims.UserID)
-		if err != nil || user == nil {
-			abortUnauthorized(c, "token không hợp lệ hoặc đã hết hạn")
-			return
-		}
-		if !user.Active {
-			abortUnauthorized(c, "tài khoản đã bị khóa")
-			return
-		}
-		if user.PasswordChangedAt.Unix() != claims.PwdChangedAt {
-			abortUnauthorized(c, "mật khẩu đã đổi, vui lòng đăng nhập lại")
-			return
-		}
-		c.Set(CtxUserID, claims.UserID)
+		c.Set(CtxUserID, userID)
 		// Nhét tiếp vào request context chuẩn để tầng service đọc qua
 		// ICurrentUser mà không cần biết gin.
-		c.Request = c.Request.WithContext(withUserID(c.Request.Context(), claims.UserID))
+		c.Request = c.Request.WithContext(WithUserID(c.Request.Context(), userID))
 		c.Next()
 	}
 }

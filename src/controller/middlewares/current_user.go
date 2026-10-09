@@ -33,8 +33,10 @@ func (u *currentUser) UserID(ctx context.Context) (int64, bool) {
 	return uid, ok
 }
 
-// withUserID nhét user_id đã verify vào request context — gọi trong
-// Handler sau khi đối chiếu token với DB xong.
-func withUserID(ctx context.Context, userID int64) context.Context {
+// WithUserID nhét user_id đã verify vào request context — gọi trong
+// middleware sau khi đối chiếu token với DB xong. Export để transport sau
+// này (gRPC interceptor cho AI agent Python) nhét identity vào cùng 1 key,
+// service đọc ra qua ICurrentUser mà không cần biết đang chạy HTTP hay gRPC.
+func WithUserID(ctx context.Context, userID int64) context.Context {
 	return context.WithValue(ctx, ctxUserIDKey, userID)
 }

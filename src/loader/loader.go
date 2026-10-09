@@ -2,6 +2,7 @@ package loader
 
 import (
 	"knowledge_ingestion/src/controller/apis"
+	"knowledge_ingestion/src/controller/grpchandler"
 	"knowledge_ingestion/src/controller/middlewares"
 	"knowledge_ingestion/src/controller/routers"
 	"knowledge_ingestion/src/controller/services"
@@ -97,6 +98,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewArticleAPI),
 		fx.Provide(apis.NewArticleAdminAPI),
 		fx.Provide(apis.NewSearchAPI),
+		fx.Provide(grpchandler.NewServer),
 		fx.Provide(routers.NewRouter),
 	}
 }
