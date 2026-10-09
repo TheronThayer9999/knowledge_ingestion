@@ -2,9 +2,9 @@
 #
 # 1. Sinh stubs từ proto (1 lần, mỗi khi knowledge.proto đổi):
 #      pip install grpcio grpcio-tools
-#      python -m grpc_tools.protoc -I. \
+#      python -m grpc_tools.protoc -Isrc/proto \
 #        --python_out=. --grpc_python_out=. \
-#        proto/knowledge/v1/knowledge.proto
+#        src/proto/knowledge/v1/knowledge.proto
 #
 # 2. Lấy JWT trước qua HTTP: POST /api/v1/auth/login -> token.
 # 3. Chạy file này: python proto/client_example.py
