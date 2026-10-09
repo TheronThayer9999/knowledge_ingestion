@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
 	"knowledge_ingestion/src/infrastructure/qdrant"
 )
@@ -417,7 +418,7 @@ func TestEmbedPending_PermanentVectorErrorFailsFast(t *testing.T) {
 	if n != 0 || len(chunkRepo.marked) != 0 {
 		t.Fatalf("lỗi vĩnh viễn mà vẫn mark: n=%d marked=%v", n, chunkRepo.marked)
 	}
-	if articleRepo.errs[13] != domain.MaxQueueAttempts {
+	if articleRepo.errs[13] != utils.MaxQueueAttempts {
 		t.Fatalf("phải failed luôn, got %v", articleRepo.errs)
 	}
 }
@@ -471,7 +472,7 @@ func TestEmbedPending_ShortVectorsNoPanic(t *testing.T) {
 	if n != 0 || len(vectors.points) != 0 || len(chunkRepo.marked) != 0 {
 		t.Fatalf("thiếu vector mà vẫn upsert/mark: n=%d", n)
 	}
-	if articleRepo.errs[11] != domain.MaxQueueAttempts {
+	if articleRepo.errs[11] != utils.MaxQueueAttempts {
 		t.Fatalf("lỗi contract phải failed luôn, got %v", articleRepo.errs)
 	}
 }

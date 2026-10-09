@@ -46,29 +46,6 @@ const (
 	QueueFailed     = "failed"
 )
 
-const (
-	// MaxQueueAttempts số lần thử tối đa 1 bài trước khi đánh failed — file
-	// lỗi thật (docx hỏng, ollama chết hẳn) không được retry vô hạn.
-	MaxQueueAttempts = 10
-	// QueueRetryBase cơ số backoff giữa các lần thử: 1ph, 2ph, 4ph...
-	QueueRetryBase = time.Minute
-	// MaxQueueDelay trần backoff — lỗi lâu thì thử lại mỗi 30 phút.
-	MaxQueueDelay = 30 * time.Minute
-)
-
-// QueueBackoff tính giờ thử lại sau lần lỗi thứ attempts (đã tính lần vừa
-// lỗi) — repo tự gọi trong Mark*Error nên service không tính tay.
-func QueueBackoff(attempts int) time.Time {
-	d := QueueRetryBase
-	for i := 1; i < attempts && d < MaxQueueDelay; i++ {
-		d *= 2
-	}
-	if d > MaxQueueDelay {
-		d = MaxQueueDelay
-	}
-	return time.Now().Add(d)
-}
-
 func (Article) TableName() string {
 	return "articles"
 }
@@ -110,9 +87,9 @@ type IArticleRepository interface {
 	ClaimChunkPending(ctx context.Context, limit int, lease time.Duration) ([]*Article, error)
 	// MarkChunkDone đánh dấu chunk xong 1 bài.
 	MarkChunkDone(ctx context.Context, id int64) error
-	// MarkChunkError ghi lỗi 1 bài: quá MaxQueueAttempts thì failed, còn lại
-	// pending + lùi giờ thử theo QueueBackoff. attempts là số lần đã thử
-	// (gồm lần vừa lỗi) — repo tự quyết, service chỉ truyền số.
+	// MarkChunkError ghi lỗi 1 bài: quá utils.MaxQueueAttempts thì failed, còn
+	// lại pending + lùi giờ thử theo utils.QueueBackoff. attempts là số lần đã
+	// thử (gồm lần vừa lỗi) — repo tự quyết, service chỉ truyền số.
 	MarkChunkError(ctx context.Context, id int64, attempts int) error
 
 	// ClaimEmbedPending như ClaimChunkPending nhưng cho phase 2 — chỉ hốt bài
@@ -125,6 +102,16 @@ type IArticleRepository interface {
 
 	// HardDelete xóa hẳn 1 row đã xóa mềm — chỉ worker janitor gọi.
 	HardDelete(ctx context.Context, id int64) error
+
+	// IDsByCategory trả id các bài còn sống trong 1 danh mục của đúng owner
+	// — API rebuild resolve scope category thành danh sách id cụ thể.
+	IDsByCategory(ctx context.Context, categoryID int64, userID int64) ([]int64, error)
+	// ResetQueue đưa các bài về pending cả 2 phase (attempts 0, retry now,
+	// embedded_at NULL) để worker chunk→embed lại từ đầu — dùng khi Qdrant
+	// mất collection/chuyển cụm mới. Chỉ đụng bài của đúng owner, trả số row
+	// đã reset. Không xóa chunk rows (service gọi DeleteByArticleID trước vì
+	// chunk cũ trỏ PointID cũ, giữ lại thì ExistsByArticleID skip chunk mới).
+	ResetQueue(ctx context.Context, ids []int64, userID int64) (int64, error)
 }
 
 // Role interface cho worker — mỗi service chỉ phụ thuộc đúng phương thức nó

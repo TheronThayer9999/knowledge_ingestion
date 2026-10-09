@@ -104,3 +104,19 @@ func ToArticleListResponse(articles []*domain.Article) ArticleListResponse {
 	}
 	return res
 }
+
+// RebuildVectorsRequest đưa bài về hàng đợi chunk→embed từ đầu (Qdrant
+// chết/mất collection, chuyển cụm mới). Scope bắt buộc đúng 1 trong 2:
+// article_ids hoặc category_id — cả 2 rỗng service trả 400 để không reset
+// nhầm toàn bộ. Chỉ tác động bài của chính mình (owner từ token).
+type RebuildVectorsRequest struct {
+	ArticleIDs []int64 `json:"article_ids,omitempty" binding:"omitempty,dive,gt=0"`
+	CategoryID int64   `json:"category_id,omitempty" binding:"omitempty,gt=0" example:"5"`
+}
+
+// RebuildVectorsResponse báo số bài đã đưa về pending — worker hốt dần theo
+// nhịp claim, theo dõi qua GET /articles như bình thường.
+type RebuildVectorsResponse struct {
+	ResetArticles int64   `json:"reset_articles" example:"2"`
+	ArticleIDs    []int64 `json:"article_ids"`
+}

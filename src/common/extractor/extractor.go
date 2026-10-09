@@ -34,7 +34,7 @@ var ErrUnsupported = errors.New("loại file chưa hỗ trợ trích text")
 var ErrInvalid = errors.New("file không hợp lệ hoặc không trích được nội dung")
 
 // IsPermanent báo lỗi có thử lại cũng vậy không — service gặp thì failed luôn
-// thay vì đốt hết MaxQueueAttempts rồi mới failed.
+// thay vì đốt hết utils.MaxQueueAttempts rồi mới failed.
 func IsPermanent(err error) bool {
 	return errors.Is(err, ErrUnsupported) || errors.Is(err, ErrInvalid)
 }

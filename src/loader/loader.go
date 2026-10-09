@@ -9,6 +9,7 @@ import (
 	"knowledge_ingestion/src/infrastructure/caches"
 	"knowledge_ingestion/src/infrastructure/embedding"
 	"knowledge_ingestion/src/infrastructure/postgres"
+	"knowledge_ingestion/src/infrastructure/qdrant"
 	"knowledge_ingestion/src/infrastructure/rabbitmq"
 	"knowledge_ingestion/src/infrastructure/repository"
 	"knowledge_ingestion/src/infrastructure/seaweedfs"
@@ -48,7 +49,12 @@ func loadAdapter() []fx.Option {
 		fx.Provide(repository.NewUserRepository),
 		fx.Provide(repository.NewCategoryRepository),
 		fx.Provide(repository.NewArticleRepository),
+		fx.Provide(repository.NewArticleChunkRepository),
 		fx.Provide(repository.NewUnitOfWork),
+		// qdrant cho API rebuild-vectors (xóa vector cũ) — NewConnection
+		// ensureCollection lúc dựng nên API boot giờ fail-fast khi Qdrant
+		// chết, giống worker (đánh đổi để endpoint rebuild luôn sẵn sàng).
+		fx.Provide(qdrant.NewConnection),
 	}
 }
 
@@ -59,6 +65,7 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewFileService),
 		fx.Provide(services.NewCategoryService),
 		fx.Provide(services.NewArticleService),
+		fx.Provide(services.NewArticleAdminService),
 	}
 }
 
@@ -87,6 +94,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewFileAPI),
 		fx.Provide(apis.NewCategoryAPI),
 		fx.Provide(apis.NewArticleAPI),
+		fx.Provide(apis.NewArticleAdminAPI),
 		fx.Provide(routers.NewRouter),
 	}
 }

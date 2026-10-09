@@ -15,6 +15,57 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/admin/rebuild-vectors": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Đưa bài về hàng đợi chunk→embed từ đầu (Qdrant mất collection, chuyển cụm mới). Scope bắt buộc đúng 1 trong article_ids hoặc category_id, chỉ tác động bài của chính mình. Worker hốt dần theo nhịp claim.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Rebuild vectors for articles",
+                "parameters": [
+                    {
+                        "description": "rebuild scope",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.RebuildVectorsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/articles": {
             "get": {
                 "security": [
@@ -970,6 +1021,21 @@ const docTemplate = `{
                 "username": {
                     "type": "string",
                     "example": "johndoe"
+                }
+            }
+        },
+        "dtos.RebuildVectorsRequest": {
+            "type": "object",
+            "properties": {
+                "article_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "category_id": {
+                    "type": "integer",
+                    "example": 5
                 }
             }
         },

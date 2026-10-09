@@ -5,6 +5,7 @@ import (
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/storage"
+	"knowledge_ingestion/src/controller/services/internal/worker"
 	"knowledge_ingestion/src/domain"
 	"time"
 )
@@ -72,7 +73,7 @@ func NewArticlePurgeService(articleRepo domain.ArticleJanitor, chunkRepo domain.
 // chạy. Gọi trực tiếp không qua runner (test, tool tay) thì ctx trống, lúc
 // đó tự sinh fallback để log vẫn lần được.
 func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
-	traceID, err := ensureTraceID(ctx)
+	traceID, err := worker.EnsureTraceID(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -86,9 +87,9 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 	}
 	purged := 0
 	for _, article := range articles {
-		dbCtx, cancel := detachCtx(ctx)
-		func() {
-			defer cancel()
+		det := worker.Detach(ctx)
+		func(dbCtx context.Context) {
+			defer det.Close()
 			if article.StorageKey != "" {
 				if err := s.storage.Delete(dbCtx, article.StorageKey); err != nil {
 					logs.Warnw("purge: xóa blob thất bại, để kỳ sau thử lại",
@@ -121,7 +122,7 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 				return
 			}
 			purged++
-		}()
+		}(det.Ctx)
 	}
 	logs.Infow("purge: xong 1 kỳ quét", "trace_id", traceID, "found", len(articles), "purged", purged)
 	return purged, nil
@@ -131,7 +132,7 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 // mồ côi. Row đang chờ retry không bị đụng nên chạy lúc nào cũng an toàn;
 // DELETE có index nên kỳ không có gì dọn chỉ tốn 1 câu rẻ.
 func (s *articlePurgeService) TrimOldChunks(ctx context.Context) (int64, error) {
-	traceID, err := ensureTraceID(ctx)
+	traceID, err := worker.EnsureTraceID(ctx)
 	if err != nil {
 		return 0, err
 	}

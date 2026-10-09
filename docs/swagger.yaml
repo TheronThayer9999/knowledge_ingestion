@@ -98,6 +98,16 @@ definitions:
     - password
     - username
     type: object
+  dtos.RebuildVectorsRequest:
+    properties:
+      article_ids:
+        items:
+          type: integer
+        type: array
+      category_id:
+        example: 5
+        type: integer
+    type: object
   dtos.ResponseResource:
     properties:
       code:
@@ -151,6 +161,40 @@ info:
   title: Knowledge Ingestion API
   version: "1.0"
 paths:
+  /api/v1/admin/rebuild-vectors:
+    post:
+      consumes:
+      - application/json
+      description: Đưa bài về hàng đợi chunk→embed từ đầu (Qdrant mất collection,
+        chuyển cụm mới). Scope bắt buộc đúng 1 trong article_ids hoặc category_id,
+        chỉ tác động bài của chính mình. Worker hốt dần theo nhịp claim.
+      parameters:
+      - description: rebuild scope
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.RebuildVectorsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Rebuild vectors for articles
+      tags:
+      - admin
   /api/v1/articles:
     get:
       description: Lists my articles filtered by exactly one of category_id or category_name

@@ -17,6 +17,7 @@ type Router struct {
 func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	userAPI *apis.UserAPI, fileAPI *apis.FileAPI,
 	categoryAPI *apis.CategoryAPI, articleAPI *apis.ArticleAPI,
+	adminAPI *apis.ArticleAdminAPI,
 	cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
 	trace middlewares.ITraceMiddleware) *Router {
 	if cfg.GetApp().Env == "production" {
@@ -66,6 +67,8 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		authed.GET("/articles/:id", articleAPI.GetByID)
 		authed.PUT("/articles/:id", articleAPI.Update)
 		authed.DELETE("/articles/:id", articleAPI.Delete)
+		// Gate Role để sau — hiện sau auth thường như mọi route articles.
+		authed.POST("/admin/rebuild-vectors", adminAPI.Rebuild)
 	}
 
 	return &Router{Engine: engine}

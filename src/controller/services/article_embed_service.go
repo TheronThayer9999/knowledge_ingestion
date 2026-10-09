@@ -11,6 +11,7 @@ import (
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/utils"
+	"knowledge_ingestion/src/controller/services/internal/worker"
 	"knowledge_ingestion/src/domain"
 )
 
@@ -44,7 +45,7 @@ func NewArticleEmbedService(articleRepo domain.ArticleEmbedQueue, chunkRepo doma
 // Qdrant-trước-Mark-sau: point mồ côi mang ID cũ, upsert lại ghi đè — hội tụ
 // như purge. Cùng quy ước trace_id với ChunkPending/PurgeDeleted.
 func (s *articleEmbedService) EmbedPending(ctx context.Context) (int, error) {
-	traceID, err := ensureTraceID(ctx)
+	traceID, err := worker.EnsureTraceID(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -141,9 +142,9 @@ func (s *articleEmbedService) embedClaimed(ctx context.Context, traceID string, 
 func (s *articleEmbedService) finishEmbed(ctx context.Context, article *domain.Article) error {
 	// Detach tươi tại điểm ghi: hàm này chạy sau hàng phút gọi Ollama, ctx
 	// tạo sớm hơn đã chết từ lâu.
-	dbCtx, cancel := detachCtx(ctx)
-	defer cancel()
-	return s.uow.InTx(dbCtx, func(txCtx context.Context) error {
+	det := worker.Detach(ctx)
+	defer det.Close()
+	return s.uow.InTx(det.Ctx, func(txCtx context.Context) error {
 		if err := s.chunkRepo.DeleteByArticleID(txCtx, article.ID); err != nil {
 			return fmt.Errorf("dọn chunk: %w", err)
 		}
@@ -173,13 +174,13 @@ func (s *articleEmbedService) ensureAlive(ctx context.Context, traceID string, a
 // cleanupDeleted dọn vector + chunk của bài đã chết — cả 2 đều idempotent nên
 // chạy đè với purge cũng an toàn. Detach tươi để dọn được dù job hết timeout.
 func (s *articleEmbedService) cleanupDeleted(ctx context.Context, traceID string, article *domain.Article) {
-	dbCtx, cancel := detachCtx(ctx)
-	defer cancel()
+	det := worker.Detach(ctx)
+	defer det.Close()
 	logs.Infow("embed: bài bị xóa giữa chừng, đã dọn vector + chunk", "trace_id", traceID, "article_id", article.ID)
-	if err := s.vectors.DeleteByArticle(dbCtx, article.ID); err != nil {
+	if err := s.vectors.DeleteByArticle(det.Ctx, article.ID); err != nil {
 		logs.Error(err, "embed: không dọn vector bài đã xóa được", "trace_id", traceID, "article_id", article.ID)
 	}
-	if err := s.chunkRepo.DeleteByArticleID(dbCtx, article.ID); err != nil {
+	if err := s.chunkRepo.DeleteByArticleID(det.Ctx, article.ID); err != nil {
 		logs.Error(err, "embed: không dọn chunk bài đã xóa được", "trace_id", traceID, "article_id", article.ID)
 	}
 }
@@ -198,7 +199,7 @@ func (s *articleEmbedService) markEmbedError(ctx context.Context, traceID string
 	// khỏi backoff 10 lần. Hỏi tính vĩnh viễn qua domain interface để service
 	// không import infra (DIP).
 	if errors.Is(err, errEmbedContract) || s.embedder.IsPermanentError(err) || s.vectors.IsPermanentError(err) {
-		attempts = domain.MaxQueueAttempts
+		attempts = utils.MaxQueueAttempts
 		logs.Warnw("embed: lỗi vĩnh viễn, failed luôn",
 			"trace_id", traceID, "article_id", article.ID, "error", err)
 	} else {
@@ -206,9 +207,9 @@ func (s *articleEmbedService) markEmbedError(ctx context.Context, traceID string
 			"trace_id", traceID, "article_id", article.ID, "error", err)
 	}
 	// Detach tươi tại điểm ghi — hàm này thường chạy sau hàng phút gọi Ollama.
-	mctx, cancel := detachCtx(ctx)
-	defer cancel()
-	if merr := s.articleRepo.MarkEmbedError(mctx, article.ID, attempts); merr != nil {
+	det := worker.Detach(ctx)
+	defer det.Close()
+	if merr := s.articleRepo.MarkEmbedError(det.Ctx, article.ID, attempts); merr != nil {
 		logs.Error(merr, "embed: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID)
 	}
 }
@@ -227,7 +228,7 @@ func (s *articleEmbedService) embedBatch(ctx context.Context, traceID string, ba
 	logs.Infow("ollama: gọi embed", "trace_id", traceID, "article_id", batch[0].Chunk.ArticleID,
 		"texts", len(texts), "model", s.embedder.ModelName())
 	embedStart := time.Now()
-	if err := withRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY, func(ctx context.Context) error {
+	if err := worker.WithRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY, func(ctx context.Context) error {
 		var err error
 		vectors, err = s.embedder.EmbedBatch(ctx, texts)
 		return err
@@ -256,15 +257,15 @@ func (s *articleEmbedService) embedBatch(ctx context.Context, traceID string, ba
 		})
 		ids = append(ids, it.Chunk.ID)
 	}
-	if err := withRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY, func(ctx context.Context) error {
+	if err := worker.WithRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY, func(ctx context.Context) error {
 		return s.vectors.UpsertPoints(ctx, points)
 	}); err != nil {
 		return 0, fmt.Errorf("upsert qdrant: %w", err)
 	}
 	// Detach tươi tại điểm ghi — tới đây đã tốn hàng chục giây gọi Ollama.
-	mctx, cancel := detachCtx(ctx)
-	defer cancel()
-	if err := s.chunkRepo.MarkEmbedded(mctx, ids); err != nil {
+	det := worker.Detach(ctx)
+	defer det.Close()
+	if err := s.chunkRepo.MarkEmbedded(det.Ctx, ids); err != nil {
 		return 0, fmt.Errorf("đánh dấu embedded: %w", err)
 	}
 	return len(batch), nil

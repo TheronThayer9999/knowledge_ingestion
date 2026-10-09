@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
 	"time"
 
@@ -134,6 +135,43 @@ func (a *ArticleRepository) HardDelete(ctx context.Context, id int64) error {
 	return dbConn(ctx, a.db).Unscoped().Where("id = ?", id).Delete(&domain.Article{}).Error
 }
 
+// IDsByCategory trả id các bài còn sống trong 1 danh mục của đúng owner —
+// gorm tự loại soft-deleted nên bài đã xóa mềm không lọt vào rebuild.
+func (a *ArticleRepository) IDsByCategory(ctx context.Context, categoryID int64, userID int64) ([]int64, error) {
+	var ids []int64
+	if err := dbConn(ctx, a.db).Model(&domain.Article{}).
+		Where("category_id = ? AND user_id = ?", categoryID, userID).
+		Order("id ASC").Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// ResetQueue đưa các bài về pending cả 2 phase trong 1 câu UPDATE —
+// id không thuộc owner thì khớp 0 row nên không reset nhầm bài người khác.
+func (a *ArticleRepository) ResetQueue(ctx context.Context, ids []int64, userID int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	now := time.Now()
+	res := dbConn(ctx, a.db).Model(&domain.Article{}).
+		Where("id IN ? AND user_id = ?", ids, userID).
+		Updates(map[string]any{
+			"chunk_status":          domain.QueuePending,
+			"embed_status":          domain.QueuePending,
+			"chunk_attempts":        0,
+			"embed_attempts":        0,
+			"chunk_next_retry_at":   now,
+			"embed_next_retry_at":   now,
+			"embedded_at":           nil,
+			"updated_at":            now,
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
 // ListUnprocessed đã thay bằng ClaimChunkPending (queue có lease, nhiều
 // worker không giẫm nhau) — giữ comment để ai tìm cũng thấy đường:
 //
@@ -208,13 +246,13 @@ func (a *ArticleRepository) MarkChunkDone(ctx context.Context, id int64) error {
 }
 
 // markError dùng chung cho chunk/embed: quá MaxQueueAttempts thì failed để
-// người xử lý, còn lại pending + lùi giờ thử theo QueueBackoff. attempts là
-// số lần lỗi tính tới hiện tại — ghi luôn vào cột để lần sau cộng tiếp (claim
-// không tăng, chỉ lỗi mới tăng).
+// người xử lý, còn lại pending + lùi giờ thử theo utils.QueueBackoff.
+// attempts là số lần lỗi tính tới hiện tại — ghi luôn vào cột để lần sau
+// cộng tiếp (claim không tăng, chỉ lỗi mới tăng).
 func (a *ArticleRepository) markError(ctx context.Context, id int64, attempts int, embed bool) error {
 	status := domain.QueuePending
-	nextRetry := domain.QueueBackoff(attempts)
-	if attempts >= domain.MaxQueueAttempts {
+	nextRetry := utils.QueueBackoff(attempts)
+	if attempts >= utils.MaxQueueAttempts {
 		status = domain.QueueFailed
 	}
 	updates := map[string]any{"updated_at": time.Now()}

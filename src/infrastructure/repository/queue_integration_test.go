@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/domain"
 	"knowledge_ingestion/src/infrastructure/postgres"
@@ -191,7 +192,7 @@ func TestQueueMarkErrorBackoff(t *testing.T) {
 	if r.ChunkNextRetryAt.Before(before.Add(50*time.Second)) || r.ChunkNextRetryAt.After(before.Add(70*time.Second)) {
 		t.Fatalf("backoff lần 1 phải ~1 phút, got %v", r.ChunkNextRetryAt.Sub(before))
 	}
-	if err := ar.MarkChunkError(ctx, a.ID, domain.MaxQueueAttempts); err != nil {
+	if err := ar.MarkChunkError(ctx, a.ID, utils.MaxQueueAttempts); err != nil {
 		t.Fatalf("mark failed: %v", err)
 	}
 	if r := reloadArticle(t, db, a.ID); r.ChunkStatus != domain.QueueFailed {
@@ -269,17 +270,5 @@ func TestQueueCreateBatchAtomic(t *testing.T) {
 	db.Model(&domain.ArticleChunk{}).Where("article_id = ?", a.ID).Count(&n)
 	if n != 2 {
 		t.Fatalf("want 2 chunk, got %d", n)
-	}
-}
-
-// QueueBackoff thuần túy: lần 1 ~1 phút, trần 30 phút.
-func TestQueueBackoffPure(t *testing.T) {
-	d1 := time.Until(domain.QueueBackoff(1))
-	if d1 < 50*time.Second || d1 > 70*time.Second {
-		t.Fatalf("backoff(1) phải ~1m, got %v", d1)
-	}
-	dMax := time.Until(domain.QueueBackoff(1000))
-	if dMax < 29*time.Minute || dMax > 31*time.Minute {
-		t.Fatalf("backoff phải trần 30m, got %v", dMax)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"knowledge_ingestion/src/common/extractor"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
 
 	"github.com/google/uuid"
@@ -259,10 +260,10 @@ func TestChunkPending_SkipsBadArticles(t *testing.T) {
 	if len(articleRepo.done) != 1 || articleRepo.done[0] != 7 {
 		t.Fatalf("chỉ done bài 7, got %v", articleRepo.done)
 	}
-	if articleRepo.errs[8] != domain.MaxQueueAttempts ||
-		articleRepo.errs[9] != domain.MaxQueueAttempts ||
-		articleRepo.errs[13] != domain.MaxQueueAttempts {
-		t.Fatalf("lỗi xác định phải failed luôn (attempts=%d), got %v", domain.MaxQueueAttempts, articleRepo.errs)
+	if articleRepo.errs[8] != utils.MaxQueueAttempts ||
+		articleRepo.errs[9] != utils.MaxQueueAttempts ||
+		articleRepo.errs[13] != utils.MaxQueueAttempts {
+		t.Fatalf("lỗi xác định phải failed luôn (attempts=%d), got %v", utils.MaxQueueAttempts, articleRepo.errs)
 	}
 }
 

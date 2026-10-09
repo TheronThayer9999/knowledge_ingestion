@@ -14,6 +14,7 @@ import (
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/common/utils"
+	"knowledge_ingestion/src/controller/services/internal/worker"
 	"knowledge_ingestion/src/domain"
 )
 
@@ -47,7 +48,7 @@ func NewArticleChunkService(articleRepo domain.ArticleChunkQueue, chunkRepo doma
 // Mỗi lần gọi lấy trace_id runner đã gắn vào ctx gắn vào mọi dòng log — cùng
 // quy ước với PurgeDeleted, gọi trực tiếp (test, tool tay) thì tự sinh fallback.
 func (s *articleChunkService) ChunkPending(ctx context.Context) (int, error) {
-	traceID, err := ensureTraceID(ctx)
+	traceID, err := worker.EnsureTraceID(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -94,21 +95,21 @@ func (s *articleChunkService) chunkClaimed(ctx context.Context, traceID string, 
 		if extractor.IsPermanent(err) {
 			// Blob immutable nên lỗi xác định (loại chưa hỗ trợ, file hỏng,
 			// ảnh trắng) thử lại cũng vậy — failed luôn thay vì retry 10 lần.
-			attempts = domain.MaxQueueAttempts
+			attempts = utils.MaxQueueAttempts
 		}
 		logs.Warnw("chunk: bỏ qua bài, thử lại theo backoff",
 			"trace_id", traceID,
 			"article_id", article.ID, "storage_key", article.StorageKey, "error", err)
-		mctx, cancel := detachCtx(ctx)
-		defer cancel()
-		if merr := s.articleRepo.MarkChunkError(mctx, article.ID, attempts); merr != nil {
+		det := worker.Detach(ctx)
+		defer det.Close()
+		if merr := s.articleRepo.MarkChunkError(det.Ctx, article.ID, attempts); merr != nil {
 			logs.Error(merr, "chunk: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID)
 		}
 		return
 	}
-	mctx, cancel := detachCtx(ctx)
-	defer cancel()
-	if err := s.articleRepo.MarkChunkDone(mctx, article.ID); err != nil {
+	det := worker.Detach(ctx)
+	defer det.Close()
+	if err := s.articleRepo.MarkChunkDone(det.Ctx, article.ID); err != nil {
 		logs.Error(err, "chunk: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID)
 		return
 	}
@@ -178,9 +179,9 @@ func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, arti
 	}
 	if !alive {
 		logs.Infow("chunk: bài bị xóa giữa chừng, đã dọn chunk vừa tạo", "trace_id", traceID, "article_id", article.ID)
-		dbCtx, cancel := detachCtx(ctx)
-		defer cancel()
-		if derr := s.chunkRepo.DeleteByArticleID(dbCtx, article.ID); derr != nil {
+		det := worker.Detach(ctx)
+		defer det.Close()
+		if derr := s.chunkRepo.DeleteByArticleID(det.Ctx, article.ID); derr != nil {
 			return fmt.Errorf("dọn chunk bài đã xóa: %w", derr)
 		}
 		return nil
