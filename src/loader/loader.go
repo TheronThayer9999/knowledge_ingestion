@@ -66,6 +66,7 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewCategoryService),
 		fx.Provide(services.NewArticleService),
 		fx.Provide(services.NewArticleAdminService),
+		fx.Provide(services.NewSearchService),
 	}
 }
 
@@ -95,6 +96,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewCategoryAPI),
 		fx.Provide(apis.NewArticleAPI),
 		fx.Provide(apis.NewArticleAdminAPI),
+		fx.Provide(apis.NewSearchAPI),
 		fx.Provide(routers.NewRouter),
 	}
 }

@@ -167,6 +167,9 @@ func (f *fakeVectors) CountByArticle(ctx context.Context, articleID int64) (int6
 	return 0, nil
 }
 func (f *fakeVectors) IsPermanentError(err error) bool { return false }
+func (f *fakeVectors) Search(_ context.Context, _ []float32, _ domain.SearchFilter, _ int, _ float32) ([]*domain.ScoredChunk, error) {
+	return nil, nil
+}
 
 func newPurgeTest(log *orderLog, repo *fakeArticleRepo, chunks *fakePurgeChunkRepo, vectors *fakeVectors, store *fakeStorage) IArticlePurgeService {
 	return NewArticlePurgeService(repo, chunks, vectors, store, PurgeOptions{ChunkRetention: time.Hour, TrimInterval: time.Hour})

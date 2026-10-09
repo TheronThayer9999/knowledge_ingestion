@@ -106,6 +106,10 @@ type IArticleRepository interface {
 	// IDsByCategory trả id các bài còn sống trong 1 danh mục của đúng owner
 	// — API rebuild resolve scope category thành danh sách id cụ thể.
 	IDsByCategory(ctx context.Context, categoryID int64, userID int64) ([]int64, error)
+	// ListDoneIDs lọc trong ids chỉ giữ bài đã embed done của đúng owner —
+	// service search chặn hit từ bài đang embed dở (vector thiếu) để agent
+	// không trả lời trên ngữ cảnh nửa vời.
+	ListDoneIDs(ctx context.Context, userID int64, ids []int64) ([]int64, error)
 	// ResetQueue đưa các bài về pending cả 2 phase (attempts 0, retry now,
 	// embedded_at NULL) để worker chunk→embed lại từ đầu — dùng khi Qdrant
 	// mất collection/chuyển cụm mới. Chỉ đụng bài của đúng owner, trả số row

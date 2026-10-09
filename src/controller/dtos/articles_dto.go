@@ -105,6 +105,45 @@ func ToArticleListResponse(articles []*domain.Article) ArticleListResponse {
 	return res
 }
 
+// SearchRequest hỏi tri thức — query bắt buộc, category_id để khoanh 1 chủ
+// đề, limit/threshold để kiểm soát lượng + chất hit. Owner lấy từ token.
+type SearchRequest struct {
+	Query          string  `json:"query" binding:"required,min=1,max=2000" example:"Go Fx quản lý vòng đời thế nào"`
+	CategoryID     int64   `json:"category_id,omitempty" binding:"omitempty,gt=0" example:"5"`
+	Limit          int     `json:"limit,omitempty" binding:"omitempty,gte=0"`
+	ScoreThreshold float32 `json:"score_threshold,omitempty" binding:"omitempty,gte=0"`
+}
+
+// SearchHitResponse là 1 đoạn trúng — agent RAG lấy text làm ngữ cảnh,
+// page_num/chunk_index để trích dẫn, score để cân nhắc độ tin.
+type SearchHitResponse struct {
+	ArticleID  int64   `json:"article_id" example:"8"`
+	ChunkIndex int     `json:"chunk_index" example:"11"`
+	PageNum    int     `json:"page_num" example:"0"`
+	Score      float32 `json:"score" example:"0.83"`
+	Text       string  `json:"text" example:"Chất lượng là ưu tiên hàng đầu..."`
+}
+
+// SearchResponse bọc danh sách hit + tổng số.
+type SearchResponse struct {
+	Hits  []*SearchHitResponse `json:"hits"`
+	Total int                  `json:"total" example:"3"`
+}
+
+// ToSearchHitResponse map domain -> response.
+func ToSearchHitResponse(h *domain.ScoredChunk) *SearchHitResponse {
+	if h == nil {
+		return &SearchHitResponse{}
+	}
+	return &SearchHitResponse{
+		ArticleID:  h.ArticleID,
+		ChunkIndex: h.ChunkIndex,
+		PageNum:    h.PageNum,
+		Score:      h.Score,
+		Text:       h.Text,
+	}
+}
+
 // RebuildVectorsRequest đưa bài về hàng đợi chunk→embed từ đầu (Qdrant
 // chết/mất collection, chuyển cụm mới). Scope bắt buộc đúng 1 trong 2:
 // article_ids hoặc category_id — cả 2 rỗng service trả 400 để không reset

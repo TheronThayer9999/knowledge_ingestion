@@ -147,6 +147,21 @@ func (a *ArticleRepository) IDsByCategory(ctx context.Context, categoryID int64,
 	return ids, nil
 }
 
+// ListDoneIDs lọc trong ids chỉ giữ bài đã embed done của đúng owner —
+// gorm tự loại soft-deleted nên bài đã xóa không lọt vào search.
+func (a *ArticleRepository) ListDoneIDs(ctx context.Context, userID int64, ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var done []int64
+	if err := dbConn(ctx, a.db).Model(&domain.Article{}).
+		Where("id IN ? AND user_id = ? AND embed_status = ?", ids, userID, domain.QueueDone).
+		Pluck("id", &done).Error; err != nil {
+		return nil, err
+	}
+	return done, nil
+}
+
 // ResetQueue đưa các bài về pending cả 2 phase trong 1 câu UPDATE —
 // id không thuộc owner thì khớp 0 row nên không reset nhầm bài người khác.
 func (a *ArticleRepository) ResetQueue(ctx context.Context, ids []int64, userID int64) (int64, error) {

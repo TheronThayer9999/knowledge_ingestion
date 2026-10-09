@@ -69,9 +69,12 @@ type adminRepoAdapter struct{ f *fakeAdminArticleRepo }
 func (a adminRepoAdapter) IDsByCategory(ctx context.Context, categoryID int64, userID int64) ([]int64, error) {
 	return a.f.IDsByCategory(ctx, categoryID, userID)
 }
-
 func (a adminRepoAdapter) ResetQueue(ctx context.Context, ids []int64, userID int64) (int64, error) {
 	return a.f.ResetQueue(ctx, ids, userID)
+}
+
+func (a adminRepoAdapter) ListDoneIDs(_ context.Context, _ int64, ids []int64) ([]int64, error) {
+	return ids, nil
 }
 
 func (a adminRepoAdapter) Create(_ context.Context, _ *domain.Article) error { return nil }
@@ -152,6 +155,10 @@ type adminVectorsAdapter struct{ f *fakeAdminVectors }
 
 func (a adminVectorsAdapter) DeleteByArticle(ctx context.Context, articleID int64) error {
 	return a.f.DeleteByArticle(ctx, articleID)
+}
+
+func (a adminVectorsAdapter) Search(_ context.Context, _ []float32, _ domain.SearchFilter, _ int, _ float32) ([]*domain.ScoredChunk, error) {
+	return nil, nil
 }
 
 func (a adminVectorsAdapter) UpsertPoints(_ context.Context, _ []*domain.VectorPoint) error {

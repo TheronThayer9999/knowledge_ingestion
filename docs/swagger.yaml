@@ -121,6 +121,25 @@ definitions:
         example: true
         type: boolean
     type: object
+  dtos.SearchRequest:
+    properties:
+      category_id:
+        example: 5
+        type: integer
+      limit:
+        minimum: 0
+        type: integer
+      query:
+        example: Go Fx quản lý vòng đời thế nào
+        maxLength: 2000
+        minLength: 1
+        type: string
+      score_threshold:
+        minimum: 0
+        type: number
+    required:
+    - query
+    type: object
   dtos.UpdateArticleRequest:
     properties:
       category_id:
@@ -616,6 +635,39 @@ paths:
       summary: Pong the server
       tags:
       - health
+  /api/v1/search:
+    post:
+      consumes:
+      - application/json
+      description: Embed câu hỏi rồi tìm đoạn gần nhất trong phạm vi bài của chính
+        mình (kèm category_id để khoanh chủ đề). Chỉ trả hit thuộc bài đã embed done.
+      parameters:
+      - description: search query
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.SearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Search knowledge chunks
+      tags:
+      - search
   /api/v1/uploads/presign:
     post:
       consumes:

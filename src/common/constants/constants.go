@@ -91,3 +91,11 @@ const PURGE_BATCH_SIZE = 100
 // QDRANT_COLLECTION là collection duy nhất worker dùng — 1 collection cho mọi
 // article, phân biệt bằng payload article_id (filter + xóa theo bài).
 const QDRANT_COLLECTION = "article_chunks"
+
+// SEARCH_DEFAULT_LIMIT số hit search mặc định — agent RAG chỉ cần vài đoạn
+// gần nhất làm ngữ cảnh, nhiều hơn thì xin rõ limit.
+const SEARCH_DEFAULT_LIMIT = 5
+
+// SEARCH_MAX_LIMIT trần hit mỗi query search — chặn request vô hạn làm nặng
+// Qdrant + response phình.
+const SEARCH_MAX_LIMIT = 20

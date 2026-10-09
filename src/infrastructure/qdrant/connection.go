@@ -180,6 +180,88 @@ func (c *connection) DeleteByArticle(ctx context.Context, articleID int64) error
 	return nil
 }
 
+// searchFilter dựng filter quyền query — user_id luôn có, category/article
+// chỉ gắn khi drill-down để filter gọn đúng phạm vi.
+func searchFilter(f domain.SearchFilter) *qdrantapi.Filter {
+	must := []*qdrantapi.Condition{
+		qdrantapi.NewMatchInt("user_id", f.UserID),
+	}
+	if f.CategoryID > 0 {
+		must = append(must, qdrantapi.NewMatchInt("category_id", f.CategoryID))
+	}
+	if f.ArticleID > 0 {
+		must = append(must, qdrantapi.NewMatchInt("article_id", f.ArticleID))
+	}
+	return &qdrantapi.Filter{Must: must}
+}
+
+// Search trả top chunk gần vector nhất trong phạm vi filter — agent RAG gọi
+// qua service search. Sai dim là lỗi client (permanent); threshold/limit chỉ
+// là tham số query nên server lỗi gì cũng trả về để caller quyết.
+func (c *connection) Search(ctx context.Context, vector []float32, filter domain.SearchFilter, limit int, scoreThreshold float32) ([]*domain.ScoredChunk, error) {
+	if len(vector) != c.dim {
+		return nil, fmt.Errorf("%w: vector query có dim %d, collection expects %d", ErrBadRequest, len(vector), c.dim)
+	}
+	if limit <= 0 {
+		limit = constants.SEARCH_DEFAULT_LIMIT
+	}
+	req := &qdrantapi.QueryPoints{
+		CollectionName: c.collection,
+		Query:          qdrantapi.NewQuery(vector...),
+		Filter:         searchFilter(filter),
+		Limit:          ptrUint64(uint64(limit)),
+		WithPayload:    qdrantapi.NewWithPayload(true),
+	}
+	if scoreThreshold > 0 {
+		req.ScoreThreshold = &scoreThreshold
+	}
+	res, err := c.client.Query(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("qdrant: search: %w", err)
+	}
+	hits := make([]*domain.ScoredChunk, 0, len(res))
+	for _, p := range res {
+		if p == nil {
+			continue
+		}
+		payload := qdrantapi.ValueMapToMap(p.GetPayload())
+		hits = append(hits, &domain.ScoredChunk{
+			PointID:    p.GetId().GetUuid(),
+			Score:      p.GetScore(),
+			ArticleID:  asInt64(payload["article_id"]),
+			ChunkIndex: int(asInt64(payload["chunk_index"])),
+			PageNum:    int(asInt64(payload["page_num"])),
+			Text:       asString(payload["text"]),
+		})
+	}
+	return hits, nil
+}
+
+// ptrUint64 bọc số thành con trỏ cho field oneof của proto — go-client không
+// có helper sẵn cho Limit nên viết tay 1 dòng.
+func ptrUint64(n uint64) *uint64 { return &n }
+
+// asInt64/asString đọc payload Qdrant đã decode — số về int64/float64, thiếu
+// hoặc sai kiểu thì 0/rỗng thay vì panic cả query.
+func asInt64(v any) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case float64:
+		return int64(n)
+	case int:
+		return int64(n)
+	}
+	return 0
+}
+
+func asString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
 // CountByArticle đếm point của 1 bài — worker embed guard nhánh done-rỗng.
 func (c *connection) CountByArticle(ctx context.Context, articleID int64) (int64, error) {
 	exact := true

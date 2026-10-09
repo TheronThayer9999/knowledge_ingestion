@@ -718,6 +718,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/search": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Embed câu hỏi rồi tìm đoạn gần nhất trong phạm vi bài của chính mình (kèm category_id để khoanh chủ đề). Chỉ trả hit thuộc bài đã embed done.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "search"
+                ],
+                "summary": "Search knowledge chunks",
+                "parameters": [
+                    {
+                        "description": "search query",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.SearchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/uploads/presign": {
             "post": {
                 "security": [
@@ -1054,6 +1105,32 @@ const docTemplate = `{
                 "status": {
                     "type": "boolean",
                     "example": true
+                }
+            }
+        },
+        "dtos.SearchRequest": {
+            "type": "object",
+            "required": [
+                "query"
+            ],
+            "properties": {
+                "category_id": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "query": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "example": "Go Fx quản lý vòng đời thế nào"
+                },
+                "score_threshold": {
+                    "type": "number",
+                    "minimum": 0
                 }
             }
         },

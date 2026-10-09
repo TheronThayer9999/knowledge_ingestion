@@ -162,8 +162,7 @@ func TestUpsertPoints_EmptyNoop(t *testing.T) {
 }
 
 // Phân loại vĩnh viễn/không qua mã gRPC — không cần server.
-func TestIsPermanent(t *testing.T) {
-	cases := []struct {
+func TestIsPermanent(t *testing.T) {	cases := []struct {
 		name string
 		err  error
 		want bool
@@ -186,5 +185,58 @@ func TestIsPermanent(t *testing.T) {
 		if got := (&connection{}).IsPermanentError(tc.err); got != tc.want {
 			t.Errorf("%s (method): got %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// Search tôn trọng filter quyền: user 7 thấy 2 point của mình, không thấy
+// point user 9; threshold cao thì rỗng; sai dim thì lỗi vĩnh viễn.
+func TestSearch_Integration(t *testing.T) {
+	client := dialTest(t)
+	c := testConn(t, client, "article_chunks_test_search", 4)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	mkpoint := func(id string, userID, articleID int64, vec ...float32) *domain.VectorPoint {
+		return &domain.VectorPoint{
+			ID: id, Vector: vec,
+			ArticleID: articleID, UserID: userID, CategoryID: 5,
+			ChunkIndex: 0, PageNum: 0, Text: "đoạn " + id,
+		}
+	}
+	if err := c.UpsertPoints(ctx, []*domain.VectorPoint{
+		mkpoint("550e8400-e29b-41d4-a716-446655440010", 7, 50, 1, 0, 0, 0),
+		mkpoint("550e8400-e29b-41d4-a716-446655440011", 7, 50, 0, 1, 0, 0),
+		mkpoint("550e8400-e29b-41d4-a716-446655440012", 9, 51, 1, 0, 0, 0),
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	query := []float32{1, 0, 0, 0}
+
+	hits, err := c.Search(ctx, query, domain.SearchFilter{UserID: 7}, 10, 0)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("user 7 phải thấy 2 hits, got %d", len(hits))
+	}
+	for _, h := range hits {
+		if h.ArticleID != 50 || h.Text == "" {
+			t.Fatalf("hit sai payload: %+v", h)
+		}
+	}
+	if hits[0].Score < 0.99 {
+		t.Fatalf("hit khớp vector phải score ~1, got %v", hits[0].Score)
+	}
+	// Threshold 0.5 loại hit trực giao (score 0), chỉ còn 1.
+	hits, err = c.Search(ctx, query, domain.SearchFilter{UserID: 7, ArticleID: 50}, 10, 0.5)
+	if err != nil {
+		t.Fatalf("search threshold: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("threshold 0.5 phải còn 1 hit, got %d", len(hits))
+	}
+	// Sai dim thì lỗi vĩnh viễn ngay phía client.
+	if _, err := c.Search(ctx, []float32{0.1}, domain.SearchFilter{UserID: 7}, 10, 0); err == nil || !IsPermanent(err) {
+		t.Fatalf("sai dim phải lỗi vĩnh viễn, got %v", err)
 	}
 }

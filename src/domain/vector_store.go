@@ -17,6 +17,24 @@ type VectorPoint struct {
 	Text       string
 }
 
+// SearchFilter khóa phân quyền query — UserID bắt buộc (owner từ token,
+// không tin client); CategoryID/ArticleID > 0 thì drill-down thêm 1 nấc.
+type SearchFilter struct {
+	UserID     int64
+	CategoryID int64
+	ArticleID  int64
+}
+
+// ScoredChunk là 1 hit search — service map sang response cho API/agent.
+type ScoredChunk struct {
+	PointID    string
+	Score      float32
+	ArticleID  int64
+	ChunkIndex int
+	PageNum    int
+	Text       string
+}
+
 // IVectorStore hợp đồng với kho vector — service chỉ phụ thuộc interface này
 // nên đổi Qdrant → Weaviate/Milvus chỉ cần viết adapter mới. Triển khai ở
 // infrastructure/qdrant (official go-client, gRPC cổng 6334).
@@ -31,6 +49,10 @@ type IVectorStore interface {
 	// done-rỗng (chunk hết nhưng chưa chắc vector đã lên): count 0 thì không
 	// được done, phải retry thay vì done âm thầm với search trống.
 	CountByArticle(ctx context.Context, articleID int64) (int64, error)
+	// Search trả top chunk gần vector nhất trong phạm vi filter — agent RAG
+	// gọi qua service search. ScoreThreshold > 0 thì lọc hit yếu để không
+	// trả lời bừa; limit <= 0 thì adapter tự lấy mặc định.
+	Search(ctx context.Context, vector []float32, filter SearchFilter, limit int, scoreThreshold float32) ([]*ScoredChunk, error)
 	// IsPermanentError báo lỗi có retry cũng vậy không (sai dim, mã gRPC
 	// InvalidArgument/NotFound/Unauthenticated...) — service dùng để failed
 	// luôn thay vì backoff. Triển khai ở infra.
