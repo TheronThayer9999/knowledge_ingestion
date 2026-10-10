@@ -22,19 +22,17 @@ type ISearchService interface {
 }
 
 type searchService struct {
-	embedder    domain.Embedder
-	vectors     domain.IVectorStore
-	articleRepo domain.IArticleRepository
+	hybrid      *HybridSearcher
 	currentUser middlewares.ICurrentUser
 }
 
 func NewSearchService(embedder domain.Embedder, vectors domain.IVectorStore, articleRepo domain.IArticleRepository, currentUser middlewares.ICurrentUser) ISearchService {
-	return &searchService{embedder: embedder, vectors: vectors, articleRepo: articleRepo, currentUser: currentUser}
+	return &searchService{hybrid: NewHybridSearcher(embedder, vectors, articleRepo), currentUser: currentUser}
 }
 
-// Search chuẩn hóa limit rồi đi 3 bước: embed câu hỏi → query Qdrant có
-// filter quyền → chặn hit của bài chưa done. Lỗi embed/query trả 500 (lỗi
-// hạ tầng, không phải lỗi client); query rỗng/whitespace thì 400.
+// Search chuẩn hóa limit rồi gọi pipeline hybrid (embed → dense + text → RRF
+// fuse → chặn bài chưa done, xem HybridSearcher). Lỗi hạ tầng trả 500 (không
+// phải lỗi client); query rỗng/whitespace thì 400.
 func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dtos.Result[*dtos.SearchResponse] {
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
@@ -48,43 +46,18 @@ func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dto
 	if limit > constants.SEARCH_MAX_LIMIT {
 		limit = constants.SEARCH_MAX_LIMIT
 	}
-	vec, err := s.embedder.Embed(ctx, dto.Query)
+	hits, err := s.hybrid.SearchHybrid(ctx, HybridParams{
+		UserID:         userID,
+		Query:          dto.Query,
+		CategoryID:     dto.CategoryID,
+		Limit:          limit,
+		ScoreThreshold: dto.ScoreThreshold,
+	})
 	if err != nil {
 		return dtos.Fail[*dtos.SearchResponse](err)
-	}
-	hits, err := s.vectors.Search(ctx, vec, domain.SearchFilter{
-		UserID:     userID,
-		CategoryID: dto.CategoryID,
-	}, limit, dto.ScoreThreshold)
-	if err != nil {
-		return dtos.Fail[*dtos.SearchResponse](err)
-	}
-	if len(hits) == 0 {
-		return dtos.Ok(&dtos.SearchResponse{Hits: []*dtos.SearchHitResponse{}, Total: 0})
-	}
-	// Chặn hit của bài chưa done — vector lên Qdrant theo đợt nên bài đang
-	// embed dở có ngữ cảnh thiếu, trả cho agent là trả lời bừa.
-	ids := make([]int64, 0, len(hits))
-	seen := make(map[int64]bool, len(hits))
-	for _, h := range hits {
-		if !seen[h.ArticleID] {
-			seen[h.ArticleID] = true
-			ids = append(ids, h.ArticleID)
-		}
-	}
-	done, err := s.articleRepo.ListDoneIDs(ctx, userID, ids)
-	if err != nil {
-		return dtos.Fail[*dtos.SearchResponse](err)
-	}
-	allowed := make(map[int64]bool, len(done))
-	for _, id := range done {
-		allowed[id] = true
 	}
 	res := &dtos.SearchResponse{Hits: make([]*dtos.SearchHitResponse, 0, len(hits))}
 	for _, h := range hits {
-		if !allowed[h.ArticleID] {
-			continue
-		}
 		res.Hits = append(res.Hits, dtos.ToSearchHitResponse(h))
 	}
 	res.Total = len(res.Hits)

@@ -3,6 +3,7 @@ package loader
 import (
 	"time"
 
+	"knowledge_ingestion/src/common/chunker"
 	"knowledge_ingestion/src/common/extractor"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
@@ -40,6 +41,19 @@ func LoadWorkerInfra() []fx.Option {
 			return services.PurgeOptions{
 				ChunkRetention: time.Duration(w.ChunkRetentionHours) * time.Hour,
 				TrimInterval:   time.Duration(w.TrimIntervalHours) * time.Hour,
+			}
+		}),
+		// Chunker cho worker chunk phase 1 — dựng 1 lần từ config rồi tái dùng
+		// (splitter Eino stateless, pool chunk gọi song song an toàn). Tầng
+		// semantic cần domain.Embedder (client Ollama đã Provide ở trên).
+		fx.Provide(func(cfg config.IConfig, embedder domain.Embedder) (chunker.Chunker, error) {
+			switch cfg.GetWorker().Chunker {
+			case "semantic":
+				return chunker.NewSemantic(embedder, chunker.SemanticOption{})
+			case "manual":
+				return chunker.Manual{}, nil
+			default: // "recursive"
+				return chunker.NewRecursive(chunker.Option{})
 			}
 		}),
 		// Role interface hẹp cho worker — cùng 1 instance ArticleRepository,

@@ -188,6 +188,9 @@ func (f *fakeVectorStore) IsPermanentError(err error) bool { return f.permanent 
 func (f *fakeVectorStore) Search(_ context.Context, _ []float32, _ domain.SearchFilter, _ int, _ float32) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
+func (f *fakeVectorStore) SearchText(_ context.Context, _ string, _ domain.SearchFilter, _ int) ([]*domain.ScoredChunk, error) {
+	return nil, nil
+}
 func (f *fakeVectorStore) CountByArticle(ctx context.Context, articleID int64) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

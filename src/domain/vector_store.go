@@ -53,6 +53,13 @@ type IVectorStore interface {
 	// gọi qua service search. ScoreThreshold > 0 thì lọc hit yếu để không
 	// trả lời bừa; limit <= 0 thì adapter tự lấy mặc định.
 	Search(ctx context.Context, vector []float32, filter SearchFilter, limit int, scoreThreshold float32) ([]*ScoredChunk, error)
+	// SearchText tìm chunk khớp từ khóa trong payload text (full-text
+	// MatchText) cùng phạm vi filter — nửa keyword của hybrid search. Trả theo
+	// thứ tự Qdrant với Score = 0 (Scroll không có score; service fuse bằng
+	// RRF theo rank chứ không theo score). Cần text index trên field "text"
+	// (ensureCollection tạo best-effort) — collection cũ chưa có thì báo lỗi
+	// để service degraded dense-only, không fail cả query.
+	SearchText(ctx context.Context, query string, filter SearchFilter, limit int) ([]*ScoredChunk, error)
 	// IsPermanentError báo lỗi có retry cũng vậy không (sai dim, mã gRPC
 	// InvalidArgument/NotFound/Unauthenticated...) — service dùng để failed
 	// luôn thay vì backoff. Triển khai ở infra.

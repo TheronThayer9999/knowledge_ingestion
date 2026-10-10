@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"knowledge_ingestion/src/common/chunker"
 	"knowledge_ingestion/src/common/extractor"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
@@ -149,7 +150,7 @@ func (f *fakeChunkStorage) PresignedURL(ctx context.Context, key string, content
 }
 
 func newChunkTest(articleRepo *fakeChunkArticleRepo, chunkRepo *fakeChunkRepo, store *fakeChunkStorage) IArticleChunkService {
-	return NewArticleChunkService(articleRepo, chunkRepo, store, extractor.OCRConfig{})
+	return NewArticleChunkService(articleRepo, chunkRepo, store, extractor.OCRConfig{}, chunker.Manual{})
 }
 
 func chunkArticle(id int64, key string) *domain.Article {

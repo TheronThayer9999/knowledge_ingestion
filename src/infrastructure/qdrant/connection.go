@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"knowledge_ingestion/src/common/constants"
@@ -112,6 +113,24 @@ func (c *connection) ensureCollection(ctx context.Context) error {
 			logs.Warnw("qdrant: tạo payload index thất bại (bỏ qua)", "trace_id", utils.TraceIDFromCtx(ctx), "field", field, "error", err)
 		}
 	}
+	// Full-text index cho nửa keyword của hybrid search (SearchText MatchText
+	// field "text"). Tokenizer Word (tiếng Việt tách theo âm tiết — đủ cho
+	// keyword match) + AsciiFolding (query không dấu "kinh te" vẫn trúng
+	// "kinh tế") + lowercase mặc định. Best-effort như index số: collection cũ
+	// chưa có thì SearchText báo lỗi, service degraded dense-only.
+	ftText := qdrantapi.FieldType_FieldTypeText
+	asciiFold := true
+	if _, err := c.client.CreateFieldIndex(ctx, &qdrantapi.CreateFieldIndexCollection{
+		CollectionName: c.collection,
+		FieldName:      "text",
+		FieldType:      &ftText,
+		FieldIndexParams: qdrantapi.NewPayloadIndexParamsText(&qdrantapi.TextIndexParams{
+			Tokenizer:    qdrantapi.TokenizerType_Word,
+			AsciiFolding: &asciiFold,
+		}),
+	}); err != nil {
+		logs.Warnw("qdrant: tạo full-text index thất bại (bỏ qua)", "trace_id", utils.TraceIDFromCtx(ctx), "field", "text", "error", err)
+	}
 	return nil
 }
 
@@ -183,6 +202,13 @@ func (c *connection) DeleteByArticle(ctx context.Context, articleID int64) error
 // searchFilter dựng filter quyền query — user_id luôn có, category/article
 // chỉ gắn khi drill-down để filter gọn đúng phạm vi.
 func searchFilter(f domain.SearchFilter) *qdrantapi.Filter {
+	return &qdrantapi.Filter{Must: permissionMusts(f)}
+}
+
+// permissionMusts list điều kiện phân quyền dùng chung cho Search (dense) và
+// SearchText (keyword) — 2 nửa hybrid search phải cùng phạm vi, không được
+// lệch (kẻo text search lộ bài người khác).
+func permissionMusts(f domain.SearchFilter) []*qdrantapi.Condition {
 	must := []*qdrantapi.Condition{
 		qdrantapi.NewMatchInt("user_id", f.UserID),
 	}
@@ -192,7 +218,7 @@ func searchFilter(f domain.SearchFilter) *qdrantapi.Filter {
 	if f.ArticleID > 0 {
 		must = append(must, qdrantapi.NewMatchInt("article_id", f.ArticleID))
 	}
-	return &qdrantapi.Filter{Must: must}
+	return must
 }
 
 // Search trả top chunk gần vector nhất trong phạm vi filter — agent RAG gọi
@@ -240,6 +266,48 @@ func (c *connection) Search(ctx context.Context, vector []float32, filter domain
 // ptrUint64 bọc số thành con trỏ cho field oneof của proto — go-client không
 // có helper sẵn cho Limit nên viết tay 1 dòng.
 func ptrUint64(n uint64) *uint64 { return &n }
+
+// ptrUint32 như trên cho ScrollPoints.Limit.
+func ptrUint32(n uint32) *uint32 { return &n }
+
+// SearchText tìm chunk khớp từ khóa trong payload text (full-text MatchText)
+// cùng phạm vi filter quyền — nửa keyword của hybrid search. Dùng Scroll
+// (không score) vì service fuse bằng RRF theo rank: Score trả 0, thứ tự mảng
+// là rank. Query rỗng trả nil (service không gọi khi query rỗng, đây là guard
+// cho agent tool gọi thẳng).
+func (c *connection) SearchText(ctx context.Context, query string, filter domain.SearchFilter, limit int) ([]*domain.ScoredChunk, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = constants.SEARCH_DEFAULT_LIMIT
+	}
+	must := append(permissionMusts(filter), qdrantapi.NewMatchText("text", query))
+	points, err := c.client.Scroll(ctx, &qdrantapi.ScrollPoints{
+		CollectionName: c.collection,
+		Filter:         &qdrantapi.Filter{Must: must},
+		Limit:          ptrUint32(uint32(limit)),
+		WithPayload:    qdrantapi.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("qdrant: text search: %w", err)
+	}
+	hits := make([]*domain.ScoredChunk, 0, len(points))
+	for _, p := range points {
+		if p == nil {
+			continue
+		}
+		payload := qdrantapi.ValueMapToMap(p.GetPayload())
+		hits = append(hits, &domain.ScoredChunk{
+			PointID:    p.GetId().GetUuid(),
+			ArticleID:  asInt64(payload["article_id"]),
+			ChunkIndex: int(asInt64(payload["chunk_index"])),
+			PageNum:    int(asInt64(payload["page_num"])),
+			Text:       asString(payload["text"]),
+		})
+	}
+	return hits, nil
+}
 
 // asInt64/asString đọc payload Qdrant đã decode — số về int64/float64, thiếu
 // hoặc sai kiểu thì 0/rỗng thay vì panic cả query.

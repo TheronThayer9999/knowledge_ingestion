@@ -161,6 +161,10 @@ func (a adminVectorsAdapter) Search(_ context.Context, _ []float32, _ domain.Sea
 	return nil, nil
 }
 
+func (a adminVectorsAdapter) SearchText(_ context.Context, _ string, _ domain.SearchFilter, _ int) ([]*domain.ScoredChunk, error) {
+	return nil, nil
+}
+
 func (a adminVectorsAdapter) UpsertPoints(_ context.Context, _ []*domain.VectorPoint) error {
 	return nil
 }

@@ -170,6 +170,9 @@ func (f *fakeVectors) IsPermanentError(err error) bool { return false }
 func (f *fakeVectors) Search(_ context.Context, _ []float32, _ domain.SearchFilter, _ int, _ float32) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
+func (f *fakeVectors) SearchText(_ context.Context, _ string, _ domain.SearchFilter, _ int) ([]*domain.ScoredChunk, error) {
+	return nil, nil
+}
 
 func newPurgeTest(log *orderLog, repo *fakeArticleRepo, chunks *fakePurgeChunkRepo, vectors *fakeVectors, store *fakeStorage) IArticlePurgeService {
 	return NewArticlePurgeService(repo, chunks, vectors, store, PurgeOptions{ChunkRetention: time.Hour, TrimInterval: time.Hour})

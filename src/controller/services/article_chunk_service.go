@@ -34,10 +34,13 @@ type articleChunkService struct {
 	// xuống ExtractPages. Struct value (không phải interface) vì chỉ là tham
 	// số chạy, không cần mock ở service (test truyền OCRConfig{} là tắt).
 	ocr extractor.OCRConfig
+	// splitter chiến lược cắt chunk (Eino recursive/semantic hoặc manual) —
+	// loader chọn theo config worker.chunker, dựng 1 lần rồi tái dùng.
+	splitter chunker.Chunker
 }
 
-func NewArticleChunkService(articleRepo domain.ArticleChunkQueue, chunkRepo domain.IArticleChunkRepository, storage storage.IStorage, ocr extractor.OCRConfig) IArticleChunkService {
-	return &articleChunkService{articleRepo: articleRepo, chunkRepo: chunkRepo, storage: storage, ocr: ocr}
+func NewArticleChunkService(articleRepo domain.ArticleChunkQueue, chunkRepo domain.IArticleChunkRepository, storage storage.IStorage, ocr extractor.OCRConfig, splitter chunker.Chunker) IArticleChunkService {
+	return &articleChunkService{articleRepo: articleRepo, chunkRepo: chunkRepo, storage: storage, ocr: ocr, splitter: splitter}
 }
 
 // ChunkPending claim 1 đợt bài rồi chunk song song trong pool giới hạn, trả
@@ -147,7 +150,13 @@ func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, arti
 		if strings.TrimSpace(pg.Text) == "" {
 			continue
 		}
-		for _, p := range chunker.Split(pg.Text, chunker.Option{}) {
+		// Lỗi splitter (tầng semantic gọi Ollama) là transient — trả về để
+		// caller backoff, không failed oan như lỗi file hỏng (permanent).
+		parts, err := s.splitter.Split(ctx, pg.Text)
+		if err != nil {
+			return fmt.Errorf("cắt chunk: %w", err)
+		}
+		for _, p := range parts {
 			// PointID sinh 1 lần duy nhất ở đây (UUIDv7, sort được theo thời
 			// gian) rồi lưu DB — phase 2 chỉ đọc lại nên embed chạy lại bao
 			// nhiêu lần cũng upsert đúng point cũ, không trùng.

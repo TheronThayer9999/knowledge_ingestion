@@ -41,6 +41,10 @@ type fakeSearchVectors struct {
 	err       error
 	gotFilter domain.SearchFilter
 	gotLimit  int
+	// textHits/textErr cho nửa keyword — nil là không có hit text (giữ hành
+	// vi dense-only của test cũ).
+	textHits []*domain.ScoredChunk
+	textErr  error
 }
 
 func (f *fakeSearchVectors) UpsertPoints(_ context.Context, _ []*domain.VectorPoint) error {
@@ -62,6 +66,13 @@ func (f *fakeSearchVectors) Search(_ context.Context, _ []float32, filter domain
 		return nil, f.err
 	}
 	return f.hits, nil
+}
+
+func (f *fakeSearchVectors) SearchText(_ context.Context, _ string, _ domain.SearchFilter, _ int) ([]*domain.ScoredChunk, error) {
+	if f.textErr != nil {
+		return nil, f.textErr
+	}
+	return f.textHits, nil
 }
 
 type fakeSearchArticles struct {
@@ -87,7 +98,7 @@ type fakeSearchUser struct{ id int64 }
 func (f *fakeSearchUser) UserID(_ context.Context) (int64, bool) { return f.id, true }
 
 func newSearchSvc(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, articles *fakeSearchArticles) ISearchService {
-	return &searchService{embedder: embedder, vectors: vectors, articleRepo: searchRepoAdapter{articles}, currentUser: &fakeSearchUser{id: 7}}
+	return &searchService{hybrid: NewHybridSearcher(embedder, vectors, searchRepoAdapter{articles}), currentUser: &fakeSearchUser{id: 7}}
 }
 
 // Adapter từ fake gọn sang interface domain.

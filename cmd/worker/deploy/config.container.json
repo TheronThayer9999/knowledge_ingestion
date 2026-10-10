@@ -60,6 +60,7 @@
   },
   "worker": {
     "chunk_retention_hours": 168,
-    "trim_interval_hours": 24
+    "trim_interval_hours": 24,
+    "chunker": "recursive"
   }
 }

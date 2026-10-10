@@ -142,6 +142,11 @@ type CorsConfig struct {
 type WorkerConfig struct {
 	ChunkRetentionHours int `json:"chunk_retention_hours"`
 	TrimIntervalHours   int `json:"trim_interval_hours"`
+	// Chunker chọn chiến lược cắt chunk phase 1: "recursive" (Eino splitter
+	// đệ quy, mặc định — rẻ, bulk), "semantic" (Eino splitter ngữ nghĩa qua
+	// Ollama embed, đắt — tài liệu ưu tiên/văn bản hành chính nhiều viết
+	// tắt), "manual" (Split thủ công cũ, giữ cho test/fallback).
+	Chunker string `json:"chunker"`
 }
 
 // Load đọc file JSON và trả về IConfig
@@ -265,6 +270,14 @@ func Load(path string) (IConfig, error) {
 	}
 	if cfg.Worker.TrimIntervalHours <= 0 {
 		cfg.Worker.TrimIntervalHours = 24 // mặc định mỗi ngày
+	}
+	switch cfg.Worker.Chunker {
+	case "", "recursive", "semantic", "manual":
+		if cfg.Worker.Chunker == "" {
+			cfg.Worker.Chunker = "recursive" // mặc định tầng 1 bulk
+		}
+	default:
+		return nil, fmt.Errorf("worker.chunker phải là recursive/semantic/manual, got %q", cfg.Worker.Chunker)
 	}
 
 	return &cfg, nil
