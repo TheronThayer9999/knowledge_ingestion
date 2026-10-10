@@ -67,6 +67,23 @@ upload ở §3 vẫn giữ bằng boost điểm.
 - Test: fake `IVectorStore` + assert LLM-tool roundtrip trên case "số hiệu
   123/QĐ" (text-only hit) và case viết tắt hành chính.
 
+## 7. Việc tiếp theo (chưa làm, ghi để không mất)
+
+1. **Classifier + router theo 8 loại §5:** interface `QuestionClassifier`
+   trong `services` (fake được, không dính Eino) → triển khai rule-based trước
+   (regex "so sánh/khác gì"→3, "tóm tắt"→2, "mấy bước/thủ tục"→4, chào hỏi→7,
+   còn lại default 1) → LLM classifier sau (Ollama model nhẹ, few-shot). Router
+   map loại → `HybridParams` đã tune (limit/threshold/multi-query) rồi gọi
+   `HybridSearcher`; loại 7 return sớm khỏi search; loại 8 bóc facts trước.
+2. **Eino agent tool `knowledge_search`:** 1 `InvokableTool` bọc
+   `HybridSearcher.SearchHybrid` theo spec §2 (system prompt §1 + instruction
+   §5 làm system message).
+3. **URL ingest + upload boost:** worker `ClaimChunkPending` hiện chỉ lấy
+   `StorageKey`; khi ingest URL thì upload được boost điểm ở `FuseRRF` (giữ
+   rule §3: upload luôn trên).
+4. **BM25 thật (sparse vectors):** chỉ khi hybrid RRF chưa đủ — cần sparse
+   model, nặng, để sau cùng.
+
 ## 5. Instruction theo loại câu hỏi (đọc sau §1, trước khi gọi tool)
 
 Quy trình: tự xếp câu hỏi vào 1 trong 8 loại dưới → làm đúng instruction của
