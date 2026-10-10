@@ -18,9 +18,11 @@ import (
 var _ domain.ILLM = (*Client)(nil)
 
 // Client gọi Ollama chat — model truyền theo mỗi request (config chỉ giữ
-// default kết nối + sinh câu trả lời), list qua GET /api/tags.
+// default kết nối + sinh câu trả lời), list qua GET /api/tags. Chạy được cả
+// Ollama Cloud (base_url https://ollama.com + APIKey) lẫn server local.
 type Client struct {
 	baseURL     string
+	apiKey      string
 	temperature float64
 	maxTokens   int
 	http        *http.Client
@@ -63,10 +65,20 @@ func New(cfg config.LLMConfig) (*Client, error) {
 
 	return &Client{
 		baseURL:     baseURL,
+		apiKey:      cfg.APIKey,
 		temperature: cfg.Temperature,
 		maxTokens:   cfg.MaxTokens,
 		http:        &http.Client{Timeout: time.Duration(timeout) * time.Second},
 	}, nil
+}
+
+// ListModels lấy danh sách model đang có trên Ollama để user chọn.
+// setAuth gắn Bearer token cho Ollama Cloud — server local không key thì
+// thôi, khỏi gửi header rỗng gây lạ.
+func (c *Client) setAuth(req *http.Request) {
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 }
 
 // ListModels lấy danh sách model đang có trên Ollama để user chọn.
@@ -75,6 +87,7 @@ func (c *Client) ListModels(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ollama: create tags request: %w", err)
 	}
+	c.setAuth(req)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -137,6 +150,7 @@ func (c *Client) Chat(ctx context.Context, messages []domain.ChatMessage, opts d
 		return "", fmt.Errorf("ollama: create chat request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	c.setAuth(req)
 
 	resp, err := c.http.Do(req)
 	if err != nil {

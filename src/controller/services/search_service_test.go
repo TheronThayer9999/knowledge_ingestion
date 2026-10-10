@@ -98,7 +98,11 @@ type fakeSearchUser struct{ id int64 }
 func (f *fakeSearchUser) UserID(_ context.Context) (int64, bool) { return f.id, true }
 
 func newSearchSvc(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, articles *fakeSearchArticles) ISearchService {
-	return &searchService{hybrid: NewHybridSearcher(embedder, vectors, searchRepoAdapter{articles}), currentUser: &fakeSearchUser{id: 7}}
+	return newSearchSvcLLM(embedder, vectors, articles, nil)
+}
+
+func newSearchSvcLLM(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, articles *fakeSearchArticles, llm domain.ILLM) ISearchService {
+	return &searchService{hybrid: NewHybridSearcher(embedder, vectors, searchRepoAdapter{articles}), classifier: NewLLMClassifier(llm), currentUser: &fakeSearchUser{id: 7}}
 }
 
 // Adapter từ fake gọn sang interface domain.
@@ -219,5 +223,79 @@ func TestSearch_NoHits(t *testing.T) {
 	}
 	if res.Data.Total != 0 || len(res.Data.Hits) != 0 {
 		t.Fatalf("phải rỗng, got %+v", res.Data)
+	}
+}
+
+// Vòng 1+2 đủ: có model → classify (compare) → route limit 10 → tool chạy,
+// response kèm question_type.
+func TestSearch_AgenticLoop(t *testing.T) {
+	embedder := &fakeSearchEmbedder{vec: []float32{0.1, 0.2, 0.3, 0.4}}
+	vectors := &fakeSearchVectors{hits: []*domain.ScoredChunk{
+		{PointID: "p1", Score: 0.9, ArticleID: 8, ChunkIndex: 0, PageNum: 0, Text: "đoạn A"},
+	}}
+	articles := &fakeSearchArticles{doneIDs: []int64{8}}
+	svc := newSearchSvcLLM(embedder, vectors, articles, &fakeLLM{answer: "compare"})
+
+	res := svc.Search(context.Background(), &dtos.SearchRequest{Query: "so sánh A và B", Model: "m"})
+	if res.Err != nil {
+		t.Fatalf("unexpected err: %v", res.Err)
+	}
+	if res.Data.QuestionType != "compare" {
+		t.Fatalf("question_type = %q, want compare", res.Data.QuestionType)
+	}
+	if vectors.gotLimit != 10 {
+		t.Fatalf("route compare phải limit 10, got %d", vectors.gotLimit)
+	}
+	if res.Data.Total != 1 {
+		t.Fatalf("tool phải chạy, got %+v", res.Data)
+	}
+}
+
+// Không model → khỏi tốn lượt LLM, default lookup.
+func TestSearch_NoModelDefaultsLookup(t *testing.T) {
+	embedder := &fakeSearchEmbedder{vec: []float32{0.1}}
+	vectors := &fakeSearchVectors{}
+	svc := newSearchSvcLLM(embedder, vectors, &fakeSearchArticles{}, &fakeLLM{answer: "compare"})
+
+	res := svc.Search(context.Background(), &dtos.SearchRequest{Query: "x"})
+	if res.Err != nil {
+		t.Fatalf("unexpected err: %v", res.Err)
+	}
+	if res.Data.QuestionType != "lookup" {
+		t.Fatalf("question_type = %q, want lookup", res.Data.QuestionType)
+	}
+	if vectors.gotLimit != 5 {
+		t.Fatalf("lookup phải limit 5, got %d", vectors.gotLimit)
+	}
+}
+
+// Chitchat skip tool: embedder cố tình lỗi — skip thì không chạm tới.
+func TestSearch_ChitchatSkipsTool(t *testing.T) {
+	embedder := &fakeSearchEmbedder{err: errors.New("must not be called")}
+	svc := newSearchSvcLLM(embedder, &fakeSearchVectors{}, &fakeSearchArticles{}, &fakeLLM{answer: "chitchat"})
+
+	res := svc.Search(context.Background(), &dtos.SearchRequest{Query: "xin chào", Model: "m"})
+	if res.Err != nil {
+		t.Fatalf("skip tool phải Ok rỗng, got err %v", res.Err)
+	}
+	if res.Data.Total != 0 || res.Data.QuestionType != "chitchat" {
+		t.Fatalf("phải rỗng + chitchat, got %+v", res.Data)
+	}
+}
+
+// Caller ép limit thì thắng router — chitchat có limit vẫn search.
+func TestSearch_ExplicitLimitOverridesSkip(t *testing.T) {
+	embedder := &fakeSearchEmbedder{vec: []float32{0.1}}
+	vectors := &fakeSearchVectors{hits: []*domain.ScoredChunk{
+		{PointID: "p1", Score: 0.9, ArticleID: 8, ChunkIndex: 0, PageNum: 0, Text: "đoạn"},
+	}}
+	svc := newSearchSvcLLM(embedder, vectors, &fakeSearchArticles{doneIDs: []int64{8}}, &fakeLLM{answer: "chitchat"})
+
+	res := svc.Search(context.Background(), &dtos.SearchRequest{Query: "xin chào", Model: "m", Limit: 5})
+	if res.Err != nil {
+		t.Fatalf("unexpected err: %v", res.Err)
+	}
+	if res.Data.Total != 1 || vectors.gotLimit != 5 {
+		t.Fatalf("ép limit phải search, got %+v limit=%d", res.Data, vectors.gotLimit)
 	}
 }

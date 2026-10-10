@@ -79,8 +79,29 @@ func TestChatUsesRequestModel(t *testing.T) {
 	}
 }
 
-func TestChatRequiresModel(t *testing.T) {
-	var gotModel string
+func TestApiKeySentAsBearer(t *testing.T) {
+	var gotAuth string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_ = json.NewEncoder(w).Encode(map[string]any{"models": []any{}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c, err := New(config.LLMConfig{BaseURL: srv.URL, APIKey: "sk-test"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := c.ListModels(context.Background()); err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if gotAuth != "Bearer sk-test" {
+		t.Fatalf("Authorization = %q, want Bearer sk-test", gotAuth)
+	}
+}
+
+func TestChatRequiresModel(t *testing.T) {	var gotModel string
 	srv := fakeOllama(t, &gotModel)
 	defer srv.Close()
 

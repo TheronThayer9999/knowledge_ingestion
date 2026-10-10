@@ -199,12 +199,17 @@ func Load(path string) (IConfig, error) {
 		cfg.LLM.Provider = "ollama"
 	}
 	// Model KHÔNG default — user list model từ Ollama rồi truyền theo request.
+	// Cùng Ollama server với embedding là setup phổ biến nhất nên mượn khi
+	// llm.base_url bỏ trống (vd local); Ollama Cloud thì khai base_url riêng.
 	if cfg.LLM.BaseURL == "" {
-		// Cùng Ollama server với embedding là setup phổ biến nhất.
 		cfg.LLM.BaseURL = cfg.Embedding.BaseURL
 	}
 	if cfg.LLM.BaseURL == "" {
 		cfg.LLM.BaseURL = "http://localhost:11434"
+	}
+	// APIKey ưu tiên env để không commit secret (Ollama Cloud) vào file.
+	if envKey := os.Getenv("OLLAMA_API_KEY"); envKey != "" {
+		cfg.LLM.APIKey = envKey
 	}
 	if cfg.LLM.Temperature < 0 || cfg.LLM.Temperature > 2 {
 		// RAG cần câu trả lời bám tài liệu nên mặc định 0 (tham lam, ít bịa).

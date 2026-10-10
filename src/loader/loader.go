@@ -8,6 +8,7 @@ import (
 	"knowledge_ingestion/src/domain"
 	"knowledge_ingestion/src/infrastructure/caches"
 	"knowledge_ingestion/src/infrastructure/embedding"
+	"knowledge_ingestion/src/infrastructure/llm"
 	"knowledge_ingestion/src/infrastructure/postgres"
 	"knowledge_ingestion/src/infrastructure/qdrant"
 	"knowledge_ingestion/src/infrastructure/rabbitmq"
@@ -43,6 +44,10 @@ func loadAdapter() []fx.Option {
 		// embedding
 		fx.Provide(embedding.NewEmbedder),
 		fx.Invoke(func(domain.Embedder) {}),
+		// llm chat cho vòng 1 agentic (classifier) — New chỉ dựng HTTP client,
+		// không dial nên boot không fail-fast vì Ollama; Classify lỗi thì về
+		// lookup nên Ollama chết search vẫn chạy.
+		fx.Provide(llm.NewLLM),
 		//rabbirMq
 		fx.Provide(rabbitmq.NewConnection),
 		//

@@ -36,8 +36,8 @@
   },
   "llm": {
     "provider": "ollama",
-    "model": "",
-    "base_url": "http://host.docker.internal:11434",
+    "model": "gemma4:31b",
+    "base_url": "https://ollama.com",
     "api_key": "",
     "temperature": 0,
     "max_tokens": 2048,

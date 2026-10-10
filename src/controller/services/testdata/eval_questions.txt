@@ -1,0 +1,23 @@
+# Bộ câu hỏi eval classifier — định dạng mỗi dòng: <slug> | <câu hỏi>
+# Slug: lookup summary compare procedure reasoning calc chitchat scenario
+# Dòng trống và dòng bắt đầu bằng # được bỏ qua.
+
+lookup | Mức phạt chậm nộp thuế bao nhiêu?
+lookup | Nghị định bao nhiêu quy định mức phạt?
+summary | Tóm tắt nghị định 123 cho tôi
+summary | Nội dung chính của thông tư 05 là gì?
+summary | Hợp đồng này nói về cái gì?
+compare | So sánh nghị định 123 và 45 về mức phạt
+compare | Điều 5 khác gì Điều 6?
+procedure | Các bước đăng ký giấy phép kinh doanh?
+procedure | Làm thế nào để xin cấp lại căn cước?
+reasoning | Tại sao nghị định 123 bị thay thế?
+reasoning | Thông tư 05 còn hiệu lực không?
+reasoning | Nghị định 123 có hiệu lực từ khi nào?
+calc | Thuế 10% của 50 triệu là bao nhiêu?
+calc | Mức phạt 5 triệu tính thế nào?
+chitchat | Xin chào
+chitchat | Cảm ơn bạn
+scenario | Giả sử công ty tôi nộp trễ 10 ngày thì bị phạt bao nhiêu?
+scenario | Nếu tôi nghỉ việc tháng 6 thì bảo hiểm tính sao?
+scenario | Liệt kê các trường hợp được miễn thuế

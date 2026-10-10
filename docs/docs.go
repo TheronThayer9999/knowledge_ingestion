@@ -1122,6 +1122,10 @@ const docTemplate = `{
                     "type": "integer",
                     "minimum": 0
                 },
+                "model": {
+                    "type": "string",
+                    "example": "gemma4:31b"
+                },
                 "query": {
                     "type": "string",
                     "maxLength": 2000,

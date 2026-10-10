@@ -129,6 +129,9 @@ definitions:
       limit:
         minimum: 0
         type: integer
+      model:
+        example: gemma4:31b
+        type: string
       query:
         example: Go Fx quản lý vòng đời thế nào
         maxLength: 2000

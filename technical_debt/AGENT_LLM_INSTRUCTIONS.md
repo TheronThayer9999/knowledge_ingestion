@@ -67,6 +67,60 @@ upload ở §3 vẫn giữ bằng boost điểm.
 - Test: fake `IVectorStore` + assert LLM-tool roundtrip trên case "số hiệu
   123/QĐ" (text-only hit) và case viết tắt hành chính.
 
+## 8. Vận hành agentic (2 vòng — cách agent chạy, không phải cách prompt tĩnh)
+
+Mọi câu hỏi đi qua đúng 2 vòng. Vòng 1 chỉ quyết định (không trả lời user),
+vòng 2 chỉ thực thi + tổng hợp (không phân loại lại).
+
+### Vòng 1 — Quyết định (LLM classify + chọn tool)
+
+- **Input:** câu hỏi gốc + `model` do user truyền theo request (config không
+  giữ model cố định — xem `domain.ChatOptions`).
+- **Gọi 1 lần LLM** với system prompt phân loại (8 slug + 1 dòng mô tả mỗi loại
+  + ví dụ neo — bản đang chạy nằm trong code `classifierSystem`,
+  `src/controller/services/question_classifier.go`, đồng bộ với §5, không viết
+  2 bản lệch nhau). `temperature: 0` để phân loại deterministic.
+- **Output vòng 1** là bộ 3: `{type, tool, params}` —
+  - `type`: 1 trong 8 slug §5. Parse bằng quét slug trong câu trả lời (LLM đôi
+    khi trả "Loại: compare" thay vì đúng 1 từ).
+  - `tool`: `knowledge_search` cho loại 1–6/8; `none` cho loại 7 (khỏi tốn
+    embed + Qdrant).
+  - `params`: limit/threshold + kế hoạch query con theo loại:
+    - 1 lookup: 1 query, limit 3–5. 2 summary: 1–2 query bao quát, limit 8–10.
+    - 3 compare: 2 query (mỗi bên 1 query, search riêng, không nhồi chung).
+    - 4 procedure: 1 query, limit 5–8, lấy cả hit trung bình.
+    - 5 reasoning: query 1 lấy "neo" → query 2 từ khóa trong đoạn neo.
+    - 6 calc: mỗi toán hạng 1 query, limit 3–5.
+    - 8 scenario: bóc facts → mỗi fact 1 query → query điều kiện/ngoại lệ.
+- **Rớt an toàn:** model rỗng, LLM lỗi, trả lời không parse được → default
+  `lookup` + tool `knowledge_search` (loại phổ biến nhất, search mặc định vẫn
+  đúng). Vòng 1 không bao giờ trả lỗi để vòng 2 luôn có đường đi.
+
+### Vòng 2 — Thực thi + tổng hợp (tool + LLM trả lời)
+
+- **Thực thi:** gọi `tool` theo kế hoạch vòng 1, tối đa 3 lượt search (loại 8
+  tối đa 4). Lượt sau dùng từ khóa rút ra từ hit lượt trước (số hiệu, tên viết
+  tắt đầy đủ, "trừ trường hợp"), không lặp lại query cũ.
+- **Dừng sớm:** đủ chứng cứ trả lời → dừng, không gọi cho đủ quota. Hit rỗng
+  2 lượt liên tiếp → dừng, sang từ chối.
+- **Tổng hợp:** gọi 1 lần LLM cuối với 3 đầu vào xếp đúng thứ tự — (1) system
+  prompt §1, (2) instruction của đúng loại §5, (3) hits kèm `(trang, đoạn)`.
+  Đáp phải cite mọi khẳng định; thiếu chứng cứ thì làm đúng mục Từ chối của
+  loại đó, cấm lấp bằng kiến thức nền.
+- **Cấm vòng 2 phân loại lại:** vòng 2 không được đổi `type` (tránh dao động
+  classify→search→reclassify). Muốn đổi chiến lược thì đổi query, không đổi
+  loại.
+
+### Map sang code (khóa để instruction và impl không lệch)
+
+| Bước agentic | Code |
+|---|---|
+| Vòng 1a classify | `LLMClassifier.Classify` (`services/question_classifier.go`) |
+| Vòng 1b chọn tool + params | `Route` (`services/question_router.go`) → `{Tool, Limit, Threshold, SkipSearch}` |
+| Vòng 2 tool | `HybridSearcher.SearchHybrid` (`services/hybrid_search.go`) |
+| Vòng 2 tổng hợp | chưa code — Eino agent / service `Answer` (lấy hits + §1 + §5 làm input) |
+| Tool tương lai | §4 `InvokableTool` bọc `SearchHybrid` |
+
 ## 7. Việc tiếp theo (chưa làm, ghi để không mất)
 
 - ĐÃ XONG (session này): config `llm` chỉ giữ default kết nối (provider,
@@ -77,12 +131,13 @@ upload ở §3 vẫn giữ bằng boost điểm.
   HTTP giữ ở infrastructure (adapter gọi hệ ngoài, cùng họ embedding/ollama),
   KHÔNG nhét vào `services/internal` (chỗ đó chỉ cho helper thuần của
   services). Chưa wire vào fx loader — chờ service consumer (classifier/agent).
-1. **Classifier + router theo 8 loại §5:** interface `QuestionClassifier`
-   trong `services` (fake được, không dính Eino) → triển khai rule-based trước
-   (regex "so sánh/khác gì"→3, "tóm tắt"→2, "mấy bước/thủ tục"→4, chào hỏi→7,
-   còn lại default 1) → LLM classifier sau (Ollama model nhẹ, few-shot). Router
-   map loại → `HybridParams` đã tune (limit/threshold/multi-query) rồi gọi
-   `HybridSearcher`; loại 7 return sớm khỏi search; loại 8 bóc facts trước.
+1. **Classifier + router theo 8 loại §5 (ĐÃ CHỐT hướng LLM-first, bỏ rule
+   keyword):** `LLMClassifier` trong `services` (phụ thuộc `domain.ILLM`,
+   fake được, không dính Eino) → gọi Ollama model nhẹ theo request, system
+   prompt ép trả 1 slug + ví dụ neo → parse slug, lỗi về default lookup. Router
+   map loại → `{Tool, Limit, Threshold, SkipSearch}` (§8 vòng 1b) rồi gọi
+   `HybridSearcher`; loại 7 skip search; loại 8 bóc facts trước. Rule regex cũ
+   đã xóa (hard-code marker dễ ăn oan kiểu "hi" trong "hiệu lực").
 2. **Eino agent tool `knowledge_search`:** 1 `InvokableTool` bọc
    `HybridSearcher.SearchHybrid` theo spec §2 (system prompt §1 + instruction
    §5 làm system message).
