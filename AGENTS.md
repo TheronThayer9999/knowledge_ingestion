@@ -8,7 +8,7 @@
 ## Commands
 
 - Verify: `go build ./...` && `go vet ./...` && `golangci-lint run ./...` (default linters, CỐ Ý không có `.golangci.yml` — đừng tạo lại); tests: `go test ./...` (`seaweedfs`, `postgres`, `apis`); CI: `.github/workflows/ci.yml` chạy lint job (golangci-lint-action@v9) + build/test job song song trên push/PR
-- Run: `go run ./cmd/apis` → `GET /api/v1/ping`, `GET /api/v1/pong`, Swagger UI at `/swagger/index.html`; gRPC riêng: `go run ./cmd/agent-gateway`; worker: `go run ./cmd/worker`
+- Run: `go run ./cmd/apis` → `GET /api/v1/ping`, `GET /api/v1/pong`, Swagger UI at `/swagger/index.html`; worker: `go run ./cmd/worker`
 - Config: `-configs <path>` flag, default `./configs/config.json`; `APP_CONFIG_PATH` env overrides the flag default
 - Swagger: regenerate after changing annotations with `swag init -g cmd/apis/main.go` (swag CLI in `%USERPROFILE%\go\bin`); `docs/` is generated — never hand-edit it
 - `go mod tidy` after adding/removing imports (it aggressively drops unused deps — it removed gorm/pgx once when nothing imported them)
@@ -16,9 +16,9 @@
 ## Architecture
 
 - Go 1.26.5, single module `knowledge_ingestion`; import paths are `knowledge_ingestion/src/...` — keep this prefix, all code lives under `src/`
-- Entrypoint `cmd/apis/main.go`: `fx.New(Provide(config), Options(loader.Load()...), Invoke(serverLifecycle))` then manual `Start` → OS signal → `Stop` (not `fx.Run`); `cmd/agent-gateway/main.go` là binary gRPC riêng (`Invoke(grpcLifecycle)` + `loader.LoadGRPC()`), `cmd/worker/main.go` dùng `loader.LoadWorkerInfra()` — cùng khung main
-- All DI wiring lives in `src/loader/` (`loader.go` cho API, `grpc.go` `LoadGRPC()` cho agent-gateway, `worker.go` `LoadWorkerInfra()` cho worker) — `Load()` grouped as loadAdapter/loadService/loadValidator/loadEngine (same pattern as the shoe_shop fxloader); add new providers there only, never as package-level `var Module`
-- Layer flow: `routers` (route table only, exposes `Engine`; HTTP server lifecycle is in `serverLifecycle` in cmd/apis/main.go) → `apis` (gin handlers) → `services` (business logic behind `I…` interfaces) → `domain` models + `controller/dtos`; config injected everywhere via `config.IConfig`; gRPC (`grpchandler`) gọi cùng `I…` services như HTTP, khác mỗi transport
+- Entrypoint `cmd/apis/main.go`: `fx.New(Provide(config), Options(loader.Load()...), Invoke(serverLifecycle))` then manual `Start` → OS signal → `Stop` (not `fx.Run`); `cmd/worker/main.go` dùng `loader.LoadWorkerInfra()` — cùng khung main
+- All DI wiring lives in `src/loader/` (`loader.go` cho API, `worker.go` `LoadWorkerInfra()` cho worker) — `Load()` grouped as loadAdapter/loadService/loadValidator/loadEngine (same pattern as the shoe_shop fxloader); add new providers there only, never as package-level `var Module`
+- Layer flow: `routers` (route table only, exposes `Engine`; HTTP server lifecycle is in `serverLifecycle` in cmd/apis/main.go) → `apis` (gin handlers) → `services` (business logic behind `I…` interfaces) → `domain` models + `controller/dtos`; config injected everywhere via `config.IConfig`
 - Storage: contract `common/storage.IStorage` (`Save`/`Open`/`Delete`), implemented by `infrastructure/seaweedfs` with aws-sdk-go-v2 against the S3-compatible gateway (path-style, static creds, region fixed `us-east-1`); provided in `loadAdapter` — fx builds it lazily, so the app boots without SeaweedFS running
 - DB: `infrastructure/postgres.NewConnection` (wired in `loadAdapter`) uses gorm (`gorm.io/gorm` + `gorm.io/driver/postgres`) and returns `postgres.IDB` (`GetDB() *gorm.DB`); pool tuned 25 open/10 idle/5m lifetime, ping fail-fast 10s — but `loadAdapter` có `fx.Invoke(func(postgres.IDB){})` force kết nối + AutoMigrate lúc startup, nên app **fail-fast** nếu DB không reachable (trước đây fx lazy nên boot được khi Docker tắt); `connection_test.go` dials the config host, falls back to `127.0.0.1`, skips when unreachable
 - Former scaffold dirs (`common/utils`, `controller/middlewares`, `infrastructure/repository`) are now populated — follow the existing layer pattern when adding files

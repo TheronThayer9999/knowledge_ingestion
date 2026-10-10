@@ -12,14 +12,11 @@ const (
 )
 
 type Error struct {
-	// Code là mã lỗi trung lập transport — HTTP Render đọc HttpCode cho
-	// status line, gRPC map Code sang grpc codes qua grpcStatus (0→OK,
-	// 400→InvalidArgument, 404→NotFound, còn lại→Internal). Đừng nhét mã
-	// riêng cho từng transport vào đây.
+	// Code là mã lỗi nghiệp vụ (0→OK, 400→bad request, còn lại→internal).
+	// Đừng nhét mã riêng cho từng transport vào đây.
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-	// HttpCode chỉ HTTP dùng (status line) — không serialize ra body, gRPC
-	// không đọc field này.
+	// HttpCode chỉ HTTP dùng (status line) — không serialize ra body.
 	HttpCode int `json:"-"`
 }
 
@@ -27,7 +24,7 @@ func (e *Error) Error() string {
 	return e.Message
 }
 
-// GetCode trả mã lỗi trung lập transport cho adapter (HTTP/gRPC) map sang
+// GetCode trả mã lỗi nghiệp vụ cho adapter map sang
 // mã trạng thái của transport mình.
 func (e *Error) GetCode() int {
 	return e.Code

@@ -40,10 +40,7 @@ type appConfig struct {
 type AppConfig struct {
 	Name string `json:"name"`
 	Port int    `json:"port"`
-	// GrpcPort cổng binary agent-gateway (cmd/agent-gateway) cho AI agent
-	// (Python) — 0 thì default 9002.
-	GrpcPort int `json:"grpc_port"`
-	Env      string `json:"env"`
+	Env  string `json:"env"`
 }
 
 type DBConfig struct {
@@ -162,9 +159,6 @@ func Load(path string) (IConfig, error) {
 	// Validate cơ bản
 	if cfg.App.Port == 0 {
 		return nil, fmt.Errorf("app.port is required")
-	}
-	if cfg.App.GrpcPort == 0 {
-		cfg.App.GrpcPort = 9002 // gRPC agent mặc định cạnh HTTP 9001
 	}
 	if cfg.Database.Host == "" {
 		return nil, fmt.Errorf("database.host is required")

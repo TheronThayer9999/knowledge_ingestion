@@ -2,7 +2,6 @@
   "app": {
     "name": "manager_docker_compose",
     "port": 9001,
-    "grpc_port": 9002,
     "env": "development"
   },
   "database": {
