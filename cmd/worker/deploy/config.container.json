@@ -34,6 +34,15 @@
     "api_key": "",
     "dim": 1024
   },
+  "llm": {
+    "provider": "ollama",
+    "model": "",
+    "base_url": "http://host.docker.internal:11434",
+    "api_key": "",
+    "temperature": 0,
+    "max_tokens": 2048,
+    "timeout_sec": 120
+  },
   "redis": {
     "host": "host.docker.internal",
     "port": 6379,

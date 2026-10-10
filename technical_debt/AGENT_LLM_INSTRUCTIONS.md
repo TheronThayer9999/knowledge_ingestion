@@ -69,6 +69,14 @@ upload ở §3 vẫn giữ bằng boost điểm.
 
 ## 7. Việc tiếp theo (chưa làm, ghi để không mất)
 
+- ĐÃ XONG (session này): config `llm` chỉ giữ default kết nối (provider,
+  base_url, temperature, max_tokens, timeout) — KHÔNG hardcode model; model do
+  user truyền theo mỗi request. Kèm `domain.ILLM` (`ListModels` qua
+  `GET /api/tags` + `Chat` với `ChatOptions.Model`) và client
+  `infrastructure/llm/ollama` (test httptest, không cần Ollama thật). Client
+  HTTP giữ ở infrastructure (adapter gọi hệ ngoài, cùng họ embedding/ollama),
+  KHÔNG nhét vào `services/internal` (chỗ đó chỉ cho helper thuần của
+  services). Chưa wire vào fx loader — chờ service consumer (classifier/agent).
 1. **Classifier + router theo 8 loại §5:** interface `QuestionClassifier`
    trong `services` (fake được, không dính Eino) → triển khai rule-based trước
    (regex "so sánh/khác gì"→3, "tóm tắt"→2, "mấy bước/thủ tục"→4, chào hỏi→7,

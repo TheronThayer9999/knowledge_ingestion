@@ -13,6 +13,7 @@ type IConfig interface {
 	GetDatabase() DBConfig
 	GetStorage() S3Config
 	GetEmbedding() EmbeddingConfig
+	GetLLM() LLMConfig
 	GetQdrant() QdrantConfig
 	GetOCR() OCRConfig
 	GetRedis() RedisConfig // Thêm method này
@@ -28,6 +29,7 @@ type appConfig struct {
 	Database  DBConfig        `json:"database"`
 	Storage   S3Config        `json:"storage"`
 	Embedding EmbeddingConfig `json:"embedding"`
+	LLM       LLMConfig       `json:"llm"`
 	Qdrant    QdrantConfig    `json:"qdrant"`
 	OCR       OCRConfig       `json:"ocr"`
 	RedisCli  RedisConfig     `json:"redis"`
@@ -66,6 +68,22 @@ type EmbeddingConfig struct {
 	BaseURL  string `json:"base_url"`
 	APIKey   string `json:"api_key"` // Ollama để trống
 	Dim      int    `json:"dim"`
+}
+
+// LLMConfig giữ default kết nối tới Ollama cho agent (phân loại câu hỏi,
+// tổng hợp trả lời) — KHÔNG giữ model cố định: model do user truyền theo mỗi
+// request (lấy danh sách qua GET /api/tags rồi chọn). Eino đọc qua
+// eino-ext/components/model/ollama nên provider hiện chỉ "ollama".
+type LLMConfig struct {
+	Provider string `json:"provider"` // "ollama", "openai", ...
+	// Model rỗng nghĩa là chưa chọn — caller phải truyền model theo request,
+	// để trống ở config để không kẹt vào một model duy nhất.
+	Model       string  `json:"model"`
+	BaseURL     string  `json:"base_url"` // rỗng thì mượn embedding.base_url
+	APIKey      string  `json:"api_key"`  // Ollama để trống
+	Temperature float64 `json:"temperature"`
+	MaxTokens   int     `json:"max_tokens"`
+	TimeoutSec  int     `json:"timeout_sec"`
 }
 
 // QdrantConfig giữ địa chỉ Qdrant — worker embed upsert vector qua gRPC
@@ -176,6 +194,30 @@ func Load(path string) (IConfig, error) {
 	}
 	if cfg.Embedding.Dim <= 0 {
 		return nil, fmt.Errorf("embedding.dim must be > 0")
+	}
+	if cfg.LLM.Provider == "" {
+		cfg.LLM.Provider = "ollama"
+	}
+	// Model KHÔNG default — user list model từ Ollama rồi truyền theo request.
+	if cfg.LLM.BaseURL == "" {
+		// Cùng Ollama server với embedding là setup phổ biến nhất.
+		cfg.LLM.BaseURL = cfg.Embedding.BaseURL
+	}
+	if cfg.LLM.BaseURL == "" {
+		cfg.LLM.BaseURL = "http://localhost:11434"
+	}
+	if cfg.LLM.Temperature < 0 || cfg.LLM.Temperature > 2 {
+		// RAG cần câu trả lời bám tài liệu nên mặc định 0 (tham lam, ít bịa).
+		cfg.LLM.Temperature = 0
+	}
+	if cfg.LLM.MaxTokens <= 0 {
+		cfg.LLM.MaxTokens = 2048
+	}
+	if cfg.LLM.TimeoutSec <= 0 {
+		cfg.LLM.TimeoutSec = 120
+	}
+	if cfg.LLM.TimeoutSec > 3600 {
+		cfg.LLM.TimeoutSec = 3600
 	}
 	if cfg.Qdrant.Host == "" {
 		return nil, fmt.Errorf("qdrant.host is required")
@@ -288,6 +330,7 @@ func (c *appConfig) GetApp() AppConfig             { return c.App }
 func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
 func (c *appConfig) GetStorage() S3Config          { return c.Storage }
 func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }
+func (c *appConfig) GetLLM() LLMConfig             { return c.LLM }
 func (c *appConfig) GetQdrant() QdrantConfig       { return c.Qdrant }
 func (c *appConfig) GetOCR() OCRConfig             { return c.OCR }
 func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }

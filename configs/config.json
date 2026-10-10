@@ -33,6 +33,15 @@
     "api_key": "",
     "dim": 1024
   },
+  "llm": {
+    "provider": "ollama",
+    "model": "",
+    "base_url": "http://bore.pub:9203/",
+    "api_key": "",
+    "temperature": 0,
+    "max_tokens": 2048,
+    "timeout_sec": 120
+  },
   "ocr": {
     "enabled": true,
     "binary": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",

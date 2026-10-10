@@ -16,6 +16,8 @@ func (f *fakeConfig) GetStorage() config.S3Config  { return f.s3 }
 
 func (f *fakeConfig) GetEmbedding() config.EmbeddingConfig { return config.EmbeddingConfig{} }
 
+func (f *fakeConfig) GetLLM() config.LLMConfig { return config.LLMConfig{} }
+
 func (f *fakeConfig) GetQdrant() config.QdrantConfig { return config.QdrantConfig{} }
 
 func (f *fakeConfig) GetOCR() config.OCRConfig { return config.OCRConfig{} }

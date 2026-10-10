@@ -33,6 +33,7 @@ func (c *queueDBConfig) GetApp() config.AppConfig             { return c.inner.G
 func (c *queueDBConfig) GetDatabase() config.DBConfig         { return c.db }
 func (c *queueDBConfig) GetStorage() config.S3Config          { return c.inner.GetStorage() }
 func (c *queueDBConfig) GetEmbedding() config.EmbeddingConfig { return c.inner.GetEmbedding() }
+func (c *queueDBConfig) GetLLM() config.LLMConfig             { return c.inner.GetLLM() }
 func (c *queueDBConfig) GetQdrant() config.QdrantConfig       { return c.inner.GetQdrant() }
 func (c *queueDBConfig) GetOCR() config.OCRConfig             { return c.inner.GetOCR() }
 func (c *queueDBConfig) GetRedis() config.RedisConfig         { return c.inner.GetRedis() }
