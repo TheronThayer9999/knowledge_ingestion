@@ -671,6 +671,57 @@
                 }
             }
         },
+        "/api/v1/chat": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Classify câu hỏi → search tài liệu upload → LLM tổng hợp thành Markdown kèm cites để frontend ReactJS render. Cần đăng nhập, model LLM truyền theo request.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Chat hỏi đáp tri thức (markdown)",
+                "parameters": [
+                    {
+                        "description": "chat message",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ChatRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/ping": {
             "get": {
                 "description": "Returns pong with server timestamp",
@@ -952,6 +1003,62 @@
                 "old_password": {
                     "type": "string",
                     "example": "secret123"
+                }
+            }
+        },
+        "dtos.ChatHistoryItem": {
+            "type": "object",
+            "required": [
+                "content",
+                "role"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "example": "Nghị định 123 nói về gì?"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "assistant"
+                    ],
+                    "example": "user"
+                }
+            }
+        },
+        "dtos.ChatRequest": {
+            "type": "object",
+            "required": [
+                "message",
+                "model"
+            ],
+            "properties": {
+                "category_id": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "history": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dtos.ChatHistoryItem"
+                    }
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "message": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "example": "Mức phạt chậm nộp thuế bao nhiêu?"
+                },
+                "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "example": "gemma4:31b"
                 }
             }
         },

@@ -13,6 +13,47 @@ definitions:
     - new_password
     - old_password
     type: object
+  dtos.ChatHistoryItem:
+    properties:
+      content:
+        example: Nghị định 123 nói về gì?
+        maxLength: 4000
+        type: string
+      role:
+        enum:
+        - user
+        - assistant
+        example: user
+        type: string
+    required:
+    - content
+    - role
+    type: object
+  dtos.ChatRequest:
+    properties:
+      category_id:
+        example: 5
+        type: integer
+      history:
+        items:
+          $ref: '#/definitions/dtos.ChatHistoryItem'
+        type: array
+      limit:
+        minimum: 0
+        type: integer
+      message:
+        example: Mức phạt chậm nộp thuế bao nhiêu?
+        maxLength: 2000
+        minLength: 1
+        type: string
+      model:
+        example: gemma4:31b
+        minLength: 1
+        type: string
+    required:
+    - message
+    - model
+    type: object
   dtos.CreateArticleRequest:
     properties:
       category_id:
@@ -612,6 +653,40 @@ paths:
       summary: Update a category
       tags:
       - categories
+  /api/v1/chat:
+    post:
+      consumes:
+      - application/json
+      description: Classify câu hỏi → search tài liệu upload → LLM tổng hợp thành
+        Markdown kèm cites để frontend ReactJS render. Cần đăng nhập, model LLM truyền
+        theo request.
+      parameters:
+      - description: chat message
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.ChatRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Chat hỏi đáp tri thức (markdown)
+      tags:
+      - chat
   /api/v1/ping:
     get:
       description: Returns pong with server timestamp
