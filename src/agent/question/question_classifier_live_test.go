@@ -69,7 +69,7 @@ func TestClassifyLiveEval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New llm: %v", err)
 	}
-	c := NewLLMClassifier(llm)
+	c := NewLLMClassifier(llm, mustTestPrompts(t))
 	cases := loadEvalCases(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)

@@ -104,7 +104,7 @@ func newSearchSvc(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, arti
 }
 
 func newSearchSvcLLM(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, articles *fakeSearchArticles, llm domain.ILLM) port.ISearcher {
-	return &searchService{hybrid: retrieval.NewHybridSearcher(embedder, vectors, articles), classifier: question.NewLLMClassifier(llm), currentUser: &fakeSearchUser{id: 7}}
+	return &searchService{hybrid: retrieval.NewHybridSearcher(embedder, vectors, articles), classifier: question.NewLLMClassifier(llm, question.Prompts{ClassifySystem: "test-classify"}), currentUser: &fakeSearchUser{id: 7}}
 }
 
 // Happy path: filter quyền đúng user, limit mặc định, hit bài done giữ lại,
@@ -217,6 +217,40 @@ func TestSearch_ChitchatSkipsTool(t *testing.T) {
 	}
 	if res.Data.Total != 0 || res.Data.QuestionType != "chitchat" {
 		t.Fatalf("phải rỗng + chitchat, got %+v", res.Data)
+	}
+}
+
+// Caller (chat) đã classify ở vòng 1 thì search dùng luôn, khỏi tốn lượt
+// LLM — embedder cố tình lỗi ở nửa classify không được chạm tới vì LLM của
+// search không gọi; route vẫn áp limit theo loại (compare → 10).
+func TestSearch_ReusesQuestionType(t *testing.T) {
+	embedder := &fakeSearchEmbedder{vec: []float32{0.1}}
+	vectors := &fakeSearchVectors{}
+	svc := newSearchSvcLLM(embedder, vectors, &fakeSearchArticles{}, &fakeLLM{err: errors.New("must not be called")})
+
+	res := svc.Search(context.Background(), &dtos.SearchRequest{Query: "so sánh A và B", Model: "m", QuestionType: "compare"})
+	if res.Err != nil {
+		t.Fatalf("unexpected err: %v", res.Err)
+	}
+	if res.Data.QuestionType != "compare" {
+		t.Fatalf("question_type = %q, want compare", res.Data.QuestionType)
+	}
+	if vectors.gotLimit != 10 {
+		t.Fatalf("route compare phải limit 10, got %d", vectors.gotLimit)
+	}
+}
+
+// QuestionType lạ thì search tự classify lại như luồng SearchAPI.
+func TestSearch_UnknownQuestionTypeFallsBackToClassify(t *testing.T) {
+	embedder := &fakeSearchEmbedder{vec: []float32{0.1}}
+	svc := newSearchSvcLLM(embedder, &fakeSearchVectors{}, &fakeSearchArticles{}, &fakeLLM{answer: "compare"})
+
+	res := svc.Search(context.Background(), &dtos.SearchRequest{Query: "so sánh A và B", Model: "m", QuestionType: "loai-la"})
+	if res.Err != nil {
+		t.Fatalf("unexpected err: %v", res.Err)
+	}
+	if res.Data.QuestionType != "compare" {
+		t.Fatalf("phải classify lại ra compare, got %q", res.Data.QuestionType)
 	}
 }
 

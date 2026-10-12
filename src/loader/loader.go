@@ -2,6 +2,7 @@ package loader
 
 import (
 	"knowledge_ingestion/src/agent/port"
+	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/agent/synthesis"
 	"knowledge_ingestion/src/agent/usecase"
 	"knowledge_ingestion/src/config"
@@ -79,8 +80,15 @@ func loadService() []fx.Option {
 		fx.Provide(func(u middlewares.ICurrentUser) port.IUserResolver { return u }),
 		fx.Provide(usecase.NewSearchService),
 		fx.Provide(newChatPrompts),
+		fx.Provide(newClassifyPrompts),
 		fx.Provide(usecase.NewChatService),
 	}
+}
+
+// newClassifyPrompts load system prompt vòng 1 (phân loại câu hỏi) từ file
+// lúc startup — cùng quy ước với prompt chat.
+func newClassifyPrompts(cfg config.IConfig) (question.Prompts, error) {
+	return question.LoadPrompts(cfg.GetAgent().PromptDir)
 }
 
 // newChatPrompts load system prompt chat từ file lúc startup — sửa

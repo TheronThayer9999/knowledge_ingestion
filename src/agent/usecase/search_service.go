@@ -26,10 +26,11 @@ func NewSearchService(
 	articleRepo domain.IArticleRepository,
 	llm domain.ILLM,
 	currentUser port.IUserResolver,
+	classify question.Prompts,
 ) port.ISearcher {
 	return &searchService{
 		hybrid:      retrieval.NewHybridSearcher(embedder, vectors, articleRepo),
-		classifier:  question.NewLLMClassifier(llm),
+		classifier:  question.NewLLMClassifier(llm, classify),
 		currentUser: currentUser,
 	}
 }
@@ -45,10 +46,14 @@ func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dto
 	if strings.TrimSpace(dto.Query) == "" {
 		return dtos.Fail[*dtos.SearchResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "query rỗng"))
 	}
-	// Vòng 1: classify + route.
-	qtype := question.QuestionLookup
-	if strings.TrimSpace(dto.Model) != "" {
-		qtype = s.classifier.Classify(ctx, dto.Model, dto.Query)
+	// Vòng 1: caller (chat) đã classify thì dùng luôn, khỏi tốn lượt LLM —
+	// SearchAPI gọi trực tiếp (không kèm loại) thì classify trong này.
+	qtype, ok := question.Parse(dto.QuestionType)
+	if !ok {
+		qtype = question.QuestionLookup
+		if strings.TrimSpace(dto.Model) != "" {
+			qtype = s.classifier.Classify(ctx, dto.Model, dto.Query)
+		}
 	}
 	route := question.Route(qtype)
 	// DTO caller tự chỉ định thì thắng router — router chỉ là default theo loại.

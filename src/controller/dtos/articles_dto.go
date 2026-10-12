@@ -108,13 +108,16 @@ func ToArticleListResponse(articles []*domain.Article) ArticleListResponse {
 // SearchRequest hỏi tri thức — query bắt buộc, category_id để khoanh 1 chủ
 // đề, limit/threshold để kiểm soát lượng + chất hit. Owner lấy từ token.
 // Model là model LLM cho vòng 1 agentic (phân loại câu hỏi) — rỗng thì default
-// lookup, khỏi tốn lượt LLM.
+// lookup, khỏi tốn lượt LLM. QuestionType do caller đã classify ở vòng 1
+// (luồng chat) truyền sang để khỏi classify lần 2 — SearchAPI gọi trực tiếp
+// thì để trống, search tự classify.
 type SearchRequest struct {
 	Query          string  `json:"query" binding:"required,min=1,max=2000" example:"Go Fx quản lý vòng đời thế nào"`
 	CategoryID     int64   `json:"category_id,omitempty" binding:"omitempty,gt=0" example:"5"`
 	Limit          int     `json:"limit,omitempty" binding:"omitempty,gte=0"`
 	ScoreThreshold float32 `json:"score_threshold,omitempty" binding:"omitempty,gte=0"`
 	Model          string  `json:"model,omitempty" example:"gemma4:31b"`
+	QuestionType   string  `json:"question_type,omitempty" example:"compare"`
 }
 
 // SearchHitResponse là 1 đoạn trúng — agent RAG lấy text làm ngữ cảnh,

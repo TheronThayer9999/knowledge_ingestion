@@ -10,7 +10,7 @@
 - Verify: `go build ./...` && `go vet ./...` && `golangci-lint run ./...` (default linters, CỐ Ý không có `.golangci.yml` — đừng tạo lại); tests: `go test ./...` (`seaweedfs`, `postgres`, `apis`); CI: `.github/workflows/ci.yml` chạy lint job (golangci-lint-action@v9) + build/test job song song trên push/PR
 - Run: `go run ./cmd/apis` → `GET /api/v1/ping`, `GET /api/v1/pong`, Swagger UI at `/swagger/index.html`; worker: `go run ./cmd/worker`
 - Config: `-configs <path>` flag, default `./configs/config.json`; `APP_CONFIG_PATH` env overrides the flag default
-- Prompts: system prompt chat nằm ở `prompts/chat_system.md`, load lúc startup (đường dẫn qua `agent.prompt_dir` trong config, default `./prompts`) — sửa prompt rồi restart app là ăn, không cần build lại; file thiếu thì app fail-fast (không còn bản mặc định trong code)
+- Prompts: system prompt nằm ở `prompts/` (`chat_system.md` tổng hợp, `classify_system.md` vòng 1 phân loại), load lúc startup (đường dẫn qua `agent.prompt_dir` trong config, default `./prompts`) — sửa prompt rồi restart app là ăn, không cần build lại; file thiếu thì app fail-fast (không còn bản mặc định trong code)
 - Swagger: regenerate after changing annotations with `swag init -g cmd/apis/main.go` (swag CLI in `%USERPROFILE%\go\bin`); `docs/` is generated — never hand-edit it
 - `go mod tidy` after adding/removing imports (it aggressively drops unused deps — it removed gorm/pgx once when nothing imported them)
 

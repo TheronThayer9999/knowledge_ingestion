@@ -1239,6 +1239,10 @@ const docTemplate = `{
                     "minLength": 1,
                     "example": "Go Fx quản lý vòng đời thế nào"
                 },
+                "question_type": {
+                    "type": "string",
+                    "example": "compare"
+                },
                 "score_threshold": {
                     "type": "number",
                     "minimum": 0

@@ -126,7 +126,7 @@ func buildSynthUserContent(question, qtype string, hits []*dtos.SearchHitRespons
 	if src.Len() > 0 {
 		userContent += "\n\nNGUỒN:\n" + src.String()
 	} else {
-		userContent += "\n\n(Không có nguồn nào — làm đúng rule 4 của system prompt.)"
+		userContent += "\n\n(Không có nguồn nào — làm đúng mục 8 của system prompt.)"
 	}
 	return userContent
 }

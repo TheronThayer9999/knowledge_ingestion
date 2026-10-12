@@ -178,6 +178,9 @@ definitions:
         maxLength: 2000
         minLength: 1
         type: string
+      question_type:
+        example: compare
+        type: string
       score_threshold:
         minimum: 0
         type: number

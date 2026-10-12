@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/agent/synthesis"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
@@ -31,14 +32,17 @@ func (f *fakeLLM) Chat(_ context.Context, _ []domain.ChatMessage, opts domain.Ch
 	return f.answer, nil
 }
 
-// fakeChatSearch giả ISearcher — trả hits + question_type cố định.
+// fakeChatSearch giả ISearcher — trả hits cố định, ghi lại question_type
+// chat truyền sang để test khóa vòng 1 dùng lại, không classify lần 2.
 type fakeChatSearch struct {
-	hits  []*dtos.SearchHitResponse
-	qtype string
-	err   error
+	hits     []*dtos.SearchHitResponse
+	qtype    string
+	err      error
+	gotQtype string
 }
 
-func (f *fakeChatSearch) Search(_ context.Context, _ *dtos.SearchRequest) dtos.Result[*dtos.SearchResponse] {
+func (f *fakeChatSearch) Search(_ context.Context, req *dtos.SearchRequest) dtos.Result[*dtos.SearchResponse] {
+	f.gotQtype = req.QuestionType
 	if f.err != nil {
 		return dtos.Fail[*dtos.SearchResponse](f.err)
 	}
@@ -52,7 +56,7 @@ func TestChat_FullPipeline(t *testing.T) {
 		},
 		qtype: "lookup",
 	}
-	svc := NewChatService(search, &fakeLLM{answer: "Mức phạt là **0.05%/ngày**[^1]."}, synthesis.Prompts{System: "test-system"})
+	svc := NewChatService(search, &fakeLLM{answer: "Mức phạt là **0.05%/ngày**[^1]."}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
 
 	res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "Mức phạt?", Model: "m"})
 	if res.Err != nil {
@@ -73,27 +77,50 @@ func TestChat_FullPipeline(t *testing.T) {
 }
 
 func TestChat_ChitchatNoHits(t *testing.T) {
-	search := &fakeChatSearch{hits: []*dtos.SearchHitResponse{}, qtype: "chitchat"}
-	svc := NewChatService(search, &fakeLLM{answer: "Chào bạn!"}, synthesis.Prompts{System: "test-system"})
+	// search cố tình lỗi — skip tool thì không được chạm tới.
+	search := &fakeChatSearch{err: errors.New("must not be called")}
+	svc := NewChatService(search, &fakeLLM{answer: "chitchat"}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
 
 	res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "xin chào", Model: "m"})
 	if res.Err != nil {
 		t.Fatalf("unexpected err: %v", res.Err)
 	}
 	if len(res.Data.Cites) != 0 || res.Data.QuestionType != "chitchat" {
-		t.Fatalf("chitchat phải rỗng cites, got %+v", res.Data)
+		t.Fatalf("chitchat phải skip tool + rỗng cites, got %+v", res.Data)
+	}
+}
+
+// Vòng 1 của chat quyết định tool: classify ra compare thì search phải nhận
+// đúng question_type đó (dùng lại, không classify lần 2).
+func TestChat_PassesQuestionType(t *testing.T) {
+	search := &fakeChatSearch{
+		hits: []*dtos.SearchHitResponse{
+			{ArticleID: 8, ChunkIndex: 0, PageNum: 0, Text: "đoạn A"},
+		},
+	}
+	svc := NewChatService(search, &fakeLLM{answer: "compare"}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
+
+	res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "so sánh A và B", Model: "m"})
+	if res.Err != nil {
+		t.Fatalf("unexpected err: %v", res.Err)
+	}
+	if search.gotQtype != "compare" {
+		t.Fatalf("search phải nhận question_type=compare, got %q", search.gotQtype)
+	}
+	if res.Data.QuestionType != "compare" {
+		t.Fatalf("question_type = %q, want compare", res.Data.QuestionType)
 	}
 }
 
 func TestChat_RequiresModel(t *testing.T) {
-	svc := NewChatService(&fakeChatSearch{}, &fakeLLM{answer: "x"}, synthesis.Prompts{System: "test-system"})
+	svc := NewChatService(&fakeChatSearch{}, &fakeLLM{answer: "x"}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
 	if res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "x"}); res.Err == nil {
 		t.Fatal("thiếu model phải 400")
 	}
 }
 
 func TestChat_SearchErrorPropagates(t *testing.T) {
-	svc := NewChatService(&fakeChatSearch{err: errors.New("qdrant down")}, &fakeLLM{answer: "x"}, synthesis.Prompts{System: "test-system"})
+	svc := NewChatService(&fakeChatSearch{err: errors.New("qdrant down")}, &fakeLLM{answer: "x"}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
 	if res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "x", Model: "m"}); res.Err == nil {
 		t.Fatal("lỗi search phải lan ra")
 	}
