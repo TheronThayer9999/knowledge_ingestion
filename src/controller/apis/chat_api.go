@@ -1,8 +1,8 @@
 package apis
 
 import (
+	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/controller/dtos"
-	"knowledge_ingestion/src/controller/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,10 +11,10 @@ import (
 // rồi Render, BE điều phối agentic ở service.
 type ChatAPI struct {
 	*baseController
-	svc services.IChatService
+	svc port.IChatter
 }
 
-func NewChatAPI(base *baseController, svc services.IChatService) *ChatAPI {
+func NewChatAPI(base *baseController, svc port.IChatter) *ChatAPI {
 	return &ChatAPI{baseController: base, svc: svc}
 }
 

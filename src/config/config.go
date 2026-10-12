@@ -21,6 +21,7 @@ type IConfig interface {
 	GetJWT() JWTConfig
 	GetCORS() CorsConfig
 	GetWorker() WorkerConfig
+	GetAgent() AgentConfig
 }
 
 // Implementations
@@ -37,6 +38,7 @@ type appConfig struct {
 	JWTCli    JWTConfig       `json:"jwt"`
 	Cors      CorsConfig      `json:"cors"`
 	Worker    WorkerConfig    `json:"worker"`
+	Agent     AgentConfig     `json:"agent"`
 }
 
 type AppConfig struct {
@@ -165,6 +167,12 @@ type WorkerConfig struct {
 	// Ollama embed, đắt — tài liệu ưu tiên/văn bản hành chính nhiều viết
 	// tắt), "manual" (Split thủ công cũ, giữ cho test/fallback).
 	Chunker string `json:"chunker"`
+}
+
+// AgentConfig giữ đường dẫn thư mục prompt LLM của agent (prompts/*.md) —
+// sửa prompt rồi restart app là ăn, không cần build lại.
+type AgentConfig struct {
+	PromptDir string `json:"prompt_dir"`
 }
 
 // Load đọc file JSON và trả về IConfig
@@ -318,6 +326,9 @@ func Load(path string) (IConfig, error) {
 	if cfg.Worker.TrimIntervalHours <= 0 {
 		cfg.Worker.TrimIntervalHours = 24 // mặc định mỗi ngày
 	}
+	if strings.TrimSpace(cfg.Agent.PromptDir) == "" {
+		cfg.Agent.PromptDir = "./prompts" // chạy từ root repo
+	}
 	switch cfg.Worker.Chunker {
 	case "", "recursive", "semantic", "manual":
 		if cfg.Worker.Chunker == "" {
@@ -343,3 +354,4 @@ func (c *appConfig) GetRabbitMQ() RabbitMQConfig   { return c.Rabbit }
 func (c *appConfig) GetJWT() JWTConfig             { return c.JWTCli }
 func (c *appConfig) GetCORS() CorsConfig           { return c.Cors }
 func (c *appConfig) GetWorker() WorkerConfig       { return c.Worker }
+func (c *appConfig) GetAgent() AgentConfig         { return c.Agent }

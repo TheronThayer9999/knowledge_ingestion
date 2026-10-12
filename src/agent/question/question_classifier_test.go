@@ -1,4 +1,4 @@
-package services
+package question
 
 import (
 	"context"
@@ -8,22 +8,20 @@ import (
 	"knowledge_ingestion/src/domain"
 )
 
-// fakeLLM giả domain.ILLM: trả slug theo query, hoặc lỗi khi muốn.
-type fakeLLM struct {
+// fakeQuestionLLM giả domain.ILLM cho classifier — usecase có fakeLLM riêng,
+// question tự stub để không phụ thuộc test package khác.
+type fakeQuestionLLM struct {
 	answer string
 	err    error
 }
 
-func (f *fakeLLM) ListModels(_ context.Context) ([]string, error) {
+func (f *fakeQuestionLLM) ListModels(_ context.Context) ([]string, error) {
 	return []string{"test-model"}, nil
 }
 
-func (f *fakeLLM) Chat(_ context.Context, _ []domain.ChatMessage, opts domain.ChatOptions) (string, error) {
+func (f *fakeQuestionLLM) Chat(_ context.Context, _ []domain.ChatMessage, _ domain.ChatOptions) (string, error) {
 	if f.err != nil {
 		return "", f.err
-	}
-	if opts.Model == "" {
-		return "", errors.New("model is required")
 	}
 	return f.answer, nil
 }
@@ -48,7 +46,7 @@ func TestLLMClassify(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c := NewLLMClassifier(&fakeLLM{answer: tc.answer, err: tc.err})
+			c := NewLLMClassifier(&fakeQuestionLLM{answer: tc.answer, err: tc.err})
 			if got := c.Classify(ctx, tc.model, tc.query); got != tc.want {
 				t.Fatalf("Classify = %v, want %v", got, tc.want)
 			}

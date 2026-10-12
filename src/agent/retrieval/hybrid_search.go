@@ -1,4 +1,4 @@
-package services
+package retrieval
 
 import (
 	"context"
@@ -31,13 +31,19 @@ type HybridParams struct {
 // tool tái dùng từng bước (chỉ cần dense, chỉ fuse, chỉ lọc done...) thay vì
 // bắt gọi nguyên pipeline. Không dính DTO/envelope HTTP: trả domain để HTTP
 // map response, agent tool map tool result.
+// DoneLister là phần duy nhất của repository mà retrieval cần — thu hẹp
+// dependency để test chỉ stub 1 method thay vì cả IArticleRepository.
+type DoneLister interface {
+	ListDoneIDs(ctx context.Context, userID int64, ids []int64) ([]int64, error)
+}
+
 type HybridSearcher struct {
 	embedder    domain.Embedder
 	vectors     domain.IVectorStore
-	articleRepo domain.IArticleRepository
+	articleRepo DoneLister
 }
 
-func NewHybridSearcher(embedder domain.Embedder, vectors domain.IVectorStore, articleRepo domain.IArticleRepository) *HybridSearcher {
+func NewHybridSearcher(embedder domain.Embedder, vectors domain.IVectorStore, articleRepo DoneLister) *HybridSearcher {
 	return &HybridSearcher{embedder: embedder, vectors: vectors, articleRepo: articleRepo}
 }
 

@@ -35,8 +35,19 @@ type articleEmbedService struct {
 	uow         domain.IUnitOfWork
 }
 
-func NewArticleEmbedService(articleRepo domain.ArticleEmbedQueue, chunkRepo domain.IArticleChunkRepository, embedder domain.Embedder, vectors domain.IVectorStore, uow domain.IUnitOfWork) IArticleEmbedService {
-	return &articleEmbedService{articleRepo: articleRepo, chunkRepo: chunkRepo, embedder: embedder, vectors: vectors, uow: uow}
+func NewArticleEmbedService(
+	articleRepo domain.ArticleEmbedQueue,
+	chunkRepo domain.IArticleChunkRepository,
+	embedder domain.Embedder,
+	vectors domain.IVectorStore,
+	uow domain.IUnitOfWork) IArticleEmbedService {
+	return &articleEmbedService{
+		articleRepo: articleRepo,
+		chunkRepo:   chunkRepo,
+		embedder:    embedder,
+		vectors:     vectors,
+		uow:         uow,
+	}
 }
 
 // EmbedPending claim 1 đợt bài (đã chunk done) rồi embed song song trong pool
@@ -228,11 +239,12 @@ func (s *articleEmbedService) embedBatch(ctx context.Context, traceID string, ba
 	logs.Infow("ollama: gọi embed", "trace_id", traceID, "article_id", batch[0].Chunk.ArticleID,
 		"texts", len(texts), "model", s.embedder.ModelName())
 	embedStart := time.Now()
-	if err := worker.WithRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY, func(ctx context.Context) error {
-		var err error
-		vectors, err = s.embedder.EmbedBatch(ctx, texts)
-		return err
-	}); err != nil {
+	if err := worker.WithRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY,
+		func(ctx context.Context) error {
+			var err error
+			vectors, err = s.embedder.EmbedBatch(ctx, texts)
+			return err
+		}); err != nil {
 		return 0, fmt.Errorf("gọi embed: %w", err)
 	}
 	logs.Infow("ollama: embed xong", "trace_id", traceID, "article_id", batch[0].Chunk.ArticleID,
@@ -257,9 +269,10 @@ func (s *articleEmbedService) embedBatch(ctx context.Context, traceID string, ba
 		})
 		ids = append(ids, it.Chunk.ID)
 	}
-	if err := worker.WithRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY, func(ctx context.Context) error {
-		return s.vectors.UpsertPoints(ctx, points)
-	}); err != nil {
+	if err := worker.WithRetry(ctx, constants.EMBED_CALL_ATTEMPTS, constants.EMBED_CALL_BASE_DELAY,
+		func(ctx context.Context) error {
+			return s.vectors.UpsertPoints(ctx, points)
+		}); err != nil {
 		return 0, fmt.Errorf("upsert qdrant: %w", err)
 	}
 	// Detach tươi tại điểm ghi — tới đây đã tốn hàng chục giây gọi Ollama.

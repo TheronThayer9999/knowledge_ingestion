@@ -1,6 +1,10 @@
 package loader
 
 import (
+	"knowledge_ingestion/src/agent/port"
+	"knowledge_ingestion/src/agent/synthesis"
+	"knowledge_ingestion/src/agent/usecase"
+	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/apis"
 	"knowledge_ingestion/src/controller/middlewares"
 	"knowledge_ingestion/src/controller/routers"
@@ -71,9 +75,18 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewCategoryService),
 		fx.Provide(services.NewArticleService),
 		fx.Provide(services.NewArticleAdminService),
-		fx.Provide(services.NewSearchService),
-		fx.Provide(services.NewChatService),
+		// agent không import middlewares — loader nối ICurrentUser với IUserResolver.
+		fx.Provide(func(u middlewares.ICurrentUser) port.IUserResolver { return u }),
+		fx.Provide(usecase.NewSearchService),
+		fx.Provide(newChatPrompts),
+		fx.Provide(usecase.NewChatService),
 	}
+}
+
+// newChatPrompts load system prompt chat từ file lúc startup — sửa
+// prompts/chat_system.md rồi restart app là ăn, không cần build lại.
+func newChatPrompts(cfg config.IConfig) synthesis.Prompts {
+	return synthesis.LoadPrompts(cfg.GetAgent().PromptDir)
 }
 
 // loadMiddleware đăng ký middleware HTTP — thêm middleware mới (rate limit...)

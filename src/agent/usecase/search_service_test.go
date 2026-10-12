@@ -1,12 +1,14 @@
-package services
+package usecase
 
 import (
 	"context"
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
+	"knowledge_ingestion/src/agent/port"
+	"knowledge_ingestion/src/agent/question"
+	"knowledge_ingestion/src/agent/retrieval"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 )
@@ -32,9 +34,9 @@ func (f *fakeSearchEmbedder) EmbedBatch(_ context.Context, texts []string) ([][]
 	return nil, nil
 }
 
-func (f *fakeSearchEmbedder) Dimension() int                  { return 4 }
-func (f *fakeSearchEmbedder) ModelName() string               { return "test-model" }
-func (f *fakeSearchEmbedder) IsPermanentError(_ error) bool   { return false }
+func (f *fakeSearchEmbedder) Dimension() int                { return 4 }
+func (f *fakeSearchEmbedder) ModelName() string             { return "test-model" }
+func (f *fakeSearchEmbedder) IsPermanentError(_ error) bool { return false }
 
 type fakeSearchVectors struct {
 	hits      []*domain.ScoredChunk
@@ -97,78 +99,13 @@ type fakeSearchUser struct{ id int64 }
 
 func (f *fakeSearchUser) UserID(_ context.Context) (int64, bool) { return f.id, true }
 
-func newSearchSvc(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, articles *fakeSearchArticles) ISearchService {
+func newSearchSvc(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, articles *fakeSearchArticles) port.ISearcher {
 	return newSearchSvcLLM(embedder, vectors, articles, nil)
 }
 
-func newSearchSvcLLM(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, articles *fakeSearchArticles, llm domain.ILLM) ISearchService {
-	return &searchService{hybrid: NewHybridSearcher(embedder, vectors, searchRepoAdapter{articles}), classifier: NewLLMClassifier(llm), currentUser: &fakeSearchUser{id: 7}}
+func newSearchSvcLLM(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, articles *fakeSearchArticles, llm domain.ILLM) port.ISearcher {
+	return &searchService{hybrid: retrieval.NewHybridSearcher(embedder, vectors, articles), classifier: question.NewLLMClassifier(llm), currentUser: &fakeSearchUser{id: 7}}
 }
-
-// Adapter từ fake gọn sang interface domain.
-type searchRepoAdapter struct{ f *fakeSearchArticles }
-
-func (a searchRepoAdapter) ListDoneIDs(ctx context.Context, userID int64, ids []int64) ([]int64, error) {
-	return a.f.ListDoneIDs(ctx, userID, ids)
-}
-
-func (a searchRepoAdapter) Create(_ context.Context, _ *domain.Article) error { return nil }
-
-func (a searchRepoAdapter) Update(_ context.Context, _ *domain.Article) error { return nil }
-
-func (a searchRepoAdapter) Delete(_ context.Context, _ *domain.Article) error { return nil }
-
-func (a searchRepoAdapter) GetByID(_ context.Context, _ int64, _ int64) (*domain.Article, error) {
-	return nil, domain.ErrNotFound
-}
-
-func (a searchRepoAdapter) IsAlive(_ context.Context, _ int64) (bool, error) { return true, nil }
-
-func (a searchRepoAdapter) ExistsByURL(_ context.Context, _ string, _ int64) (bool, error) {
-	return false, nil
-}
-
-func (a searchRepoAdapter) ExistsByStorageKey(_ context.Context, _ string, _ int64) (bool, error) {
-	return false, nil
-}
-
-func (a searchRepoAdapter) ListByCategoryID(_ context.Context, _ int64, _ int64, _ int, _ int) ([]*domain.Article, error) {
-	return nil, nil
-}
-
-func (a searchRepoAdapter) ListByCategoryName(_ context.Context, _ string, _ int64, _ int, _ int) ([]*domain.Article, error) {
-	return nil, nil
-}
-
-func (a searchRepoAdapter) IDsByCategory(_ context.Context, _ int64, _ int64) ([]int64, error) {
-	return nil, nil
-}
-
-func (a searchRepoAdapter) ResetQueue(_ context.Context, _ []int64, _ int64) (int64, error) {
-	return 0, nil
-}
-
-func (a searchRepoAdapter) ListSoftDeleted(_ context.Context, _ time.Time, _ int) ([]*domain.Article, error) {
-	return nil, nil
-}
-
-func (a searchRepoAdapter) ClaimChunkPending(_ context.Context, _ int, _ time.Duration) ([]*domain.Article, error) {
-	return nil, nil
-}
-
-func (a searchRepoAdapter) MarkChunkDone(_ context.Context, _ int64) error { return nil }
-
-func (a searchRepoAdapter) MarkChunkError(_ context.Context, _ int64, _ int) error { return nil }
-
-func (a searchRepoAdapter) ClaimEmbedPending(_ context.Context, _ int, _ time.Duration) ([]*domain.Article, error) {
-	return nil, nil
-}
-
-func (a searchRepoAdapter) MarkEmbedDone(_ context.Context, _ int64) error { return nil }
-
-func (a searchRepoAdapter) MarkEmbedError(_ context.Context, _ int64, _ int) error { return nil }
-
-func (a searchRepoAdapter) HardDelete(_ context.Context, _ int64) error { return nil }
 
 // Happy path: filter quyền đúng user, limit mặc định, hit bài done giữ lại,
 // hit bài dở bị chặn.

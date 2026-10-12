@@ -1,20 +1,20 @@
 package apis
 
 import (
+	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/controller/dtos"
-	"knowledge_ingestion/src/controller/services"
 
 	"github.com/gin-gonic/gin"
 )
 
 // SearchAPI truy hồi tri thức — controller chỉ validate (Bind) rồi Render,
-// nghiệp vụ nằm ở service.
+// nghiệp vụ nằm ở agent.
 type SearchAPI struct {
 	*baseController
-	svc services.ISearchService
+	svc port.ISearcher
 }
 
-func NewSearchAPI(base *baseController, svc services.ISearchService) *SearchAPI {
+func NewSearchAPI(base *baseController, svc port.ISearcher) *SearchAPI {
 	return &SearchAPI{baseController: base, svc: svc}
 }
 
