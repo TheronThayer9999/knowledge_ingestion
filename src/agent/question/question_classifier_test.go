@@ -103,7 +103,7 @@ func TestLoadPromptsFromRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPrompts: %v", err)
 	}
-	if !strings.Contains(p.ClassifySystem, "slug") {
-		t.Error("prompt classify thieu huong dan tra slug")
+	if !strings.Contains(p.ClassifySystem, "slug") || !strings.Contains(p.ClassifySystem, "reasoning") {
+		t.Error("prompt classify phải ép LLM trả 1 slug nhãn dán cho agent")
 	}
 }

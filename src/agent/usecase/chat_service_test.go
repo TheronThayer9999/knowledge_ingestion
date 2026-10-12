@@ -6,13 +6,19 @@ import (
 	"strings"
 	"testing"
 
+	einopilot "knowledge_ingestion/src/agent/eino"
+	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/agent/question"
-	"knowledge_ingestion/src/agent/synthesis"
+	"knowledge_ingestion/src/agent/retrieval"
+	"knowledge_ingestion/src/agent/tools"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
+
+	einomodel "github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 )
 
-// fakeLLM giả domain.ILLM — trả answer cố định, lỗi khi muốn.
+// fakeLLM giả domain.ILLM cho tool classify_question trong loop agent.
 type fakeLLM struct {
 	answer string
 	err    error
@@ -32,31 +38,76 @@ func (f *fakeLLM) Chat(_ context.Context, _ []domain.ChatMessage, opts domain.Ch
 	return f.answer, nil
 }
 
-// fakeChatSearch giả ISearcher — trả hits cố định, ghi lại question_type
-// chat truyền sang để test khóa vòng 1 dùng lại, không classify lần 2.
-type fakeChatSearch struct {
-	hits     []*dtos.SearchHitResponse
-	qtype    string
-	err      error
-	gotQtype string
+// scriptModel giả ChatModel Eino theo kịch bản nhiều lượt — lượt i trả
+// turns[i], hết kịch bản lặp câu cuối. Đủ test loop agent không cần mạng.
+type scriptModel struct {
+	turns []*schema.Message
+	i     int
 }
 
-func (f *fakeChatSearch) Search(_ context.Context, req *dtos.SearchRequest) dtos.Result[*dtos.SearchResponse] {
-	f.gotQtype = req.QuestionType
-	if f.err != nil {
-		return dtos.Fail[*dtos.SearchResponse](f.err)
+func (m *scriptModel) Generate(_ context.Context, _ []*schema.Message, _ ...einomodel.Option) (*schema.Message, error) {
+	t := m.turns[m.i]
+	if m.i < len(m.turns)-1 {
+		m.i++
 	}
-	return dtos.Ok(&dtos.SearchResponse{Hits: f.hits, Total: len(f.hits), QuestionType: f.qtype})
+	return t, nil
+}
+
+func (m *scriptModel) Stream(_ context.Context, _ []*schema.Message, _ ...einomodel.Option) (*schema.StreamReader[*schema.Message], error) {
+	return nil, errors.New("test: stream không dùng")
+}
+
+func toolCallTurn(name, args string) *schema.Message {
+	return schema.AssistantMessage("", []schema.ToolCall{{
+		ID:   "c1",
+		Type: "function",
+		Function: schema.FunctionCall{
+			Name:      name,
+			Arguments: args,
+		},
+	}})
+}
+
+// newChatSvc dựng chat agentic thật (agent 2 tool + registry thật, chỉ fake
+// hạ tầng và model theo kịch bản). classifyAnswer là nhãn tool classify trả.
+func newChatSvc(classifyAnswer string, turns []*schema.Message, vec *fakeSearchVectors) (port.IChatter, *fakeSearchVectors) {
+	if vec == nil {
+		vec = &fakeSearchVectors{}
+	}
+	reg := tools.NewRegistry(retrieval.NewHybridSearcher(
+		&fakeSearchEmbedder{vec: []float32{0.1}},
+		vec,
+		&fakeSearchArticles{doneIDs: []int64{8}},
+	))
+	classifier, err := einopilot.NewClassifyTool(
+		question.NewLLMClassifier(&fakeLLM{answer: classifyAnswer}, question.Prompts{ClassifySystem: "test-classify"}))
+	if err != nil {
+		panic(err)
+	}
+	searchTool, err := einopilot.NewKnowledgeSearchTool(reg)
+	if err != nil {
+		panic(err)
+	}
+	agent, err := einopilot.NewChatAgent(&scriptModel{turns: turns}, "test-instruction", classifier, searchTool)
+	if err != nil {
+		panic(err)
+	}
+	return NewChatService(agent, &fakeSearchUser{id: 7}), vec
+}
+
+func classifyTurn(q string) *schema.Message {
+	return toolCallTurn(einopilot.ClassifyName, `{"question":`+q+`}`)
 }
 
 func TestChat_FullPipeline(t *testing.T) {
-	search := &fakeChatSearch{
-		hits: []*dtos.SearchHitResponse{
-			{ArticleID: 8, ChunkIndex: 2, PageNum: 4, Score: 0.9, Text: "Điều 13 phạt 0.05%/ngày"},
-		},
-		qtype: "lookup",
-	}
-	svc := NewChatService(search, &fakeLLM{answer: "Mức phạt là **0.05%/ngày**[^1]."}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
+	vec := &fakeSearchVectors{hits: []*domain.ScoredChunk{
+		{PointID: "p1", Score: 0.9, ArticleID: 8, ChunkIndex: 2, PageNum: 4, Text: "Điều 13 phạt 0.05%/ngày"},
+	}}
+	svc, _ := newChatSvc("lookup", []*schema.Message{
+		classifyTurn(`"Mức phạt?"`),
+		toolCallTurn(einopilot.KnowledgeSearchName, `{"query":"Mức phạt?","limit":5}`),
+		{Role: schema.Assistant, Content: "Mức phạt là **0.05%/ngày**[^1]."},
+	}, vec)
 
 	res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "Mức phạt?", Model: "m"})
 	if res.Err != nil {
@@ -77,52 +128,38 @@ func TestChat_FullPipeline(t *testing.T) {
 }
 
 func TestChat_ChitchatNoHits(t *testing.T) {
-	// search cố tình lỗi — skip tool thì không được chạm tới.
-	search := &fakeChatSearch{err: errors.New("must not be called")}
-	svc := NewChatService(search, &fakeLLM{answer: "chitchat"}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
+	// Agent tự quyết đáp thẳng không gọi tool nào — embed/search không chạm tới.
+	svc, _ := newChatSvc("chitchat", []*schema.Message{
+		{Role: schema.Assistant, Content: "Chào bạn!"},
+	}, &fakeSearchVectors{})
 
 	res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "xin chào", Model: "m"})
 	if res.Err != nil {
 		t.Fatalf("unexpected err: %v", res.Err)
 	}
-	if len(res.Data.Cites) != 0 || res.Data.QuestionType != "chitchat" {
-		t.Fatalf("chitchat phải skip tool + rỗng cites, got %+v", res.Data)
+	if len(res.Data.Cites) != 0 || res.Data.QuestionType != "lookup" {
+		t.Fatalf("chitchat bỏ classify thì nhãn về lookup + rỗng cites, got %+v", res.Data)
 	}
-}
-
-// Vòng 1 của chat quyết định tool: classify ra compare thì search phải nhận
-// đúng question_type đó (dùng lại, không classify lần 2).
-func TestChat_PassesQuestionType(t *testing.T) {
-	search := &fakeChatSearch{
-		hits: []*dtos.SearchHitResponse{
-			{ArticleID: 8, ChunkIndex: 0, PageNum: 0, Text: "đoạn A"},
-		},
-	}
-	svc := NewChatService(search, &fakeLLM{answer: "compare"}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
-
-	res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "so sánh A và B", Model: "m"})
-	if res.Err != nil {
-		t.Fatalf("unexpected err: %v", res.Err)
-	}
-	if search.gotQtype != "compare" {
-		t.Fatalf("search phải nhận question_type=compare, got %q", search.gotQtype)
-	}
-	if res.Data.QuestionType != "compare" {
-		t.Fatalf("question_type = %q, want compare", res.Data.QuestionType)
+	if res.Data.Answer != "Chào bạn!" {
+		t.Fatalf("answer = %q", res.Data.Answer)
 	}
 }
 
 func TestChat_RequiresModel(t *testing.T) {
-	svc := NewChatService(&fakeChatSearch{}, &fakeLLM{answer: "x"}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
+	svc, _ := newChatSvc("lookup", []*schema.Message{
+		{Role: schema.Assistant, Content: "x"},
+	}, nil)
 	if res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "x"}); res.Err == nil {
 		t.Fatal("thiếu model phải 400")
 	}
 }
 
-func TestChat_SearchErrorPropagates(t *testing.T) {
-	svc := NewChatService(&fakeChatSearch{err: errors.New("qdrant down")}, &fakeLLM{answer: "x"}, synthesis.Prompts{System: "test-system"}, question.Prompts{ClassifySystem: "test-classify"})
+func TestChat_AgentErrorPropagates(t *testing.T) {
+	// Model gọi tool không tồn tại → runner lỗi → Chat trả lỗi ra ngoài.
+	badTurn := toolCallTurn("khong_co_tool", `{}`)
+	svc, _ := newChatSvc("lookup", []*schema.Message{badTurn}, nil)
 	if res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "x", Model: "m"}); res.Err == nil {
-		t.Fatal("lỗi search phải lan ra")
+		t.Fatal("lỗi agent phải lan ra")
 	}
 }
 

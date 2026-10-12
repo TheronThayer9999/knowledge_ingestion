@@ -9,6 +9,7 @@ import (
 	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/agent/retrieval"
+	"knowledge_ingestion/src/agent/tools"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 )
@@ -104,7 +105,7 @@ func newSearchSvc(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, arti
 }
 
 func newSearchSvcLLM(embedder *fakeSearchEmbedder, vectors *fakeSearchVectors, articles *fakeSearchArticles, llm domain.ILLM) port.ISearcher {
-	return &searchService{hybrid: retrieval.NewHybridSearcher(embedder, vectors, articles), classifier: question.NewLLMClassifier(llm, question.Prompts{ClassifySystem: "test-classify"}), currentUser: &fakeSearchUser{id: 7}}
+	return &searchService{tools: tools.NewRegistry(retrieval.NewHybridSearcher(embedder, vectors, articles)), classifier: question.NewLLMClassifier(llm, question.Prompts{ClassifySystem: "test-classify"}), currentUser: &fakeSearchUser{id: 7}}
 }
 
 // Happy path: filter quyền đúng user, limit mặc định, hit bài done giữ lại,

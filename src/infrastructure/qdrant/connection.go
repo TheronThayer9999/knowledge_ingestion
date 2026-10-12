@@ -212,8 +212,8 @@ func permissionMusts(f domain.SearchFilter) []*qdrantapi.Condition {
 	must := []*qdrantapi.Condition{
 		qdrantapi.NewMatchInt("user_id", f.UserID),
 	}
-	if f.CategoryID > 0 {
-		must = append(must, qdrantapi.NewMatchInt("category_id", f.CategoryID))
+	if len(f.CategoryIDs) > 0 {
+		must = append(must, qdrantapi.NewMatchInts("category_id", f.CategoryIDs...))
 	}
 	if f.ArticleID > 0 {
 		must = append(must, qdrantapi.NewMatchInt("article_id", f.ArticleID))

@@ -109,9 +109,9 @@ func NewLLMClassifier(llm domain.ILLM, p Prompts) *LLMClassifier {
 	return &LLMClassifier{llm: llm, system: strings.TrimSpace(p.ClassifySystem)}
 }
 
-// Classify gọi LLM phân loại — model rỗng/query rỗng/LLM lỗi/trả lời không
-// parse được đều về lookup (loại phổ biến nhất, search mặc định vẫn đúng).
-// Không bao giờ trả lỗi để vòng 2 luôn có đường đi.
+// Classify gọi LLM dán nhãn loại câu hỏi — model rỗng/query rỗng/LLM lỗi/trả
+// lời không parse được đều về lookup (loại phổ biến nhất). Không bao giờ trả
+// lỗi để caller luôn có đường đi.
 func (c *LLMClassifier) Classify(ctx context.Context, model, query string) QuestionType {
 	if c == nil || c.llm == nil || strings.TrimSpace(c.system) == "" {
 		return QuestionLookup

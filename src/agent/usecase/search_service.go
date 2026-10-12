@@ -7,30 +7,26 @@ import (
 
 	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/agent/question"
-	"knowledge_ingestion/src/agent/retrieval"
-	"knowledge_ingestion/src/common/constants"
+	"knowledge_ingestion/src/agent/tools"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 )
 
 type searchService struct {
-	hybrid      *retrieval.HybridSearcher
+	tools       *tools.Registry
 	classifier  *question.LLMClassifier
 	currentUser port.IUserResolver
 }
 
 func NewSearchService(
-	embedder domain.Embedder,
-	vectors domain.IVectorStore,
-	articleRepo domain.IArticleRepository,
-	llm domain.ILLM,
+	toolsReg *tools.Registry,
+	classifier *question.LLMClassifier,
 	currentUser port.IUserResolver,
-	classify question.Prompts,
 ) port.ISearcher {
 	return &searchService{
-		hybrid:      retrieval.NewHybridSearcher(embedder, vectors, articleRepo),
-		classifier:  question.NewLLMClassifier(llm, classify),
+		tools:       toolsReg,
+		classifier:  classifier,
 		currentUser: currentUser,
 	}
 }
@@ -46,8 +42,8 @@ func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dto
 	if strings.TrimSpace(dto.Query) == "" {
 		return dtos.Fail[*dtos.SearchResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "query rỗng"))
 	}
-	// Vòng 1: caller (chat) đã classify thì dùng luôn, khỏi tốn lượt LLM —
-	// SearchAPI gọi trực tiếp (không kèm loại) thì classify trong này.
+	// Vòng 1: caller (HTTP) kèm sẵn loại hợp lệ thì dùng default router, khỏi
+	// tốn lượt LLM — còn lại classify slug rồi Route default.
 	qtype, ok := question.Parse(dto.QuestionType)
 	if !ok {
 		qtype = question.QuestionLookup
@@ -56,39 +52,29 @@ func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dto
 		}
 	}
 	route := question.Route(qtype)
-	// DTO caller tự chỉ định thì thắng router — router chỉ là default theo loại.
-	limit := dto.Limit
-	if limit <= 0 {
-		limit = route.Limit
-	}
-	if limit <= 0 {
-		limit = constants.SEARCH_DEFAULT_LIMIT
-	}
-	if limit > constants.SEARCH_MAX_LIMIT {
-		limit = constants.SEARCH_MAX_LIMIT
-	}
-	// Vòng 2: chitchat skip tool — đỡ tốn 1 lượt embed + Qdrant vô ích.
-	if route.SkipSearch && dto.Limit <= 0 {
-		return dtos.Ok(&dtos.SearchResponse{
-			Hits:         []*dtos.SearchHitResponse{},
-			Total:        0,
-			QuestionType: qtype.String(),
-		})
-	}
-	hits, err := s.hybrid.SearchHybrid(ctx, retrieval.HybridParams{
+	// Vòng 2: thực thi duy nhất qua tools.Registry — skip/limit/chặn max nằm
+	// trong registry, không fork mỗi service một kiểu.
+	hits, err := s.tools.Execute(ctx, route, tools.Args{
 		UserID:         userID,
 		Query:          dto.Query,
-		CategoryID:     dto.CategoryID,
-		Limit:          limit,
+		CategoryIDs:    dto.CategoryIDs,
+		Limit:          dto.Limit,
 		ScoreThreshold: dto.ScoreThreshold,
 	})
 	if err != nil {
 		return dtos.Fail[*dtos.SearchResponse](err)
 	}
-	res := &dtos.SearchResponse{Hits: make([]*dtos.SearchHitResponse, 0, len(hits)), QuestionType: qtype.String()}
-	for _, h := range hits {
-		res.Hits = append(res.Hits, dtos.ToSearchHitResponse(h))
-	}
+	res := &dtos.SearchResponse{Hits: toHitResponses(hits), QuestionType: qtype.String()}
 	res.Total = len(res.Hits)
 	return dtos.Ok(res)
+}
+
+// toHitResponses map domain hits sang DTO — chat (cho synthesizer + cites) và
+// search dùng chung, khỏi mỗi nơi một vòng lặp.
+func toHitResponses(hits []*domain.ScoredChunk) []*dtos.SearchHitResponse {
+	out := make([]*dtos.SearchHitResponse, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, dtos.ToSearchHitResponse(h))
+	}
+	return out
 }

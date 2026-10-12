@@ -1,43 +1,34 @@
 package question
 
 import (
+	"knowledge_ingestion/src/agent/tools"
 	"knowledge_ingestion/src/common/constants"
 )
 
-// Tool agent được gọi ở vòng 2 — router vòng 1 chỉ chọn trong 2 giá trị này.
+// Tên tool giữ alias để test/usecase cũ không vỡ — nguồn thật nằm ở tools.
 const (
-	// ToolKnowledgeSearch tìm đoạn trích trong tài liệu upload (bọc
-	// HybridSearcher.SearchHybrid khi port sang Eino InvokableTool).
-	ToolKnowledgeSearch = "knowledge_search"
-	// ToolNone không gọi tool nào (chitchat) — đáp thẳng, đỡ tốn embed+Qdrant.
-	ToolNone = "none"
+	ToolKnowledgeSearch = tools.KnowledgeSearch
+	ToolNone            = tools.None
 )
 
-// RouteDecision là output vòng 1b: tool nào + tham số nào cho vòng 2. DTO của
-// caller (limit/threshold tự chỉ định) thắng router — router chỉ là default
-// theo loại khi caller không nói gì.
-type RouteDecision struct {
-	Type QuestionType
-	Tool string
-	// Limit số hit vòng 2 lấy; SkipSearch true thì khỏi search luôn.
-	Limit      int
-	Threshold  float32
-	SkipSearch bool
-}
+// RouteDecision alias về tools.Decision — router chỉ chọn tool + params,
+// thực thi nằm ở tools.Registry.Execute.
+type RouteDecision = tools.Decision
 
-// Route map loại câu hỏi → tool + params (§8 vòng 1b). Pure function, không
-// dính LLM/infra nên test thẳng bảng 8 loại.
+// Route trả default tool + params theo loại — dùng làm đường lui khi LLM lỗi
+// và để kiểm chứng quyết định của LLM (tool lạ thì về default này). Đường
+// chính là LLM vòng 1 (decide), không phải switch này.
 func Route(t QuestionType) RouteDecision {
 	switch t {
 	case QuestionSummary, QuestionCompare, QuestionReasoning:
-		return RouteDecision{Type: t, Tool: ToolKnowledgeSearch, Limit: 10}
+		return RouteDecision{Tool: ToolKnowledgeSearch, Limit: 10}
 	case QuestionProcedure, QuestionScenario:
-		return RouteDecision{Type: t, Tool: ToolKnowledgeSearch, Limit: 8}
+		return RouteDecision{Tool: ToolKnowledgeSearch, Limit: 8}
 	case QuestionCalc:
-		return RouteDecision{Type: t, Tool: ToolKnowledgeSearch, Limit: constants.SEARCH_DEFAULT_LIMIT}
+		return RouteDecision{Tool: ToolKnowledgeSearch, Limit: constants.SEARCH_DEFAULT_LIMIT}
 	case QuestionChitchat:
-		return RouteDecision{Type: t, Tool: ToolNone, SkipSearch: true}
+		return RouteDecision{Tool: ToolNone, SkipSearch: true}
 	default:
-		return RouteDecision{Type: QuestionLookup, Tool: ToolKnowledgeSearch, Limit: constants.SEARCH_DEFAULT_LIMIT}
+		return RouteDecision{Tool: ToolKnowledgeSearch, Limit: constants.SEARCH_DEFAULT_LIMIT}
 	}
 }

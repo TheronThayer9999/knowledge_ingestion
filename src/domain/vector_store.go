@@ -18,11 +18,12 @@ type VectorPoint struct {
 }
 
 // SearchFilter khóa phân quyền query — UserID bắt buộc (owner từ token,
-// không tin client); CategoryID/ArticleID > 0 thì drill-down thêm 1 nấc.
+// không tin client); CategoryIDs rỗng là mọi chủ đề, có thì khoanh nhiều chủ
+// đề (match 1 trong các ID); ArticleID > 0 thì drill-down thêm 1 bài.
 type SearchFilter struct {
-	UserID     int64
-	CategoryID int64
-	ArticleID  int64
+	UserID      int64
+	CategoryIDs []int64
+	ArticleID   int64
 }
 
 // ScoredChunk là 1 hit search — service map sang response cho API/agent.

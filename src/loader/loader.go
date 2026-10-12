@@ -1,9 +1,12 @@
 package loader
 
 import (
+	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/agent/question"
+	"knowledge_ingestion/src/agent/retrieval"
 	"knowledge_ingestion/src/agent/synthesis"
+	"knowledge_ingestion/src/agent/tools"
 	"knowledge_ingestion/src/agent/usecase"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/apis"
@@ -78,11 +81,52 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewArticleAdminService),
 		// agent không import middlewares — loader nối ICurrentUser với IUserResolver.
 		fx.Provide(func(u middlewares.ICurrentUser) port.IUserResolver { return u }),
+		fx.Provide(newHybridSearcher),
+		fx.Provide(newToolsRegistry),
+		fx.Provide(newEinoChatModel),
+		fx.Provide(newClassifyPrompts),
+		fx.Provide(newQuestionClassifier),
 		fx.Provide(usecase.NewSearchService),
 		fx.Provide(newChatPrompts),
-		fx.Provide(newClassifyPrompts),
+		fx.Provide(newChatAgent),
 		fx.Provide(usecase.NewChatService),
 	}
+}
+
+// newEinoChatModel dựng ChatModel Eino trên Ollama — model cụ thể vẫn theo
+// từng request (ctx), adapter không kẹt vào 1 model duy nhất.
+func newEinoChatModel(cfg config.IConfig) (*eino.OllamaChatModel, error) {
+	return eino.NewOllamaChatModel(cfg.GetLLM())
+}
+
+// newChatAgent dựng agent agentic một lần lúc startup: instruction từ file
+// chat_system.md + các tool Eino. Thêm tool mới = bọc 1 file trong eino (xem
+// hướng dẫn đầu knowledge_search.go) + thêm 1 dòng ở đây, usecase và prompt
+// file không phải sửa (LLM tự thấy tool qua ToolInfo).
+func newChatAgent(model *eino.OllamaChatModel, prompts synthesis.Prompts, hybrid *retrieval.HybridSearcher) (*eino.ChatAgent, error) {
+	search, err := eino.NewKnowledgeSearchTool(hybrid)
+	if err != nil {
+		return nil, err
+	}
+	return eino.NewChatAgent(model, prompts.System, search)
+}
+
+// newHybridSearcher dựng pipeline hybrid dùng chung: đường /search chạy qua
+// tools.Registry, đường /chat bọc thẳng thành tool Eino — cùng 1 pipeline,
+// không fork logic search.
+func newHybridSearcher(embedder domain.Embedder, vectors domain.IVectorStore, articleRepo domain.IArticleRepository) *retrieval.HybridSearcher {
+	return retrieval.NewHybridSearcher(embedder, vectors, articleRepo)
+}
+
+// newToolsRegistry dựng registry tool search cho đường /search deterministic.
+func newToolsRegistry(hybrid *retrieval.HybridSearcher) *tools.Registry {
+	return tools.NewRegistry(hybrid)
+}
+
+// newQuestionClassifier dựng bộ dán nhãn dùng chung cho /search (chọn route)
+// và /chat (nhãn response sau run) — 1 prompt file, 1 điểm sửa.
+func newQuestionClassifier(llm domain.ILLM, classify question.Prompts) *question.LLMClassifier {
+	return question.NewLLMClassifier(llm, classify)
 }
 
 // newClassifyPrompts load system prompt vòng 1 (phân loại câu hỏi) từ file

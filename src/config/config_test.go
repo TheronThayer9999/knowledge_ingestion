@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// TestLoadProjectConfig khóa cấu hình triển khai hiện tại: LLM lên cloud,
-// embedding ở local. Đổi config mà test này đỏ thì kiểm tra lại chủ trương
-// trước khi sửa test.
+// TestLoadProjectConfig khóa cấu hình triển khai hiện tại: cả LLM lẫn
+// embedding đều mặc định Ollama local. Đổi config mà test này đỏ thì kiểm
+// tra lại chủ trương trước khi sửa test.
 func TestLoadProjectConfig(t *testing.T) {
 	cfg, err := Load(filepath.Join("..", "..", "configs", "config.json"))
 	if err != nil {
@@ -30,14 +30,14 @@ func TestLoadProjectConfig(t *testing.T) {
 	if lc.Provider != "ollama" {
 		t.Errorf("llm.provider = %q, want ollama", lc.Provider)
 	}
-	if !isCloudURL(lc.BaseURL) {
-		t.Errorf("llm phải lên cloud, got base_url %q", lc.BaseURL)
+	if lc.BaseURL == "" || isCloudURL(lc.BaseURL) {
+		t.Errorf("llm mặc định phải ở local, got base_url %q", lc.BaseURL)
 	}
 	if lc.Model == "" {
 		t.Error("llm.model rỗng — chưa chọn model mặc định")
 	}
-	// Key để trong file theo convention dev của repo (db/qdrant/s3 đều thế);
-	// production đè bằng env OLLAMA_API_KEY. Không assert rỗng.
+	// Local không cần key — Cloud thì đè bằng env OLLAMA_API_KEY, không commit
+	// key vào file.
 	if lc.MaxTokens <= 0 {
 		t.Errorf("llm.max_tokens = %d, want > 0", lc.MaxTokens)
 	}

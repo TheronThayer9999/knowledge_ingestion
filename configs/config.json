@@ -29,15 +29,15 @@
   "embedding": {
     "provider": "ollama",
     "model": "bge-m3:latest",
-    "base_url": "http://bore.pub:43838/",
+    "base_url": "http://localhost:11434/",
     "api_key": "",
     "dim": 1024
   },
   "llm": {
     "provider": "ollama",
     "model": "gemma4:31b",
-    "base_url": "https://ollama.com",
-    "api_key": "1f17af80bb4d441494d9bf9ef524a923.we-140R3xCzrvypcbylGS1CK",
+    "base_url": "http://localhost:11434",
+    "api_key": "",
     "temperature": 0,
     "max_tokens": 2048,
     "timeout_sec": 120

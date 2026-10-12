@@ -35,6 +35,7 @@
 - Struct tags are the single source of truth: `json` for wire+schema, standalone `example:"…"` for swagger examples (NOT `json:"x,example=…"` — swag ignores that form), `validate`/`binding` for rules enforced by `Bind` — keep validation out of handler code
 - Logging: `src/common/logs` wraps zap sugared logger as a package-level default — call `logs.LoadLogger()` once in `init()` (already in main), then short calls anywhere: `logs.Infow(msg, kv…)`, `logs.Error(err, msg, kv…)`, `logs.Fatalf(…)`, `LOG_LEVEL` env overrides level; before `LoadLogger` the default is nop so tests stay silent — never log secrets (keys, passwords)
 - Comments are in Vietnamese — match the existing style
+- Hạn chế tự code mới — có thư viện ngon thì kéo về dùng: HTTP Ollama dùng `ollama/ollama/api` (không tự viết http client), agent/tool dùng Eino (`adk`, `components/tool/utils.InferTool`, `components/model`), chunking dùng `eino-ext` splitters; chỉ tự viết adapter mỏng khi lib thiếu đúng ý (Vd Bearer key Cloud qua Transport, user_id qua ctx vì không tin LLM)
 - Swagger: general API info annotation sits above `package main` in cmd/apis/main.go; per-endpoint annotations on handler methods (`@Success 200 {object} dtos.ResponseResource`) — swag resolves type refs via package/search-dir parsing, so handlers just use `:=` (no need to import the DTO type in the handler file); don't use import aliases or full `github.com/x/y.Type` paths in annotations (unsupported/invalid refs)
 
 ## Gotchas

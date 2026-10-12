@@ -10,11 +10,11 @@ type ChatHistoryItem struct {
 // ChatRequest hỏi đáp tri thức — message bắt buộc, model bắt buộc (chat không
 // có model thì không tổng hợp được, khác search còn default lookup).
 type ChatRequest struct {
-	Message    string            `json:"message" binding:"required,min=1,max=2000" example:"Mức phạt chậm nộp thuế bao nhiêu?"`
-	Model      string            `json:"model" binding:"required,min=1" example:"gemma4:31b"`
-	CategoryID int64             `json:"category_id,omitempty" binding:"omitempty,gt=0" example:"5"`
-	Limit      int               `json:"limit,omitempty" binding:"omitempty,gte=0"`
-	History    []ChatHistoryItem `json:"history,omitempty"`
+	Message     string            `json:"message" binding:"required,min=1,max=2000" example:"Mức phạt chậm nộp thuế bao nhiêu?"`
+	Model       string            `json:"model" binding:"required,min=1" example:"gemma4:31b"`
+	CategoryIDs []int64           `json:"category_ids,omitempty" binding:"omitempty,dive,gt=0"`
+	Limit       int               `json:"limit,omitempty" binding:"omitempty,gte=0"`
+	History     []ChatHistoryItem `json:"history,omitempty"`
 }
 
 // ChatCite là 1 nguồn trích dẫn — frontend map thành chip/link, backend đánh
