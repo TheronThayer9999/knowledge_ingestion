@@ -37,6 +37,13 @@
         "--mcp"
       ],
       "enabled": true
+    },
+    "apiprobe": {
+      "type": "local",
+      "command": [
+        "apiprobe-mcp"
+      ],
+      "enabled": true
     }
   }
 }

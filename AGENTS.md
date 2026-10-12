@@ -2,7 +2,7 @@
 
 ## Memory & MCP
 
-- 3 MCP project (`.opencode/opencode.json`): `postgres` (read-only — ghi DB qua `docker exec -i theron_postgres psql -U theron_user -d manager_db`), `qdrant` (read-only, collection `article_chunks`), `codegraph` (tra cứu symbol/call-path — sửa code xong chạy `codegraph sync`)
+- 4 MCP project (`.opencode/opencode.json`): `postgres` (read-only — ghi DB qua `docker exec -i theron_postgres psql -U theron_user -d manager_db`), `qdrant` (read-only, collection `article_chunks`), `codegraph` (tra cứu symbol/call-path — sửa code xong chạy `codegraph sync`), `apiprobe` (test API: `http_request`/`api_test`/`openapi_endpoints` + `save_auth`/`list_auth`/`delete_auth`; binary build từ source ở `D:\code\tools\api_tester_mcp` vào `GOPATH/bin`)
 - Đầu việc chạy `/recall <từ khóa>` (quên thì đọc dòng này) — agentmemory giữ quyết định/bug/convention các session trước; xong việc đáng nhớ thì `/remember <nội dung>`
 
 ## Commands
