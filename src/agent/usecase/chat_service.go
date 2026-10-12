@@ -48,12 +48,11 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 	}
 
 	// Phạm vi tin cậy theo ctx cho tool đọc lúc thực thi: user từ token,
-	// category ép từ DTO, model theo request — không tin LLM.
+	// category ép từ DTO — không tin LLM.
 	userID, _ := s.currentUser.UserID(ctx)
-	ctx = eino.WithModel(ctx, dto.Model)
 	ctx = eino.WithScope(ctx, eino.Scope{UserID: userID, CategoryIDs: dto.CategoryIDs})
 
-	res, err := s.agent.Run(ctx, dto.History, dto.Message)
+	res, err := s.agent.Run(ctx, dto.Model, dto.History, dto.Message)
 	if err != nil {
 		return dtos.Fail[*dtos.ChatResponse](err)
 	}

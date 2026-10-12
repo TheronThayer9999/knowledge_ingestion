@@ -41,6 +41,7 @@ func (c *queueDBConfig) GetRabbitMQ() config.RabbitMQConfig   { return c.inner.G
 func (c *queueDBConfig) GetJWT() config.JWTConfig             { return c.inner.GetJWT() }
 func (c *queueDBConfig) GetCORS() config.CorsConfig           { return c.inner.GetCORS() }
 func (c *queueDBConfig) GetWorker() config.WorkerConfig       { return c.inner.GetWorker() }
+func (c *queueDBConfig) GetAgent() config.AgentConfig         { return c.inner.GetAgent() }
 
 // openQueueTestDB mở DB test riêng (manager_test, tự tạo nếu chưa có) qua
 // đúng đường migrate production (postgres.NewConnection) — không tới được DB

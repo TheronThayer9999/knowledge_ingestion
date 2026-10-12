@@ -29,7 +29,7 @@ type ChatAgent struct {
 	runner *adk.Runner
 }
 
-func NewChatAgent(model einomodel.BaseChatModel, instruction string, tls ...einotool.BaseTool) (*ChatAgent, error) {
+func NewChatAgent(model einomodel.ToolCallingChatModel, instruction string, tls ...einotool.BaseTool) (*ChatAgent, error) {
 	if model == nil {
 		return nil, fmt.Errorf("eino agent: model is required")
 	}
@@ -72,9 +72,11 @@ type RunResult struct {
 }
 
 // Run chạy agent 1 lượt: history + câu hỏi hiện tại đi vào, loop tool lặp
-// cho đến khi model tự trả lời. Lỗi model/tool/lặp quá trần đều trả về để
-// caller map 500, không đoán thay.
-func (a *ChatAgent) Run(ctx context.Context, history []dtos.ChatHistoryItem, query string) (RunResult, error) {
+// cho đến khi model tự trả lời. Model theo từng request — truyền bằng
+// adk.WithChatModelOptions của framework (agent dựng 1 lần lúc startup nên
+// không kẹt model trong constructor). Lỗi model/tool/lặp quá trần đều trả về
+// để caller map 500, không đoán thay.
+func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHistoryItem, query string) (RunResult, error) {
 	if a == nil || a.runner == nil {
 		return RunResult{}, fmt.Errorf("eino agent: chưa được dựng")
 	}
@@ -88,7 +90,7 @@ func (a *ChatAgent) Run(ctx context.Context, history []dtos.ChatHistoryItem, que
 	}
 	msgs = append(msgs, schema.UserMessage(query))
 
-	iter := a.runner.Run(ctx, msgs)
+	iter := a.runner.Run(ctx, msgs, adk.WithChatModelOptions([]einomodel.Option{einomodel.WithModel(model)}))
 	var answer string
 	for {
 		ev, ok := iter.Next()
@@ -106,7 +108,7 @@ func (a *ChatAgent) Run(ctx context.Context, history []dtos.ChatHistoryItem, que
 			answer = out.MessageOutput.Message.Content
 		}
 	}
-	var hits []*domain.ScoredChunk
+	var hits = make([]*domain.ScoredChunk, 0)
 	if scope, ok := ScopeFrom(ctx); ok && scope.Collector != nil {
 		hits = scope.Collector.Hits
 	}

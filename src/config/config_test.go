@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// TestLoadProjectConfig khóa cấu hình triển khai hiện tại: cả LLM lẫn
-// embedding đều mặc định Ollama local. Đổi config mà test này đỏ thì kiểm
-// tra lại chủ trương trước khi sửa test.
+// TestLoadProjectConfig khóa cấu hình triển khai hiện tại: LLM lên Ollama
+// Cloud, embedding ở local. Đổi config mà test này đỏ thì kiểm tra lại chủ
+// trương trước khi sửa test.
 func TestLoadProjectConfig(t *testing.T) {
 	cfg, err := Load(filepath.Join("..", "..", "configs", "config.json"))
 	if err != nil {
@@ -30,8 +30,8 @@ func TestLoadProjectConfig(t *testing.T) {
 	if lc.Provider != "ollama" {
 		t.Errorf("llm.provider = %q, want ollama", lc.Provider)
 	}
-	if lc.BaseURL == "" || isCloudURL(lc.BaseURL) {
-		t.Errorf("llm mặc định phải ở local, got base_url %q", lc.BaseURL)
+	if !isCloudURL(lc.BaseURL) {
+		t.Errorf("llm chạy Cloud, got base_url %q", lc.BaseURL)
 	}
 	if lc.Model == "" {
 		t.Error("llm.model rỗng — chưa chọn model mặc định")

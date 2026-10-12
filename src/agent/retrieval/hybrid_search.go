@@ -22,7 +22,7 @@ type HybridParams struct {
 	// ArticleID > 0 thì khoanh 1 bài.
 	CategoryIDs []int64
 	ArticleID   int64
-	Limit      int
+	Limit       int
 	// ScoreThreshold lọc hit dense yếu trước khi fuse (thang cosine). Hit text
 	// không có score nên không chịu ngưỡng này — vào fuse rồi tính.
 	ScoreThreshold float32
@@ -59,9 +59,14 @@ func (h *HybridSearcher) SearchHybrid(ctx context.Context, p HybridParams) ([]*d
 	if strings.TrimSpace(p.Query) == "" {
 		return nil, fmt.Errorf("hybrid search: query rỗng")
 	}
+	// Limit chốt 1 chỗ duy nhất cho mọi đường gọi (DTO, gợi ý LLM, default):
+	// rỗng thì default hệ thống, vượt thì kẹp trần.
 	limit := p.Limit
 	if limit <= 0 {
 		limit = constants.SEARCH_DEFAULT_LIMIT
+	}
+	if limit > constants.SEARCH_MAX_LIMIT {
+		limit = constants.SEARCH_MAX_LIMIT
 	}
 	filter := domain.SearchFilter{UserID: p.UserID, CategoryIDs: p.CategoryIDs, ArticleID: p.ArticleID}
 	vec, err := h.embedder.Embed(ctx, p.Query)
@@ -72,7 +77,7 @@ func (h *HybridSearcher) SearchHybrid(ctx context.Context, p HybridParams) ([]*d
 	if err != nil {
 		return nil, err
 	}
-	var text []*domain.ScoredChunk
+	var text = make([]*domain.ScoredChunk, 0)
 	if hits, err := h.vectors.SearchText(ctx, p.Query, filter, limit); err != nil {
 		logs.Warnw("hybrid: text search lỗi, chạy dense-only (collection cũ thiếu text index?)", "error", err)
 	} else {

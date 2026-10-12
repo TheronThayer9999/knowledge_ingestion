@@ -2,7 +2,6 @@ package eino
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -10,7 +9,6 @@ import (
 	toolutils "github.com/cloudwego/eino/components/tool/utils"
 
 	"knowledge_ingestion/src/agent/retrieval"
-	"knowledge_ingestion/src/agent/tools"
 )
 
 // Thêm tool mới cho agent chỉ cần 3 bước, không đụng usecase/prompt:
@@ -23,17 +21,18 @@ import (
 //  3. Phạm vi tin cậy (user, category ép) đọc qua ScopeFrom(ctx), không tin
 //     args LLM. Kết quả nhiều vòng gom qua scope.Collector để cites khớp [^n].
 
-// KnowledgeSearchName là tên tool duy nhất LLM thấy — trùng tools.Registry để
-// log và test nói cùng một tên.
-const KnowledgeSearchName = tools.KnowledgeSearch
+// KnowledgeSearchName là tên tool duy nhất LLM thấy.
+const KnowledgeSearchName = "knowledge_search"
 
 // KnowledgeSearchArgs là args LLM được phép đưa — query bắt buộc; category_ids
 // và limit là gợi ý, phạm vi tin cậy (user, category ép, threshold) nằm ở
 // Scope trong ctx, không tin LLM.
 type KnowledgeSearchArgs struct {
-	Query       string  `json:"query" jsonschema:"description=Câu hỏi hoặc từ khóa cần tìm trong tài liệu,required"`
-	CategoryIDs []int64 `json:"category_ids,omitempty" jsonschema:"description=ID các chủ đề muốn khoanh, rỗng là tìm mọi chủ đề"`
-	Limit       int     `json:"limit,omitempty" jsonschema:"description=Số đoạn cần đọc: tra cứu 5, quy trình 8, tóm tắt so sánh suy luận 10"`
+	Query string `json:"query" jsonschema:"description=Cụm từ khóa bằng tiếng Việt để tìm trong tài liệu. Giữ nguyên tên văn bản và số hiệu và thuật ngữ trong câu hỏi. Đừng rút gọn làm mất nghĩa.,required"`
+	// LLM không bao giờ biết ID chủ đề hợp lệ (không có tool nào liệt kê) nên
+	// desc cấm bịa ID — chỉ truyền khi user nêu rõ, còn lại bỏ trống.
+	CategoryIDs []int64 `json:"category_ids,omitempty" jsonschema:"description=Chỉ truyền khi người dùng nêu rõ ID chủ đề trong câu hỏi. Không tự bịa ID. Không biết thì bỏ trống để tìm mọi chủ đề."`
+	Limit       int     `json:"limit,omitempty" jsonschema:"description=Số đoạn cần đọc. Hỏi một thông tin cụ thể thì 5. Quy trình nhiều bước thì 8. Tóm tắt hoặc so sánh hoặc suy luận thì 10. Bỏ trống thì mặc định 5."`
 }
 
 // knowledgeSearchHit là 1 hit trả cho LLM — n khớp HitCollector để cites.
@@ -46,22 +45,34 @@ type knowledgeSearchHit struct {
 	Text       string  `json:"text"`
 }
 
-const knowledgeSearchDesc = `Tìm đoạn trích trong tài liệu người dùng đã upload. Dùng khi câu hỏi cần căn cứ từ tài liệu (tra cứu, tóm tắt, so sánh, quy trình, suy luận, tính toán, tình huống). KHÔNG gọi cho chào hỏi, cảm ơn, trò chuyện. Kết quả rỗng hoặc chưa đủ căn cứ thì đổi từ khóa gọi lại (tối đa 1-2 lần). Kết quả trả về là JSON gồm n (số thứ tự nguồn), article_id, page_num, chunk_index, text — khi trả lời PHẢI trích dẫn bằng [^n] khớp số này, đặt ngay sau câu dùng thông tin đó.`
+const knowledgeSearchDesc = `Tìm đoạn trích trong các tài liệu mà NGƯỜI DÙNG ĐANG HỎI đã upload (không phải tài liệu công khai trên mạng).
+
+KHI NÀO GỌI: mọi câu hỏi cần căn cứ từ tài liệu — hỏi một thông tin cụ thể, tóm tắt, so sánh, quy trình nhiều bước, suy luận từ nhiều đoạn, tính toán trên số liệu trong tài liệu, áp dụng vào trường hợp "nếu/tôi/công ty tôi...".
+
+KHI NÀO KHÔNG GỌI: chào hỏi, cảm ơn, trò chuyện xã giao; câu hỏi kiến thức chung không dính gì đến tài liệu. Những trường hợp này đáp thẳng, không gọi tool.
+
+CÁCH ĐẶT QUERY: viết bằng tiếng Việt, giữ nguyên các từ khóa quan trọng trong câu hỏi (tên văn bản, số hiệu, thuật ngữ chuyên ngành) kèm theo ý hỏi. Ví dụ câu "mức phạt chậm nộp thuế là bao nhiêu" thì query là "mức phạt chậm nộp thuế". Đừng rút gọn thành 1-2 từ mất nghĩa, cũng đừng bê nguyên cả câu dài dòng.
+
+KẾT QUẢ TRẢ VỀ: JSON gồm các phần tử {n, article_id, page_num, chunk_index, score, text}. n là số thứ tự nguồn — khi trả lời PHẢI trích dẫn bằng [^n] khớp đúng số này, đặt ngay sau câu dùng thông tin đó; chỉ dùng số n có trong kết quả, không bịa số. score chỉ để tham khảo độ liên quan, KHÔNG nhắc đến trong câu trả lời.
+
+NẾU KẾT QUẢ RỖNG HOẶC CHƯA ĐỦ CĂN CỨ: đổi từ khóa (dùng từ đồng nghĩa, tên văn bản hoặc số hiệu khác) rồi gọi lại, tối đa 1-2 lần. Vẫn không có thì kết luận không tìm thấy trong tài liệu, không đoán.`
 
 // NewKnowledgeSearchTool bọc HybridSearcher thành Eino InvokableTool — gọi
-// thẳng pipeline search, limit LLM gợi ý được kẹp trần ở 1 chỗ duy nhất.
+// thẳng pipeline search. Trả slice struct để InferTool tự encode JSON (đừng
+// Marshal tay thành string). Limit LLM gợi ý được HybridSearcher kẹp trần,
+// category DTO ép thắng gợi ý LLM.
 func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher) (einotool.InvokableTool, error) {
 	if hybrid == nil {
 		return nil, fmt.Errorf("eino knowledge_search: searcher is required")
 	}
 	return toolutils.InferTool(KnowledgeSearchName, knowledgeSearchDesc,
-		func(ctx context.Context, in KnowledgeSearchArgs) (string, error) {
+		func(ctx context.Context, in KnowledgeSearchArgs) ([]knowledgeSearchHit, error) {
 			scope, ok := ScopeFrom(ctx)
 			if !ok {
-				return "", fmt.Errorf("eino knowledge_search: thiếu scope request (user_id) trong ctx")
+				return nil, fmt.Errorf("eino knowledge_search: thiếu scope request (user_id) trong ctx")
 			}
 			if strings.TrimSpace(in.Query) == "" {
-				return "", fmt.Errorf("eino knowledge_search: query rỗng")
+				return nil, fmt.Errorf("eino knowledge_search: query rỗng")
 			}
 			// Category DTO ép thắng gợi ý LLM — LLM không được mở rộng phạm
 			// vi ra ngoài các chủ đề user đã khoanh.
@@ -73,11 +84,11 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher) (einotool.Invokabl
 				UserID:         scope.UserID,
 				Query:          in.Query,
 				CategoryIDs:    ids,
-				Limit:          tools.ResolveLimit(in.Limit, 0),
+				Limit:          in.Limit,
 				ScoreThreshold: scope.ScoreThreshold,
 			})
 			if err != nil {
-				return "", err
+				return nil, err
 			}
 			var ns []int
 			if scope.Collector != nil {
@@ -102,10 +113,6 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher) (einotool.Invokabl
 					Text:       h.Text,
 				})
 			}
-			raw, err := json.Marshal(out)
-			if err != nil {
-				return "", fmt.Errorf("eino knowledge_search: marshal hits: %w", err)
-			}
-			return string(raw), nil
+			return out, nil
 		})
 }

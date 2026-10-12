@@ -8,25 +8,7 @@ import (
 
 type ctxKey string
 
-const (
-	modelKey ctxKey = "eino-model"
-	scopeKey ctxKey = "eino-scope"
-)
-
-// WithModel nhét tên model theo request vào ctx — adapter ưu tiên nó trước
-// opts.WithModel vì ChatRequest.Model đổi theo từng request, agent thì dựng
-// một lần lúc startup.
-func WithModel(ctx context.Context, model string) context.Context {
-	return context.WithValue(ctx, modelKey, model)
-}
-
-// ModelFrom đọc tên model khỏi ctx — rỗng nghĩa là caller chưa chọn model.
-func ModelFrom(ctx context.Context) string {
-	if v, ok := ctx.Value(modelKey).(string); ok {
-		return v
-	}
-	return ""
-}
+const scopeKey ctxKey = "eino-scope"
 
 // Scope là toàn bộ phạm vi tin cậy của 1 lượt chat, nhét 1 lần ở usecase để
 // mọi tool đọc lúc thực thi — tool mới chỉ cần học 1 helper ScopeFrom:

@@ -7,35 +7,35 @@ import (
 
 	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/agent/question"
-	"knowledge_ingestion/src/agent/tools"
+	"knowledge_ingestion/src/agent/retrieval"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 )
 
 type searchService struct {
-	tools       *tools.Registry
+	hybrid      *retrieval.HybridSearcher
 	classifier  *question.LLMClassifier
 	currentUser port.IUserResolver
 }
 
 func NewSearchService(
-	toolsReg *tools.Registry,
+	hybrid *retrieval.HybridSearcher,
 	classifier *question.LLMClassifier,
 	currentUser port.IUserResolver,
 ) port.ISearcher {
 	return &searchService{
-		tools:       toolsReg,
+		hybrid:      hybrid,
 		classifier:  classifier,
 		currentUser: currentUser,
 	}
 }
 
 // Search chạy đúng 2 vòng agentic (§8 AGENT_LLM_INSTRUCTIONS.md). Vòng 1:
-// phân loại câu hỏi bằng LLM (có dto.Model) rồi router chọn tool + params —
-// không model thì default lookup, không tốn lượt LLM. Vòng 2: gọi tool
-// knowledge_search (pipeline hybrid) theo params, trừ chitchat skip tool.
-// Lỗi hạ tầng trả 500 (không phải lỗi client); query rỗng/whitespace thì 400.
+// phân loại câu hỏi bằng LLM (có dto.Model) rồi router chọn params — không
+// model thì default lookup, không tốn lượt LLM. Vòng 2: pipeline hybrid,
+// trừ chitchat skip luôn (khỏi tốn embed+Qdrant). Lỗi hạ tầng trả 500 (không
+// phải lỗi client); query rỗng/whitespace thì 400.
 func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dtos.Result[*dtos.SearchResponse] {
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
@@ -52,13 +52,20 @@ func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dto
 		}
 	}
 	route := question.Route(qtype)
-	// Vòng 2: thực thi duy nhất qua tools.Registry — skip/limit/chặn max nằm
-	// trong registry, không fork mỗi service một kiểu.
-	hits, err := s.tools.Execute(ctx, route, tools.Args{
+	// Vòng 2: chitchat không limit ép thì skip trước khi chạm embed/Qdrant;
+	// caller ép limit vẫn search (ưu tiên ý caller).
+	if route.SkipSearch && dto.Limit <= 0 {
+		return dtos.Ok(&dtos.SearchResponse{Hits: []*dtos.SearchHitResponse{}, QuestionType: qtype.String()})
+	}
+	limit := dto.Limit
+	if limit <= 0 {
+		limit = route.Limit
+	}
+	hits, err := s.hybrid.SearchHybrid(ctx, retrieval.HybridParams{
 		UserID:         userID,
 		Query:          dto.Query,
 		CategoryIDs:    dto.CategoryIDs,
-		Limit:          dto.Limit,
+		Limit:          limit,
 		ScoreThreshold: dto.ScoreThreshold,
 	})
 	if err != nil {

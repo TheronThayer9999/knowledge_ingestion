@@ -32,6 +32,8 @@ func (f *fakeConfig) GetCORS() config.CorsConfig { return config.CorsConfig{} }
 
 func (f *fakeConfig) GetWorker() config.WorkerConfig { return config.WorkerConfig{} }
 
+func (f *fakeConfig) GetAgent() config.AgentConfig { return config.AgentConfig{} }
+
 func TestNewStorageBuildsClient(t *testing.T) {
 	cfg := &fakeConfig{s3: config.S3Config{
 		Type:      "seaweedfs",

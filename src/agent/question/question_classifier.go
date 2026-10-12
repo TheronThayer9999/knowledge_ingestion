@@ -2,12 +2,12 @@ package question
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
-	"knowledge_ingestion/src/domain"
+	einomodel "github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
+
+	"knowledge_ingestion/src/agent/prompts"
 )
 
 // QuestionType là 1 trong 8 loại câu hỏi theo
@@ -66,24 +66,19 @@ type Prompts struct {
 // classifySystemFile là tên file system prompt vòng 1 trong thư mục prompt.
 const classifySystemFile = "classify_system.md"
 
-// LoadPrompts đọc prompt vòng 1 từ dir lúc startup. File thiếu/không đọc
-// được/nội dung rỗng thì trả lỗi — app fail-fast vì không có fallback.
+// LoadPrompts đọc prompt vòng 1 từ dir lúc startup — ủy quyền cho package
+// prompts dùng chung (cùng quy ước fail-fast với prompt chat).
 func LoadPrompts(dir string) (Prompts, error) {
-	path := filepath.Join(dir, classifySystemFile)
-	raw, err := os.ReadFile(path)
+	system, err := prompts.Load(dir, classifySystemFile)
 	if err != nil {
-		return Prompts{}, fmt.Errorf("đọc system prompt classify: %w (muốn %s)", err, path)
-	}
-	system := strings.TrimSpace(string(raw))
-	if system == "" {
-		return Prompts{}, fmt.Errorf("system prompt classify rỗng: %s", path)
+		return Prompts{}, err
 	}
 	return Prompts{ClassifySystem: system}, nil
 }
 
-// Parse đổi slug thành loại câu hỏi — chat vòng 1 classify xong truyền sang
-// search qua DTO để search khỏi tốn thêm lượt LLM. Rỗng/lạ thì ok=false để
-// caller classify lại, không đoán bừa.
+// Parse đổi slug thành loại câu hỏi — khớp chính xác trước (slug DTO caller
+// gửi), rồi quét chuỗi con (LLM đôi khi trả "Loại: compare" thay vì đúng 1
+// từ). Rỗng/lạ thì ok=false để caller classify lại, không đoán bừa.
 func Parse(s string) (QuestionType, bool) {
 	slug := strings.ToLower(strings.TrimSpace(s))
 	if slug == "" {
@@ -94,49 +89,47 @@ func Parse(s string) (QuestionType, bool) {
 			return t, true
 		}
 	}
+	for _, t := range allQuestionTypes {
+		if strings.Contains(slug, t.String()) {
+			return t, true
+		}
+	}
 	return QuestionLookup, false
 }
 
-// LLMClassifier là vòng 1 của agent: hỏi LLM xem câu hỏi thuộc loại nào để
-// vòng 2 biết gọi tool nào. Chỉ phụ thuộc domain.ILLM nên test fake được,
-// đổi Ollama → provider khác không phải sửa.
+// LLMClassifier dán nhãn loại câu hỏi bằng ChatModel Eino (chung 1 instance
+// Ollama với agent chat) — model.WithModel truyền model theo request, không
+// kẹt model trong constructor. Chỉ hỏi 1 câu system+user rồi parse slug.
 type LLMClassifier struct {
-	llm    domain.ILLM
+	model  einomodel.BaseChatModel
 	system string
 }
 
-func NewLLMClassifier(llm domain.ILLM, p Prompts) *LLMClassifier {
-	return &LLMClassifier{llm: llm, system: strings.TrimSpace(p.ClassifySystem)}
+func NewLLMClassifier(model einomodel.BaseChatModel, p Prompts) *LLMClassifier {
+	return &LLMClassifier{model: model, system: strings.TrimSpace(p.ClassifySystem)}
 }
 
 // Classify gọi LLM dán nhãn loại câu hỏi — model rỗng/query rỗng/LLM lỗi/trả
 // lời không parse được đều về lookup (loại phổ biến nhất). Không bao giờ trả
 // lỗi để caller luôn có đường đi.
 func (c *LLMClassifier) Classify(ctx context.Context, model, query string) QuestionType {
-	if c == nil || c.llm == nil || strings.TrimSpace(c.system) == "" {
+	if c == nil || c.model == nil || strings.TrimSpace(c.system) == "" {
 		return QuestionLookup
 	}
 	if strings.TrimSpace(model) == "" || strings.TrimSpace(query) == "" {
 		return QuestionLookup
 	}
-	out, err := c.llm.Chat(ctx, []domain.ChatMessage{
-		{Role: "system", Content: c.system},
-		{Role: "user", Content: query},
-	}, domain.ChatOptions{Model: model, Temperature: 0})
-	if err != nil {
+	out, err := c.model.Generate(ctx,
+		[]*schema.Message{
+			schema.SystemMessage(c.system),
+			schema.UserMessage(query),
+		},
+		einomodel.WithModel(model), einomodel.WithTemperature(0))
+	if err != nil || out == nil {
 		return QuestionLookup
 	}
-	return parseQuestionType(out)
-}
-
-// parseQuestionType quét slug trong câu trả lời — LLM đôi khi trả "Loại:
-// compare" thay vì đúng 1 từ nên quét chuỗi con thay vì so bằng.
-func parseQuestionType(s string) QuestionType {
-	slug := strings.ToLower(strings.TrimSpace(s))
-	for _, t := range allQuestionTypes {
-		if strings.Contains(slug, t.String()) {
-			return t
-		}
+	if t, ok := Parse(out.Content); ok {
+		return t
 	}
 	return QuestionLookup
 }
