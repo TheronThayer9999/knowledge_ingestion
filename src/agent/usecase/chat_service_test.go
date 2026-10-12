@@ -52,7 +52,7 @@ func TestChat_FullPipeline(t *testing.T) {
 		},
 		qtype: "lookup",
 	}
-	svc := NewChatService(search, &fakeLLM{answer: "Mức phạt là **0.05%/ngày**[^1]."}, synthesis.DefaultPrompts())
+	svc := NewChatService(search, &fakeLLM{answer: "Mức phạt là **0.05%/ngày**[^1]."}, synthesis.Prompts{System: "test-system"})
 
 	res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "Mức phạt?", Model: "m"})
 	if res.Err != nil {
@@ -74,7 +74,7 @@ func TestChat_FullPipeline(t *testing.T) {
 
 func TestChat_ChitchatNoHits(t *testing.T) {
 	search := &fakeChatSearch{hits: []*dtos.SearchHitResponse{}, qtype: "chitchat"}
-	svc := NewChatService(search, &fakeLLM{answer: "Chào bạn!"}, synthesis.DefaultPrompts())
+	svc := NewChatService(search, &fakeLLM{answer: "Chào bạn!"}, synthesis.Prompts{System: "test-system"})
 
 	res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "xin chào", Model: "m"})
 	if res.Err != nil {
@@ -86,14 +86,14 @@ func TestChat_ChitchatNoHits(t *testing.T) {
 }
 
 func TestChat_RequiresModel(t *testing.T) {
-	svc := NewChatService(&fakeChatSearch{}, &fakeLLM{answer: "x"}, synthesis.DefaultPrompts())
+	svc := NewChatService(&fakeChatSearch{}, &fakeLLM{answer: "x"}, synthesis.Prompts{System: "test-system"})
 	if res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "x"}); res.Err == nil {
 		t.Fatal("thiếu model phải 400")
 	}
 }
 
 func TestChat_SearchErrorPropagates(t *testing.T) {
-	svc := NewChatService(&fakeChatSearch{err: errors.New("qdrant down")}, &fakeLLM{answer: "x"}, synthesis.DefaultPrompts())
+	svc := NewChatService(&fakeChatSearch{err: errors.New("qdrant down")}, &fakeLLM{answer: "x"}, synthesis.Prompts{System: "test-system"})
 	if res := svc.Chat(context.Background(), &dtos.ChatRequest{Message: "x", Model: "m"}); res.Err == nil {
 		t.Fatal("lỗi search phải lan ra")
 	}

@@ -85,7 +85,8 @@ func loadService() []fx.Option {
 
 // newChatPrompts load system prompt chat từ file lúc startup — sửa
 // prompts/chat_system.md rồi restart app là ăn, không cần build lại.
-func newChatPrompts(cfg config.IConfig) synthesis.Prompts {
+// File thiếu thì app fail-fast vì không còn bản mặc định trong code.
+func newChatPrompts(cfg config.IConfig) (synthesis.Prompts, error) {
 	return synthesis.LoadPrompts(cfg.GetAgent().PromptDir)
 }
 

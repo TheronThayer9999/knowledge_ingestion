@@ -19,7 +19,7 @@ type chatService struct {
 }
 
 func NewChatService(search port.ISearcher, llm domain.ILLM, prompts synthesis.Prompts) port.IChatter {
-	return &chatService{search: search, synth: synthesis.NewChatSynthesizerWithPrompts(llm, prompts)}
+	return &chatService{search: search, synth: synthesis.NewChatSynthesizer(llm, prompts)}
 }
 
 // snippetLen là độ dài trích đoạn mỗi cite — đủ để frontend hiện preview,
