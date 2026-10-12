@@ -176,7 +176,10 @@ func (f *fakeVectors) SearchText(_ context.Context, _ string, _ domain.SearchFil
 func (f *fakeVectors) ScrollNeighbors(_ context.Context, _ domain.SearchFilter, _, _ int) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
-func (f *fakeVectors) ListSections(_ context.Context, _ domain.SearchFilter) ([]string, error) {
+func (f *fakeVectors) ListSections(_ context.Context, _ domain.SearchFilter) ([]domain.SectionSpan, error) {
+	return nil, nil
+}
+func (f *fakeVectors) ScrollRange(_ context.Context, _ domain.SearchFilter, _, _ int) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
 

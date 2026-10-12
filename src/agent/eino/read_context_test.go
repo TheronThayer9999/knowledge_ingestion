@@ -35,7 +35,10 @@ func (f *fakeNeighborVectors) ScrollNeighbors(_ context.Context, filter domain.S
 	f.got = filter
 	return f.points, f.err
 }
-func (f *fakeNeighborVectors) ListSections(_ context.Context, _ domain.SearchFilter) ([]string, error) {
+func (f *fakeNeighborVectors) ListSections(_ context.Context, _ domain.SearchFilter) ([]domain.SectionSpan, error) {
+	return nil, nil
+}
+func (f *fakeNeighborVectors) ScrollRange(_ context.Context, _ domain.SearchFilter, _, _ int) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
 
@@ -57,7 +60,8 @@ func TestReadContextToolRequiresScope(t *testing.T) {
 	}
 }
 
-// article_id/không có → lỗi; user trong scope phải khóa đúng owner.
+// article_id thiếu/không phải số → trả rỗng không gọi store (LLM tự xoay);
+// user trong scope phải khóa đúng owner.
 func TestReadContextToolValidatesArgs(t *testing.T) {
 	v := &fakeNeighborVectors{points: []*domain.ScoredChunk{
 		{PointID: "p", ArticleID: 10, ChunkIndex: 3, Text: "x"},
@@ -67,8 +71,18 @@ func TestReadContextToolValidatesArgs(t *testing.T) {
 		t.Fatalf("NewReadContextTool: %v", err)
 	}
 	ctx := WithScope(context.Background(), Scope{UserID: 3, CategoryIDs: []int64{9}})
-	if _, err := tool.InvokableRun(ctx, `{"chunk_index":3}`); err == nil {
-		t.Fatal("thiếu article_id phải lỗi")
+	// model free gửi "None"/thiếu id → không lỗi (không abort run 500), rỗng.
+	for _, args := range []string{`{"chunk_index":3}`, `{"article_id":"None","chunk_index":3}`} {
+		raw, err := tool.InvokableRun(ctx, args)
+		if err != nil {
+			t.Fatalf("args không hợp lệ phải trả rỗng, không error: %v", err)
+		}
+		if strings.TrimSpace(raw) != "[]" {
+			t.Fatalf("args không hợp lệ phải trả [], got %q", raw)
+		}
+	}
+	if v.got.ArticleID != 0 {
+		t.Fatalf("args sai không được gọi store, got %+v", v.got)
 	}
 	raw, err := tool.InvokableRun(ctx, `{"article_id":10,"chunk_index":3,"window":99}`)
 	if err != nil {

@@ -71,6 +71,10 @@ func isFollowUp(message string, history []dtos.ChatHistoryItem) bool {
 // nhắc lại quy tắc prompt §11 bằng lời ngắn để model không đáp thẳng nữa.
 const followUpRetryNote = "\n\n(Hệ thống: đây là câu nối tiếp — bắt buộc viết lại thành câu độc lập đầy đủ theo lịch sử rồi gọi tool tìm kiếm, cấm đáp thẳng từ câu trả lời cũ.)"
 
+// emptyAnswerRetryNote là chỉ thị khi agent trả answer rỗng (model free đôi
+// khi trả content rỗng sau khi gọi tool đủ) — ép trả lại câu đầy đủ.
+const emptyAnswerRetryNote = "\n\n(Hệ thống: câu trả lời vừa rồi bị trống — hãy trả lại đầy đủ nội dung, dựa trên các đoạn trích đã tìm được, kèm trích dẫn [^n].)"
+
 func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Result[*dtos.ChatResponse] {
 	if strings.TrimSpace(dto.Message) == "" {
 		return dtos.Fail[*dtos.ChatResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "message rỗng"))
@@ -91,13 +95,22 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 	if err != nil {
 		return dtos.Fail[*dtos.ChatResponse](err)
 	}
-	// Chốt chặn follow-up: lượt nối tiếp mà agent không đọc tài liệu (0 hit)
-	// thì chạy lại 1 lần với chỉ thị ép search. Collector cùng request nên
-	// hit retry gom tiếp, không mất cites lượt đầu (ở đây là không có).
-	if len(res.Hits) == 0 && isFollowUp(dto.Message, dto.History) {
+	// Chốt chặn lượt retry: câu nối tiếp 0 hit thì ép search; agent trả
+	// answer rỗng (model free thỉnh thoảng trả content rỗng) thì chạy lại với
+	// chỉ thị trả lời đầy đủ. Collector cùng request nên hit retry gom tiếp,
+	// không mất cites lượt đầu. Chỉ 1 retry mỗi loại để không bùng chi phí.
+	retryNote := ""
+	switch {
+	case strings.TrimSpace(res.Answer) == "":
+		logs.Warnw("chat: answer rỗng, retry", "message", dto.Message)
+		retryNote = emptyAnswerRetryNote
+	case len(res.Hits) == 0 && isFollowUp(dto.Message, dto.History):
 		logs.Warnw("chat: follow-up 0 hit, retry ép search", "message", dto.Message)
-		if res2, err2 := agent.Run(ctx, model, dto.History, dto.Message+followUpRetryNote); err2 != nil {
-			logs.Warnw("chat: retry follow-up lỗi, giữ kết quả đầu", "error", err2)
+		retryNote = followUpRetryNote
+	}
+	if retryNote != "" {
+		if res2, err2 := agent.Run(ctx, model, dto.History, dto.Message+retryNote); err2 != nil {
+			logs.Warnw("chat: retry lỗi, giữ kết quả đầu", "error", err2)
 		} else {
 			res = res2
 		}

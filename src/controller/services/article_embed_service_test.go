@@ -194,7 +194,10 @@ func (f *fakeVectorStore) SearchText(_ context.Context, _ string, _ domain.Searc
 func (f *fakeVectorStore) ScrollNeighbors(_ context.Context, _ domain.SearchFilter, _, _ int) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
-func (f *fakeVectorStore) ListSections(_ context.Context, _ domain.SearchFilter) ([]string, error) {
+func (f *fakeVectorStore) ListSections(_ context.Context, _ domain.SearchFilter) ([]domain.SectionSpan, error) {
+	return nil, nil
+}
+func (f *fakeVectorStore) ScrollRange(_ context.Context, _ domain.SearchFilter, _, _ int) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
 func (f *fakeVectorStore) CountByArticle(ctx context.Context, articleID int64) (int64, error) {

@@ -53,12 +53,16 @@ func newProviderAgents(
 	if err != nil {
 		return nil, err
 	}
+	readArt, err := eino.NewReadArticleTool(vectors)
+	if err != nil {
+		return nil, err
+	}
 	llm := cfg.GetLLM()
 	defaultProvider := eino.ProviderOllama
 	if strings.TrimSpace(llm.Provider) != "" {
 		defaultProvider = strings.ToLower(strings.TrimSpace(llm.Provider))
 	}
-	tools := []einotool.BaseTool{search, cats, ctxTool, info, sections}
+	tools := []einotool.BaseTool{search, cats, ctxTool, info, sections, readArt}
 	return eino.BuildProviderAgents(prompts.System, defaultProvider, tools,
 		eino.NewOllamaProvider(llm),
 		eino.NewOpenRouterProvider(cfg.GetOpenRouter()),

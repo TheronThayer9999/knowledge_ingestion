@@ -169,7 +169,10 @@ func (a adminVectorsAdapter) ScrollNeighbors(_ context.Context, _ domain.SearchF
 	return nil, nil
 }
 
-func (a adminVectorsAdapter) ListSections(_ context.Context, _ domain.SearchFilter) ([]string, error) {
+func (a adminVectorsAdapter) ListSections(_ context.Context, _ domain.SearchFilter) ([]domain.SectionSpan, error) {
+	return nil, nil
+}
+func (a adminVectorsAdapter) ScrollRange(_ context.Context, _ domain.SearchFilter, _, _ int) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
 

@@ -33,8 +33,8 @@ type KnowledgeSearchArgs struct {
 	Query string `json:"query" jsonschema:"description=Cụm từ khóa bằng tiếng Việt để tìm trong tài liệu. Giữ nguyên tên văn bản và số hiệu và thuật ngữ trong câu hỏi. Đừng rút gọn làm mất nghĩa.,required"`
 	// LLM không bao giờ biết ID chủ đề hợp lệ (không có tool nào liệt kê) nên
 	// desc cấm bịa ID — chỉ truyền khi user nêu rõ, còn lại bỏ trống.
-	CategoryIDs []int64 `json:"category_ids,omitempty" jsonschema:"description=Chỉ truyền khi người dùng nêu rõ ID chủ đề trong câu hỏi. Không tự bịa ID. Không biết thì bỏ trống để tìm mọi chủ đề."`
-	Limit       int     `json:"limit,omitempty" jsonschema:"description=Số đoạn cần đọc. Hỏi một thông tin cụ thể thì 5. Quy trình nhiều bước thì 8. Tóm tắt hoặc so sánh hoặc suy luận thì 10. Bỏ trống thì mặc định 5."`
+	CategoryIDs []flexInt64 `json:"category_ids,omitempty" jsonschema:"description=Chỉ truyền khi người dùng nêu rõ ID chủ đề trong câu hỏi. Không tự bịa ID. Không biết thì bỏ trống để tìm mọi chủ đề."`
+	Limit       flexInt     `json:"limit,omitempty" jsonschema:"description=Số đoạn cần đọc. Hỏi một thông tin cụ thể thì 5. Quy trình nhiều bước thì 8. Tóm tắt hoặc so sánh hoặc suy luận thì 10. Bỏ trống thì mặc định 5."`
 }
 
 // knowledgeSearchHit là 1 hit trả cho LLM — n khớp HitCollector để cites.
@@ -139,15 +139,20 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher, vectors domain.IVe
 			}
 			// Category DTO ép thắng gợi ý LLM — LLM không được mở rộng phạm
 			// vi ra ngoài các chủ đề user đã khoanh.
-			ids := in.CategoryIDs
+			ids := make([]int64, len(in.CategoryIDs))
+			for i, id := range in.CategoryIDs {
+				ids[i] = int64(id)
+			}
 			if len(scope.CategoryIDs) > 0 {
 				ids = scope.CategoryIDs
 			}
+			// 0 giữ nguyên để hybrid search tự default (chốt 1 chỗ duy nhất).
+			limit := int(in.Limit)
 			chunks, err := hybrid.SearchHybrid(ctx, retrieval.HybridParams{
 				UserID:         scope.UserID,
 				Query:          in.Query,
 				CategoryIDs:    ids,
-				Limit:          in.Limit,
+				Limit:          limit,
 				ScoreThreshold: scope.ScoreThreshold,
 			})
 			if err != nil {

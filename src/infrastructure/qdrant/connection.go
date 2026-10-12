@@ -357,14 +357,67 @@ func (c *connection) ScrollNeighbors(ctx context.Context, filter domain.SearchFi
 	return hits, nil
 }
 
+// readArticleMaxLimit trần số chunk 1 lượt scroll của read_article — 20 chunk
+// ~20k ký tự (~5-6k token) là an toàn cho 1 context window, file dài thì LLM
+// gọi trang kế tiếp.
+const readArticleMaxLimit = 20
+
+// ScrollRange đọc 1 lát chunk của 1 bài trong [from, from+limit) — tool
+// read_article cho agent đọc trực tiếp file theo trang. Kẹp Range hai đầu
+// (chunk_index liên tục 0..N-1 lúc embed) thay vì chỉ gte: Scroll trả theo
+// ID point, gte + Limit có thể bắt được chunk 45-50 rồi trang sau nhảy mất
+// 20-44. Sort lại theo ChunkIndex để trang ra đúng thứ tự đọc.
+func (c *connection) ScrollRange(ctx context.Context, filter domain.SearchFilter, from, limit int) ([]*domain.ScoredChunk, error) {
+	if filter.ArticleID <= 0 {
+		return nil, fmt.Errorf("%w: ScrollRange cần article_id", ErrBadRequest)
+	}
+	if from < 0 {
+		from = 0
+	}
+	if limit <= 0 || limit > readArticleMaxLimit {
+		limit = readArticleMaxLimit
+	}
+	lo, hi := float64(from), float64(from+limit-1)
+	must := append(permissionMusts(filter), qdrantapi.NewRange("chunk_index", &qdrantapi.Range{
+		Gte: &lo,
+		Lte: &hi,
+	}))
+	points, err := c.client.Scroll(ctx, &qdrantapi.ScrollPoints{
+		CollectionName: c.collection,
+		Filter:         &qdrantapi.Filter{Must: must},
+		Limit:          ptrUint32(uint32(limit)),
+		WithPayload:    qdrantapi.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("qdrant: scroll range: %w", err)
+	}
+	hits := make([]*domain.ScoredChunk, 0, len(points))
+	for _, p := range points {
+		if p == nil {
+			continue
+		}
+		payload := qdrantapi.ValueMapToMap(p.GetPayload())
+		hits = append(hits, &domain.ScoredChunk{
+			PointID:    p.GetId().GetUuid(),
+			ArticleID:  asInt64(payload["article_id"]),
+			ChunkIndex: int(asInt64(payload["chunk_index"])),
+			PageNum:    int(asInt64(payload["page_num"])),
+			Section:    asString(payload["section"]),
+			Text:       asString(payload["text"]),
+		})
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].ChunkIndex < hits[j].ChunkIndex })
+	return hits, nil
+}
+
 // listSectionsLimit trần point scroll khi liệt kê mục — bài dài nhất cũng chỉ
 // vài trăm chunk, 500 là dư mà 1 lượt Scroll vẫn nhẹ (chỉ đọc payload).
 const listSectionsLimit = 500
 
-// ListSections trả các tên mục khác nhau của 1 bài theo thứ tự chunk —
-// ground-truth cho câu hỏi đếm/liệt kê Điều, LLM khỏi đếm bằng mắt. Mục rỗng
-// (chunk đầu bài chưa có heading) bỏ qua để danh sách sạch.
-func (c *connection) ListSections(ctx context.Context, filter domain.SearchFilter) ([]string, error) {
+// ListSections trả các mục khác nhau của 1 bài theo thứ tự chunk, mỗi mục
+// kèm chunk bắt đầu (tọa độ) — ground-truth đếm/liệt kê Điều + bản đồ để
+// read_article nhảy vùng. Mục rỗng (chunk đầu bài chưa có heading) bỏ qua.
+func (c *connection) ListSections(ctx context.Context, filter domain.SearchFilter) ([]domain.SectionSpan, error) {
 	if filter.ArticleID <= 0 {
 		return nil, fmt.Errorf("%w: ListSections cần article_id", ErrBadRequest)
 	}
@@ -392,11 +445,16 @@ func (c *connection) ListSections(ctx context.Context, filter domain.SearchFilte
 		}
 	}
 	sort.Slice(ranked_, func(i, j int) bool { return ranked_[i].index < ranked_[j].index })
-	out := make([]string, 0, len(ranked_))
+	out := make([]domain.SectionSpan, 0, len(ranked_))
+	seen := make(map[string]bool, len(ranked_))
 	for _, r := range ranked_ {
-		if len(out) == 0 || out[len(out)-1] != r.section {
-			out = append(out, r.section)
+		// Giữ lần xuất hiện đầu (From nhỏ nhất theo thứ tự chunk) — mục lặp
+		// lại giữa trang thì bản đồ vẫn chỉ 1 tọa độ.
+		if seen[r.section] {
+			continue
 		}
+		seen[r.section] = true
+		out = append(out, domain.SectionSpan{Name: r.section, From: r.index})
 	}
 	return out, nil
 }

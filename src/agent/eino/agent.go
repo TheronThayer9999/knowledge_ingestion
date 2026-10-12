@@ -12,14 +12,16 @@ import (
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 
+	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 )
 
 // maxIterations chặn vòng agentic — agent gọi tool tối đa bấy nhiêu lượt rồi
-// phải trả lời. Câu dễ tốn 1-2 lượt, câu khó tự gọi thêm, chặn 8 để không
-// bùng chi phí.
-const maxIterations = 8
+// phải trả lời. Câu dễ tốn 1-2 lượt, câu khó (liệt kê nhiều Điều, so sánh 2
+// file) tự gọi thêm, chặn 12 để không bùng chi phí nhưng đủ cho model yếu
+// (OpenRouter free từng cháy 8 lượt rồi abort thành 500).
+const maxIterations = 12
 
 // ChatAgent là agent chat: LLM tự quyết gọi tool nào theo vòng [nhận định →
 // kế hoạch → gọi tool → đọc kết quả → quan sát → điều chỉnh] cho đến khi đủ
@@ -45,6 +47,12 @@ func NewChatAgent(model einomodel.ToolCallingChatModel, instruction string, tls 
 		}
 		base = append(base, t)
 	}
+	// Summarization middleware: tự nén lịch sử hội thoại khi vượt ngưỡng
+	// (thay cắt cứng maxHistoryTurns) — xem summarize.go.
+	summ, err := newSummarizeMiddleware(model)
+	if err != nil {
+		return nil, fmt.Errorf("eino agent: dựng summarization middleware: %w", err)
+	}
 	agent, err := adk.NewChatModelAgent(context.Background(), &adk.ChatModelAgentConfig{
 		Name:        "knowledge_chat",
 		Description: "Trợ lý tri thức: dùng tools đọc tài liệu đã upload rồi trả lời kèm trích dẫn [^n]",
@@ -55,6 +63,7 @@ func NewChatAgent(model einomodel.ToolCallingChatModel, instruction string, tls 
 				Tools: base,
 			},
 		},
+		Handlers:      []adk.ChatModelAgentMiddleware{summ},
 		MaxIterations: maxIterations,
 	})
 	if err != nil {
@@ -66,9 +75,10 @@ func NewChatAgent(model einomodel.ToolCallingChatModel, instruction string, tls 
 	}, nil
 }
 
-// maxHistoryTurns giữ số lượt hội thoại gần nhất đưa vào agent — lượt cũ hơn
-// không còn ảnh hưởng câu hỏi hiện tại, còn giữ thì tốn token.
-const maxHistoryTurns = 6
+// maxHistoryTurns là lưới an toàn cuối (số lượt tối đa gửi vào agent) — phần
+// nén chính do summarization middleware lo khi vượt ngưỡng (summarize.go),
+// nên giờ giữ được 40 lượt thay vì cắt cứng 6 như trước.
+const maxHistoryTurns = 40
 
 // citationRe bắt nhãn trích dẫn [^n] của lượt trước. Số n của lượt cũ không
 // khớp số của lượt đang chạy nên bỏ đi, tránh model nhầm nguồn.
@@ -124,8 +134,13 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 		}
 		if out := ev.Output; out != nil && out.MessageOutput != nil &&
 			!out.MessageOutput.IsStreaming && out.MessageOutput.Message != nil {
-			answer = out.MessageOutput.Message.Content
+			answer = messageText(out.MessageOutput.Message)
 		}
+	}
+	if strings.TrimSpace(answer) == "" {
+		// Model free thỉnh thoảng trả content rỗng (hoặc dạng multi-part) —
+		// log rõ để chẩn đoán thay vì câm lặng trả answer rỗng.
+		logs.Warnw("eino agent: answer rỗng cuối lượt", "query", query)
 	}
 	var hits = make([]*domain.ScoredChunk, 0)
 	searched := false

@@ -39,6 +39,14 @@ type ScoredChunk struct {
 	Text       string
 }
 
+// SectionSpan là 1 mục của bài + vị trí chunk bắt đầu — bản đồ điều hướng
+// cho tool read_article: LLM thấy "Điều 5 từ chunk 40" thì nhảy đọc thẳng
+// từ 40 thay vì cuộn toàn file (file 500 trang không đọc nổi từng trang).
+type SectionSpan struct {
+	Name string
+	From int
+}
+
 // IVectorStore hợp đồng với kho vector — service chỉ phụ thuộc interface này
 // nên đổi Qdrant → Weaviate/Milvus chỉ cần viết adapter mới. Triển khai ở
 // infrastructure/qdrant (official go-client, gRPC cổng 6334).
@@ -69,10 +77,15 @@ type IVectorStore interface {
 	// bị cắt giữa Điều. Trả theo ChunkIndex tăng dần, Score = 0 (không phải
 	// rank search). DB chunk đã trim sau embed nên đọc từ Qdrant payload.
 	ScrollNeighbors(ctx context.Context, filter SearchFilter, center, window int) ([]*ScoredChunk, error)
-	// ListSections trả các tên mục (section) khác nhau của 1 bài theo thứ tự
-	// chunk — tool list_sections đếm/liệt kê Điều mà không cần LLM đếm bằng
-	// mắt trên đoạn trích. ArticleID bắt buộc, rỗng thì rỗng.
-	ListSections(ctx context.Context, filter SearchFilter) ([]string, error)
+	// ScrollRange đọc 1 lát chunk của 1 bài từ from (chunk_index >= from)
+	// tối đa limit điểm, trả theo ChunkIndex tăng dần — tool read_article
+	// cho agent đọc trực tiếp file theo trang (câu liệt kê/tóm tắt toàn
+	// bài). ArticleID bắt buộc; tổng số chunk lấy qua CountByArticle.
+	ScrollRange(ctx context.Context, filter SearchFilter, from, limit int) ([]*ScoredChunk, error)
+	// ListSections trả các mục (section) của 1 bài theo thứ tự chunk kèm
+	// chunk bắt đầu — tool list_sections đếm/liệt kê Điều (ground-truth) +
+	// bản đồ cho read_article nhảy vùng. ArticleID bắt buộc, rỗng thì rỗng.
+	ListSections(ctx context.Context, filter SearchFilter) ([]SectionSpan, error)
 	// IsPermanentError báo lỗi có retry cũng vậy không (sai dim, mã gRPC
 	// InvalidArgument/NotFound/Unauthenticated...) — service dùng để failed
 	// luôn thay vì backoff. Triển khai ở infra.

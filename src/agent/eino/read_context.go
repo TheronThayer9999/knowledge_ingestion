@@ -22,9 +22,9 @@ const maxContextWindow = 3
 // ReadContextArgs là args LLM được phép đưa — article_id + chunk_index lấy
 // từ hit knowledge_search đã có, window là số chunk đọc thêm mỗi bên.
 type ReadContextArgs struct {
-	ArticleID  int64 `json:"article_id" jsonschema:"description=ID bài viết lấy từ kết quả knowledge_search (article_id của đoạn đang đọc dở). Bắt buộc."`
-	ChunkIndex int   `json:"chunk_index" jsonschema:"description=Chỉ số chunk đang đọc dở (chunk_index của đoạn đó). Bắt buộc."`
-	Window     int   `json:"window,omitempty" jsonschema:"description=Số chunk đọc thêm mỗi bên (trước/sau). Mặc định 1, tối đa 3."`
+	ArticleID  flexInt64 `json:"article_id" jsonschema:"description=ID bài viết lấy từ kết quả knowledge_search (article_id của đoạn đang đọc dở). Bắt buộc."`
+	ChunkIndex flexInt   `json:"chunk_index" jsonschema:"description=Chỉ số chunk đang đọc dở (chunk_index của đoạn đó). Bắt buộc."`
+	Window     flexInt   `json:"window,omitempty" jsonschema:"description=Số chunk đọc thêm mỗi bên (trước/sau). Mặc định 1, tối đa 3."`
 }
 
 // readContextHit là 1 chunk kề trả cho LLM — cùng shape với knowledge_search
@@ -60,9 +60,11 @@ func NewReadContextTool(vectors domain.IVectorStore) (einotool.InvokableTool, er
 				return nil, fmt.Errorf("eino read_context: thiếu scope request (user_id) trong ctx")
 			}
 			if in.ArticleID <= 0 {
-				return nil, fmt.Errorf("eino read_context: article_id bắt buộc (lấy từ hit knowledge_search)")
+				// LLM gửi "None"/tên file thay vì số (model free) — args không
+				// hợp lệ, trả rỗng để tự xoay với ID đúng thay vì abort run 500.
+				return []readContextHit{}, nil
 			}
-			window := in.Window
+			window := int(in.Window)
 			if window <= 0 {
 				window = 1
 			}
@@ -72,8 +74,8 @@ func NewReadContextTool(vectors domain.IVectorStore) (einotool.InvokableTool, er
 			chunks, err := vectors.ScrollNeighbors(ctx, domain.SearchFilter{
 				UserID:      scope.UserID,
 				CategoryIDs: scope.CategoryIDs,
-				ArticleID:   in.ArticleID,
-			}, in.ChunkIndex, window)
+				ArticleID:   int64(in.ArticleID),
+			}, int(in.ChunkIndex), window)
 			if err != nil {
 				return nil, err
 			}
@@ -134,8 +136,8 @@ const ArticleInfoName = "article_info"
 // ArticleInfoArgs là args LLM được phép đưa — 1 trong 2: xem 1 bài cụ thể
 // hay liệt kê bài trong 1 chủ đề.
 type ArticleInfoArgs struct {
-	ArticleID  int64 `json:"article_id,omitempty" jsonschema:"description=ID bài viết cụ thể (lấy từ kết quả search). Có thì xem đúng 1 bài."`
-	CategoryID int64 `json:"category_id,omitempty" jsonschema:"description=ID chủ đề để liệt kê các bài trong đó. Bỏ trống thì liệt kê mọi chủ đề của bạn."`
+	ArticleID  flexInt64 `json:"article_id,omitempty" jsonschema:"description=ID bài viết cụ thể (lấy từ kết quả search). Có thì xem đúng 1 bài."`
+	CategoryID flexInt64 `json:"category_id,omitempty" jsonschema:"description=ID chủ đề để liệt kê các bài trong đó. Bỏ trống thì liệt kê mọi chủ đề của bạn."`
 }
 
 const articleInfoDesc = `Xem thông tin tài liệu đã upload: tên file, số trang, phiên bản, ngày hiệu lực, mô tả.
@@ -167,7 +169,7 @@ func NewArticleInfoTool(repo domain.IArticleRepository) (einotool.InvokableTool,
 				}
 			}
 			if in.ArticleID > 0 {
-				a, err := repo.GetByID(ctx, in.ArticleID, scope.UserID)
+				a, err := repo.GetByID(ctx, int64(in.ArticleID), scope.UserID)
 				// Bài không tồn tại (LLM bịa ID, bài đã xóa) — trả rỗng để LLM
 				// tự xoay thay vì error làm ToolNode abort cả run thành 500.
 				// Lỗi hạ tầng (DB) vẫn trả error để caller map 500 đúng.
@@ -184,7 +186,7 @@ func NewArticleInfoTool(repo domain.IArticleRepository) (einotool.InvokableTool,
 			}
 			ids := scope.CategoryIDs
 			if in.CategoryID > 0 {
-				ids = []int64{in.CategoryID}
+				ids = []int64{int64(in.CategoryID)}
 			}
 			var out []articleInfoItem
 			if len(ids) == 0 {
