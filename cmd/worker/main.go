@@ -21,8 +21,12 @@ var configPath string
 func init() {
 	logs.LoadLogger()
 	defaultPath := "./configs/config.json"
+	// Ưu tiên config.local.json (gitignored, chứa key thật) khi chạy local;
+	// env/flag vẫn ép được như cũ.
 	if p := os.Getenv("APP_CONFIG_PATH"); p != "" {
 		defaultPath = p
+	} else if _, err := os.Stat("./configs/config.local.json"); err == nil {
+		defaultPath = "./configs/config.local.json"
 	}
 	flag.StringVar(&configPath, "configs", defaultPath, "path config")
 	flag.Parse()

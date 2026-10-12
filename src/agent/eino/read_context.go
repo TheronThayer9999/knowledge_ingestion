@@ -77,7 +77,9 @@ func NewReadContextTool(vectors domain.IVectorStore) (einotool.InvokableTool, er
 			if err != nil {
 				return nil, err
 			}
-			logReadContextDebug(in.ArticleID, in.ChunkIndex, window, chunks)
+			if scope.Collector != nil {
+				scope.Collector.Searched = true
+			}
 			if len(chunks) == 0 {
 				// Hết chunk quanh điểm hỏi (ID bịa, chunk_index quá đà) — trả
 				// rỗng để LLM tự xoay (đổi ID, search lại) thay vì error làm
@@ -175,6 +177,9 @@ func NewArticleInfoTool(repo domain.IArticleRepository) (einotool.InvokableTool,
 				if err != nil {
 					return nil, err
 				}
+				if scope.Collector != nil {
+					scope.Collector.Searched = true
+				}
 				return []articleInfoItem{toItem(a)}, nil
 			}
 			ids := scope.CategoryIDs
@@ -199,6 +204,9 @@ func NewArticleInfoTool(repo domain.IArticleRepository) (einotool.InvokableTool,
 					}
 					out = append(out, toItem(a))
 				}
+			}
+			if scope.Collector != nil {
+				scope.Collector.Searched = true
 			}
 			return out, nil
 		})

@@ -71,12 +71,11 @@ func loadService() []fx.Option {
 		// agent không import middlewares — loader nối ICurrentUser với IUserResolver.
 		fx.Provide(func(u middlewares.ICurrentUser) port.IUserResolver { return u }),
 		fx.Provide(newHybridSearcher),
-		fx.Provide(newEinoChatModel),
 		fx.Provide(newClassifyPrompts),
 		fx.Provide(newQuestionClassifier),
 		fx.Provide(usecase.NewSearchService),
 		fx.Provide(newChatPrompts),
-		fx.Provide(newChatAgent),
+		fx.Provide(newProviderAgents),
 		fx.Provide(usecase.NewChatService),
 	}
 }

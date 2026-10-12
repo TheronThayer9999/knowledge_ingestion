@@ -1031,13 +1031,14 @@
         "dtos.ChatRequest": {
             "type": "object",
             "required": [
-                "message",
-                "model"
+                "message"
             ],
             "properties": {
-                "category_id": {
-                    "type": "integer",
-                    "example": 5
+                "category_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "history": {
                     "type": "array",
@@ -1053,12 +1054,17 @@
                     "type": "string",
                     "maxLength": 2000,
                     "minLength": 1,
-                    "example": "Mức phạt chậm nộp thuế bao nhiêu?"
+                    "example": "Phụ cấp nhân viên đi công tác là bao nhiêu?"
                 },
                 "model": {
+                    "description": "Model ép model trong provider đó (rỗng = model mặc định theo provider).",
                     "type": "string",
-                    "minLength": 1,
-                    "example": "gemma4:31b"
+                    "example": "apodex/apodex-1.1-mini:free"
+                },
+                "provider": {
+                    "description": "Provider chọn backend LLM (rỗng = mặc định cấu hình) — validate theo\nregistry lúc runtime (Resolve trả 400 kèm danh sách provider đang có),\nkhông hardcode oneof ở tag để thêm backend không phải sửa DTO.",
+                    "type": "string",
+                    "example": "openrouter"
                 }
             }
         },
@@ -1214,9 +1220,11 @@
                 "query"
             ],
             "properties": {
-                "category_id": {
-                    "type": "integer",
-                    "example": 5
+                "category_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "limit": {
                     "type": "integer",

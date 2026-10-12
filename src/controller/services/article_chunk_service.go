@@ -152,7 +152,6 @@ func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, arti
 		if strings.TrimSpace(pg.Text) == "" {
 			continue
 		}
-		logPageDebug(article.ID, pg.Num, pg.Text)
 		// Chẻ theo khối Điều/mục trước rồi mới cắt size trong từng khối —
 		// chunk không bao giờ trộn 2 Điều, overlap không chảy qua ranh giới
 		// Điều nên LLM luôn biết quy tắc thuộc Điều nào (xem SplitBlocks).
@@ -168,7 +167,6 @@ func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, arti
 			if err != nil {
 				return fmt.Errorf("cắt chunk: %w", err)
 			}
-			logSplitDebug(article.ID, pg.Num, parts)
 			// Gán mục cho từng chunk: block có tiêu đề thì lấy đó làm gốc,
 			// không thì thừa hưởng carry nối xuyên trang để chunk giữa Điều
 			// không mất ngữ cảnh (xem chunker.Annotate).
@@ -178,7 +176,6 @@ func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, arti
 			}
 			annotated, next := chunker.Annotate(parts, base)
 			carry = next
-			logAnnotateDebug(article.ID, pg.Num, len(chunks), annotated)
 			// Gom đầu văn bản để trích metadata (phiên bản/hiệu lực nằm trang đầu).
 			if head.Len() < 3000 {
 				head.WriteString(pg.Text)

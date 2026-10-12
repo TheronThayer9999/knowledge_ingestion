@@ -14,6 +14,7 @@ type IConfig interface {
 	GetStorage() S3Config
 	GetEmbedding() EmbeddingConfig
 	GetLLM() LLMConfig
+	GetOpenRouter() OpenRouterConfig
 	GetQdrant() QdrantConfig
 	GetOCR() OCRConfig
 	GetRedis() RedisConfig // Thêm method này
@@ -31,6 +32,7 @@ type appConfig struct {
 	Storage   S3Config        `json:"storage"`
 	Embedding EmbeddingConfig `json:"embedding"`
 	LLM       LLMConfig       `json:"llm"`
+	OpenRouter OpenRouterConfig `json:"openrouter"`
 	Qdrant    QdrantConfig    `json:"qdrant"`
 	OCR       OCRConfig       `json:"ocr"`
 	RedisCli  RedisConfig     `json:"redis"`
@@ -86,6 +88,20 @@ type LLMConfig struct {
 	Temperature float64 `json:"temperature"`
 	MaxTokens   int     `json:"max_tokens"`
 	TimeoutSec  int     `json:"timeout_sec"`
+}
+
+// OpenRouterConfig giữ kết nối tới OpenRouter (OpenAI-compatible
+// /api/v1/chat/completions) cho agent — provider thứ hai bên cạnh Ollama,
+// request chọn qua field `provider`, không kẹt 1 backend trong config.
+// Model mặc định là bản free để linh hoạt thử nghiệm; request nào cũng có
+// thể ép model khác qua field `model` như với Ollama.
+type OpenRouterConfig struct {
+	APIKey string `json:"api_key"` // rỗng = chưa cấu hình, request openrouter trả 400
+	// Model mặc định khi request không ép model — bản free theo yêu cầu.
+	Model string `json:"model"`
+	// BaseURL rỗng thì https://openrouter.ai/api/v1 (OpenAI-compatible).
+	BaseURL    string `json:"base_url"`
+	TimeoutSec int    `json:"timeout_sec"`
 }
 
 // QdrantConfig giữ địa chỉ Qdrant — worker embed upsert vector qua gRPC
@@ -232,6 +248,25 @@ func Load(path string) (IConfig, error) {
 	if cfg.LLM.TimeoutSec > 3600 {
 		cfg.LLM.TimeoutSec = 3600
 	}
+	// OpenRouter là provider tùy chọn: thiếu key vẫn boot bình thường (chỉ
+	// request nào chọn provider=openrouter mới báo chưa cấu hình). Key ưu
+	// tiên env để không commit secret vào file — nhưng user chọn để trong
+	// config.json thì vẫn ăn (env thắng khi cả hai cùng có).
+	if cfg.OpenRouter.BaseURL == "" {
+		cfg.OpenRouter.BaseURL = "https://openrouter.ai/api/v1"
+	}
+	if cfg.OpenRouter.Model == "" {
+		cfg.OpenRouter.Model = "apodex/apodex-1.1-mini:free"
+	}
+	if envKey := os.Getenv("OPENROUTER_API_KEY"); envKey != "" {
+		cfg.OpenRouter.APIKey = envKey
+	}
+	if cfg.OpenRouter.TimeoutSec <= 0 {
+		cfg.OpenRouter.TimeoutSec = 120
+	}
+	if cfg.OpenRouter.TimeoutSec > 3600 {
+		cfg.OpenRouter.TimeoutSec = 3600
+	}
 	if cfg.Qdrant.Host == "" {
 		return nil, fmt.Errorf("qdrant.host is required")
 	}
@@ -347,6 +382,7 @@ func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
 func (c *appConfig) GetStorage() S3Config          { return c.Storage }
 func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }
 func (c *appConfig) GetLLM() LLMConfig             { return c.LLM }
+func (c *appConfig) GetOpenRouter() OpenRouterConfig { return c.OpenRouter }
 func (c *appConfig) GetQdrant() QdrantConfig       { return c.Qdrant }
 func (c *appConfig) GetOCR() OCRConfig             { return c.OCR }
 func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }

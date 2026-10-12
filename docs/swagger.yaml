@@ -31,9 +31,10 @@ definitions:
     type: object
   dtos.ChatRequest:
     properties:
-      category_id:
-        example: 5
-        type: integer
+      category_ids:
+        items:
+          type: integer
+        type: array
       history:
         items:
           $ref: '#/definitions/dtos.ChatHistoryItem'
@@ -42,17 +43,24 @@ definitions:
         minimum: 0
         type: integer
       message:
-        example: Mức phạt chậm nộp thuế bao nhiêu?
+        example: Phụ cấp nhân viên đi công tác là bao nhiêu?
         maxLength: 2000
         minLength: 1
         type: string
       model:
-        example: gemma4:31b
-        minLength: 1
+        description: Model ép model trong provider đó (rỗng = model mặc định theo
+          provider).
+        example: apodex/apodex-1.1-mini:free
+        type: string
+      provider:
+        description: |-
+          Provider chọn backend LLM (rỗng = mặc định cấu hình) — validate theo
+          registry lúc runtime (Resolve trả 400 kèm danh sách provider đang có),
+          không hardcode oneof ở tag để thêm backend không phải sửa DTO.
+        example: openrouter
         type: string
     required:
     - message
-    - model
     type: object
   dtos.CreateArticleRequest:
     properties:
@@ -164,9 +172,10 @@ definitions:
     type: object
   dtos.SearchRequest:
     properties:
-      category_id:
-        example: 5
-        type: integer
+      category_ids:
+        items:
+          type: integer
+        type: array
       limit:
         minimum: 0
         type: integer

@@ -357,6 +357,50 @@ func (c *connection) ScrollNeighbors(ctx context.Context, filter domain.SearchFi
 	return hits, nil
 }
 
+// listSectionsLimit trần point scroll khi liệt kê mục — bài dài nhất cũng chỉ
+// vài trăm chunk, 500 là dư mà 1 lượt Scroll vẫn nhẹ (chỉ đọc payload).
+const listSectionsLimit = 500
+
+// ListSections trả các tên mục khác nhau của 1 bài theo thứ tự chunk —
+// ground-truth cho câu hỏi đếm/liệt kê Điều, LLM khỏi đếm bằng mắt. Mục rỗng
+// (chunk đầu bài chưa có heading) bỏ qua để danh sách sạch.
+func (c *connection) ListSections(ctx context.Context, filter domain.SearchFilter) ([]string, error) {
+	if filter.ArticleID <= 0 {
+		return nil, fmt.Errorf("%w: ListSections cần article_id", ErrBadRequest)
+	}
+	points, err := c.client.Scroll(ctx, &qdrantapi.ScrollPoints{
+		CollectionName: c.collection,
+		Filter:         searchFilter(filter),
+		Limit:          ptrUint32(listSectionsLimit),
+		WithPayload:    qdrantapi.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("qdrant: list sections: %w", err)
+	}
+	type ranked struct {
+		index   int
+		section string
+	}
+	ranked_ := make([]ranked, 0, len(points))
+	for _, p := range points {
+		if p == nil {
+			continue
+		}
+		payload := qdrantapi.ValueMapToMap(p.GetPayload())
+		if sec := asString(payload["section"]); sec != "" {
+			ranked_ = append(ranked_, ranked{index: int(asInt64(payload["chunk_index"])), section: sec})
+		}
+	}
+	sort.Slice(ranked_, func(i, j int) bool { return ranked_[i].index < ranked_[j].index })
+	out := make([]string, 0, len(ranked_))
+	for _, r := range ranked_ {
+		if len(out) == 0 || out[len(out)-1] != r.section {
+			out = append(out, r.section)
+		}
+	}
+	return out, nil
+}
+
 // asInt64/asString đọc payload Qdrant đã decode — số về int64/float64, thiếu
 // hoặc sai kiểu thì 0/rỗng thay vì panic cả query.
 func asInt64(v any) int64 {

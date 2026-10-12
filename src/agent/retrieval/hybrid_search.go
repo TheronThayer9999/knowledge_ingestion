@@ -73,12 +73,20 @@ func (h *HybridSearcher) SearchHybrid(ctx context.Context, p HybridParams) ([]*d
 	if err != nil {
 		return nil, fmt.Errorf("hybrid search: embed query: %w", err)
 	}
-	dense, err := h.vectors.Search(ctx, vec, filter, limit, p.ScoreThreshold)
+	// Mỗi phía lấy dư 3× limit rồi fuse mới cắt — chunk đứng hạng 6+ ở cả 2
+	// phía sẽ tàng hình nếu chỉ lấy đúng limit mỗi phía (đã từng mất chunk
+	// Điều 1 ở query "so sánh Khoản 1 và Khoản 4 Điều 1" với limit=5). Lấy
+	// dư rẻ (Qdrant ms) vì fuse + cắt limit vẫn giữ ngân sách context.
+	fetch := limit * 3
+	if fetch > constants.SEARCH_MAX_LIMIT {
+		fetch = constants.SEARCH_MAX_LIMIT
+	}
+	dense, err := h.vectors.Search(ctx, vec, filter, fetch, p.ScoreThreshold)
 	if err != nil {
 		return nil, err
 	}
 	var text = make([]*domain.ScoredChunk, 0)
-	if hits, err := h.vectors.SearchText(ctx, p.Query, filter, limit); err != nil {
+	if hits, err := h.vectors.SearchText(ctx, p.Query, filter, fetch); err != nil {
 		logs.Warnw("hybrid: text search lỗi, chạy dense-only (collection cũ thiếu text index?)", "error", err)
 	} else {
 		text = hits
@@ -147,6 +155,7 @@ func FuseRRF(lists ...[]*domain.ScoredChunk) []*domain.ScoredChunk {
 			ArticleID:  h.ArticleID,
 			ChunkIndex: h.ChunkIndex,
 			PageNum:    h.PageNum,
+			Section:    h.Section,
 			Text:       h.Text,
 		})
 	}

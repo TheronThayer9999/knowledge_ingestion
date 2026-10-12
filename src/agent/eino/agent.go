@@ -79,10 +79,12 @@ func stripCitations(s string) string {
 }
 
 // RunResult là output 1 lượt chat: câu trả lời markdown + hits đã gom qua các
-// lượt gọi tool (để dựng cites, khớp [^n] trong answer).
+// lượt gọi tool (để dựng cites, khớp [^n] trong answer) + cờ đã đọc tài liệu
+// (để dán nhãn question_type, kể cả khi không gom được hit nào).
 type RunResult struct {
-	Answer string
-	Hits   []*domain.ScoredChunk
+	Answer   string
+	Hits     []*domain.ScoredChunk
+	Searched bool
 }
 
 // Run chạy agent 1 lượt: history + câu hỏi hiện tại đi vào, loop tool lặp
@@ -123,15 +125,13 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 		if out := ev.Output; out != nil && out.MessageOutput != nil &&
 			!out.MessageOutput.IsStreaming && out.MessageOutput.Message != nil {
 			answer = out.MessageOutput.Message.Content
-			for _, tc := range out.MessageOutput.Message.ToolCalls {
-				logToolCallDebug(tc.Function.Name, tc.Function.Arguments)
-			}
 		}
 	}
 	var hits = make([]*domain.ScoredChunk, 0)
+	searched := false
 	if scope, ok := ScopeFrom(ctx); ok && scope.Collector != nil {
 		hits = scope.Collector.Hits
+		searched = scope.Collector.Searched
 	}
-	logAnswerDebug(answer, len(hits))
-	return RunResult{Answer: answer, Hits: hits}, nil
+	return RunResult{Answer: answer, Hits: hits, Searched: searched}, nil
 }

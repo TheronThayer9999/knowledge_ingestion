@@ -19,7 +19,7 @@ import (
 //     định dạng kết quả trả về), 1 constructor NewXTool bọc InferTool.
 //     Desc + schema args là nguồn thật duy nhất LLM thấy — viết cho LLM đọc,
 //     đừng ghi tóm tắt ở prompt file.
-//  2. Đăng ký 1 dòng trong loader.newChatAgent.
+//  2. Đăng ký 1 dòng trong loader.newProviderAgents.
 //  3. Phạm vi tin cậy (user, category ép) đọc qua ScopeFrom(ctx), không tin
 //     args LLM. Kết quả nhiều vòng gom qua scope.Collector để cites khớp [^n].
 
@@ -153,7 +153,11 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher, vectors domain.IVe
 			if err != nil {
 				return nil, err
 			}
-			logSearchDebug(in.Query, in.Limit, ids, chunks)
+			// Đã đọc tài liệu dù kết quả rỗng — nhãn response classify thay vì
+			// chitchat oan.
+			if scope.Collector != nil {
+				scope.Collector.Searched = true
+			}
 			var ns []int
 			if scope.Collector != nil {
 				ns = scope.Collector.Add(chunks)

@@ -69,6 +69,10 @@ type IVectorStore interface {
 	// bị cắt giữa Điều. Trả theo ChunkIndex tăng dần, Score = 0 (không phải
 	// rank search). DB chunk đã trim sau embed nên đọc từ Qdrant payload.
 	ScrollNeighbors(ctx context.Context, filter SearchFilter, center, window int) ([]*ScoredChunk, error)
+	// ListSections trả các tên mục (section) khác nhau của 1 bài theo thứ tự
+	// chunk — tool list_sections đếm/liệt kê Điều mà không cần LLM đếm bằng
+	// mắt trên đoạn trích. ArticleID bắt buộc, rỗng thì rỗng.
+	ListSections(ctx context.Context, filter SearchFilter) ([]string, error)
 	// IsPermanentError báo lỗi có retry cũng vậy không (sai dim, mã gRPC
 	// InvalidArgument/NotFound/Unauthenticated...) — service dùng để failed
 	// luôn thay vì backoff. Triển khai ở infra.

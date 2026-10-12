@@ -7,11 +7,17 @@ type ChatHistoryItem struct {
 	Content string `json:"content" binding:"required,max=4000" example:"Nghị định 123 nói về gì?"`
 }
 
-// ChatRequest hỏi đáp tri thức — message bắt buộc, model bắt buộc (chat không
-// có model thì không tổng hợp được, khác search còn default lookup).
+// ChatRequest hỏi đáp tri thức — message bắt buộc; provider/model tùy chọn:
+// provider rỗng thì dùng mặc định (ollama), model rỗng thì dùng model mặc
+// định của provider đó (openrouter: google/gemma-4-31b-it:free).
 type ChatRequest struct {
-	Message     string            `json:"message" binding:"required,min=1,max=2000" example:"Mức phạt chậm nộp thuế bao nhiêu?"`
-	Model       string            `json:"model" binding:"required,min=1" example:"gemma4:31b"`
+	Message string `json:"message" binding:"required,min=1,max=2000" example:"Phụ cấp nhân viên đi công tác là bao nhiêu?"`
+	// Provider chọn backend LLM (rỗng = mặc định cấu hình) — validate theo
+	// registry lúc runtime (Resolve trả 400 kèm danh sách provider đang có),
+	// không hardcode oneof ở tag để thêm backend không phải sửa DTO.
+	Provider string `json:"provider,omitempty" example:"openrouter"`
+	// Model ép model trong provider đó (rỗng = model mặc định theo provider).
+	Model       string            `json:"model,omitempty" example:"apodex/apodex-1.1-mini:free"`
 	CategoryIDs []int64           `json:"category_ids,omitempty" binding:"omitempty,dive,gt=0"`
 	Limit       int               `json:"limit,omitempty" binding:"omitempty,gte=0"`
 	History     []ChatHistoryItem `json:"history,omitempty"`
@@ -30,7 +36,7 @@ type ChatCite struct {
 // ChatResponse là câu trả lời hoàn chỉnh — answer là Markdown để ReactJS
 // render bằng react-markdown, cites để map component trích dẫn.
 type ChatResponse struct {
-	Answer       string     `json:"answer" example:"Mức phạt là **0.05%/ngày**[^1]."`
-	QuestionType string     `json:"question_type" example:"lookup"`
+	Answer       string      `json:"answer" example:"Mức phạt là **0.05%/ngày**[^1]."`
+	QuestionType string      `json:"question_type" example:"lookup"`
 	Cites        []*ChatCite `json:"cites"`
 }

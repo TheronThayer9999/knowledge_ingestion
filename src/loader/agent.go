@@ -1,6 +1,8 @@
 package loader
 
 import (
+	"strings"
+
 	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/agent/retrieval"
@@ -8,24 +10,29 @@ import (
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/domain"
 
-	ollamamodel "github.com/cloudwego/eino-ext/components/model/ollama"
+	einotool "github.com/cloudwego/eino/components/tool"
 )
 
 // Wiring agent tập trung ở file này — thêm tool/prompt/model mới cho agent
 // thì sửa ở đây, không lẫn vào wiring infra/API trong loader.go.
 
-// newEinoChatModel dựng ChatModel Eino trên Ollama (lib eino-ext) — New chỉ
-// dựng HTTP client, không dial nên boot không fail-fast vì Ollama; agent lỗi
-// thì caller map 500, classify lỗi thì về lookup.
-func newEinoChatModel(cfg config.IConfig) (*ollamamodel.ChatModel, error) {
-	return eino.NewChatModel(cfg.GetLLM())
-}
+// ProviderAgents là registry agent chat theo backend LLM — xem eino package
+// (định nghĩa ở đó để usecase dùng được mà không cycle import với loader).
+// Thêm backend mới thì thêm 1 case ở newProviderAgents, usecase và prompt
+// file không phải sửa.
+type ProviderAgents = eino.ProviderAgents
 
-// newChatAgent dựng agent agentic một lần lúc startup: instruction từ file
-// chat_system.md + các tool Eino. Thêm tool mới = bọc 1 file trong eino (xem
-// hướng dẫn đầu knowledge_search.go) + thêm 1 dòng ở đây, usecase và prompt
-// file không phải sửa (LLM tự thấy tool qua ToolInfo).
-func newChatAgent(model *ollamamodel.ChatModel, prompts synthesis.Prompts, hybrid *retrieval.HybridSearcher, categoryRepo domain.ICategoryRepositoryImpl, vectors domain.IVectorStore, articleRepo domain.IArticleRepository) (*eino.ChatAgent, error) {
+// newProviderAgents dựng agent cho từng backend đã đăng ký qua
+// eino.BuildProviderAgents — thêm backend mới thì thêm 1 dòng đăng ký dưới
+// đây, không sửa usecase/prompt. Provider nào thiếu cấu hình (vd openrouter
+// thiếu key) thì boot vẫn lên, request nào chọn nó mới 400.
+func newProviderAgents(
+	cfg config.IConfig, prompts synthesis.Prompts,
+	hybrid *retrieval.HybridSearcher,
+	categoryRepo domain.ICategoryRepositoryImpl,
+	vectors domain.IVectorStore,
+	articleRepo domain.IArticleRepository) (*ProviderAgents, error) {
+
 	search, err := eino.NewKnowledgeSearchTool(hybrid, vectors)
 	if err != nil {
 		return nil, err
@@ -42,7 +49,20 @@ func newChatAgent(model *ollamamodel.ChatModel, prompts synthesis.Prompts, hybri
 	if err != nil {
 		return nil, err
 	}
-	return eino.NewChatAgent(model, prompts.System, search, cats, ctxTool, info)
+	sections, err := eino.NewListSectionsTool(vectors)
+	if err != nil {
+		return nil, err
+	}
+	llm := cfg.GetLLM()
+	defaultProvider := eino.ProviderOllama
+	if strings.TrimSpace(llm.Provider) != "" {
+		defaultProvider = strings.ToLower(strings.TrimSpace(llm.Provider))
+	}
+	tools := []einotool.BaseTool{search, cats, ctxTool, info, sections}
+	return eino.BuildProviderAgents(prompts.System, defaultProvider, tools,
+		eino.NewOllamaProvider(llm),
+		eino.NewOpenRouterProvider(cfg.GetOpenRouter()),
+	)
 }
 
 // newHybridSearcher dựng pipeline hybrid dùng chung cho cả 2 đường /search
@@ -53,9 +73,13 @@ func newHybridSearcher(embedder domain.Embedder, vectors domain.IVectorStore, ar
 }
 
 // newQuestionClassifier dựng bộ dán nhãn dùng chung cho /search (chọn route)
-// và /chat (nhãn response sau run) — chung 1 ChatModel với agent, 1 prompt
-// file, 1 điểm sửa.
-func newQuestionClassifier(model *ollamamodel.ChatModel, classify question.Prompts) *question.LLMClassifier {
+// và /chat (nhãn response sau run) — dùng client của provider mặc định (việc
+// dán nhãn rẻ, không cần theo provider của request), 1 prompt file, 1 điểm sửa.
+func newQuestionClassifier(agents *ProviderAgents, classify question.Prompts) *question.LLMClassifier {
+	model, ok := agents.Models[agents.DefaultProvider]
+	if !ok {
+		return question.NewLLMClassifier(nil, classify)
+	}
 	return question.NewLLMClassifier(model, classify)
 }
 

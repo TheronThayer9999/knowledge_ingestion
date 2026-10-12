@@ -4,3 +4,5 @@ data/
 .vscode/
 .codegraph/
 __pycache__/
+# config local (chứa key thật) — chỉ máy dev dùng, đừng commit
+configs/config.local.json

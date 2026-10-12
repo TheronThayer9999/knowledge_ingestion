@@ -42,6 +42,12 @@
     "max_tokens": 2048,
     "timeout_sec": 120
   },
+  "openrouter": {
+    "api_key": "",
+    "model": "apodex/apodex-1.1-mini:free",
+    "base_url": "https://openrouter.ai/api/v1",
+    "timeout_sec": 120
+  },
   "ocr": {
     "enabled": true,
     "binary": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",

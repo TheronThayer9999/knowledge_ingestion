@@ -176,6 +176,9 @@ func (f *fakeVectors) SearchText(_ context.Context, _ string, _ domain.SearchFil
 func (f *fakeVectors) ScrollNeighbors(_ context.Context, _ domain.SearchFilter, _, _ int) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
+func (f *fakeVectors) ListSections(_ context.Context, _ domain.SearchFilter) ([]string, error) {
+	return nil, nil
+}
 
 func newPurgeTest(log *orderLog, repo *fakeArticleRepo, chunks *fakePurgeChunkRepo, vectors *fakeVectors, store *fakeStorage) IArticlePurgeService {
 	return NewArticlePurgeService(repo, chunks, vectors, store, PurgeOptions{ChunkRetention: time.Hour, TrimInterval: time.Hour})

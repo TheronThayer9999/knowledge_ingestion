@@ -126,6 +126,7 @@ type SearchHitResponse struct {
 	ArticleID  int64   `json:"article_id" example:"8"`
 	ChunkIndex int     `json:"chunk_index" example:"11"`
 	PageNum    int     `json:"page_num" example:"0"`
+	Section    string  `json:"section" example:"ĐIỀU 5: CHẾ ĐỘ ĐÓNG BẢO HIỂM"`
 	Score      float32 `json:"score" example:"0.83"`
 	Text       string  `json:"text" example:"Chất lượng là ưu tiên hàng đầu..."`
 }
@@ -147,6 +148,7 @@ func ToSearchHitResponse(h *domain.ScoredChunk) *SearchHitResponse {
 		ArticleID:  h.ArticleID,
 		ChunkIndex: h.ChunkIndex,
 		PageNum:    h.PageNum,
+		Section:    h.Section,
 		Score:      h.Score,
 		Text:       h.Text,
 	}

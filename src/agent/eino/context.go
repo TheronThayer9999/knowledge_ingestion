@@ -47,6 +47,10 @@ const maxCollectedHits = 30
 type HitCollector struct {
 	Hits []*domain.ScoredChunk
 	seen map[string]int
+	// Searched đánh dấu agent đã đọc tài liệu (search/info/sections/context),
+	// kể cả khi kết quả rỗng không gom được hit nào — nhãn question_type dựa
+	// vào cờ này chứ không dựa vào số cites (tool đếm Điều không sinh cites).
+	Searched bool
 }
 
 // Add gom hits, trả n cho từng hit theo thứ tự đầu vào — hit trùng PointID

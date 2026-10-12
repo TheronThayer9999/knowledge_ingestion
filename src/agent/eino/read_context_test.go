@@ -35,6 +35,9 @@ func (f *fakeNeighborVectors) ScrollNeighbors(_ context.Context, filter domain.S
 	f.got = filter
 	return f.points, f.err
 }
+func (f *fakeNeighborVectors) ListSections(_ context.Context, _ domain.SearchFilter) ([]string, error) {
+	return nil, nil
+}
 
 func TestNewReadContextToolRequiresStore(t *testing.T) {
 	if _, err := NewReadContextTool(nil); err == nil {
