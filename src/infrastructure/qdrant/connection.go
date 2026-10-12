@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -101,7 +102,7 @@ func (c *connection) ensureCollection(ctx context.Context) error {
 	}
 	// Index payload best-effort — có rồi hay lỗi cũng không chặn boot, chỉ
 	// khiến xóa/filter theo bài chậm hơn.
-	for _, field := range []string{"article_id", "user_id", "category_id"} {
+	for _, field := range []string{"article_id", "user_id", "category_id", "chunk_index"} {
 		ft := qdrantapi.FieldType_FieldTypeInteger
 		if _, err := c.client.CreateFieldIndex(ctx, &qdrantapi.CreateFieldIndexCollection{
 			CollectionName: c.collection,
@@ -171,6 +172,7 @@ func (c *connection) UpsertPoints(ctx context.Context, points []*domain.VectorPo
 				"category_id": p.CategoryID,
 				"chunk_index": p.ChunkIndex,
 				"page_num":    p.PageNum,
+				"section":     p.Section,
 				"text":        p.Text,
 			}),
 		})
@@ -257,6 +259,7 @@ func (c *connection) Search(ctx context.Context, vector []float32, filter domain
 			ArticleID:  asInt64(payload["article_id"]),
 			ChunkIndex: int(asInt64(payload["chunk_index"])),
 			PageNum:    int(asInt64(payload["page_num"])),
+			Section:    asString(payload["section"]),
 			Text:       asString(payload["text"]),
 		})
 	}
@@ -303,9 +306,54 @@ func (c *connection) SearchText(ctx context.Context, query string, filter domain
 			ArticleID:  asInt64(payload["article_id"]),
 			ChunkIndex: int(asInt64(payload["chunk_index"])),
 			PageNum:    int(asInt64(payload["page_num"])),
+			Section:    asString(payload["section"]),
 			Text:       asString(payload["text"]),
 		})
 	}
+	return hits, nil
+}
+
+// ScrollNeighbors đọc chunk của 1 bài quanh center (center-window đến
+// center+window) — tool read_context. Lọc Range ngay trên Qdrant (field
+// chunk_index có index) nên chỉ đúng 2*window+1 point về memory, không scroll
+// cả bài. Trả theo ChunkIndex tăng dần, Score = 0.
+func (c *connection) ScrollNeighbors(ctx context.Context, filter domain.SearchFilter, center, window int) ([]*domain.ScoredChunk, error) {
+	if filter.ArticleID <= 0 {
+		return nil, fmt.Errorf("%w: ScrollNeighbors cần article_id", ErrBadRequest)
+	}
+	if window < 0 {
+		window = 0
+	}
+	lo, hi := float64(center-window), float64(center+window)
+	must := append(permissionMusts(filter), qdrantapi.NewRange("chunk_index", &qdrantapi.Range{
+		Gte: &lo,
+		Lte: &hi,
+	}))
+	points, err := c.client.Scroll(ctx, &qdrantapi.ScrollPoints{
+		CollectionName: c.collection,
+		Filter:         &qdrantapi.Filter{Must: must},
+		Limit:          ptrUint32(uint32(2*window + 1)),
+		WithPayload:    qdrantapi.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("qdrant: scroll neighbors: %w", err)
+	}
+	hits := make([]*domain.ScoredChunk, 0, 2*window+1)
+	for _, p := range points {
+		if p == nil {
+			continue
+		}
+		payload := qdrantapi.ValueMapToMap(p.GetPayload())
+		hits = append(hits, &domain.ScoredChunk{
+			PointID:    p.GetId().GetUuid(),
+			ArticleID:  asInt64(payload["article_id"]),
+			ChunkIndex: int(asInt64(payload["chunk_index"])),
+			PageNum:    int(asInt64(payload["page_num"])),
+			Section:    asString(payload["section"]),
+			Text:       asString(payload["text"]),
+		})
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].ChunkIndex < hits[j].ChunkIndex })
 	return hits, nil
 }
 

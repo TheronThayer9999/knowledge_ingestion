@@ -20,6 +20,11 @@ type ArticleChunk struct {
 	// tiền tố "Điều X" nếu có) — phase 2 prepend ngữ cảnh lúc embed, không
 	// sửa ở đây để DB luôn là nguồn thật.
 	Content string `json:"content" gorm:"type:text;not null"`
+	// Section là tiêu đề mục chứa chunk (ví dụ "ĐIỀU 5: BẢO HIỂM") do chunker
+	// Annotate gán lúc cắt — chunk giữa Điều thừa hưởng mục trước đó nên
+	// không bao giờ mù ngữ cảnh. Phase 2 prepend vào text embed để vector +
+	// Qdrant payload luôn mang theo.
+	Section string `json:"section" gorm:"size:200;not null;default:''"`
 	// PointID là id point Qdrant phase 2 sẽ upsert — UUIDv7 sinh 1 lần duy
 	// nhất lúc chunk rồi lưu DB, phase 2 chỉ đọc lại nên embed chạy lại cũng
 	// ghi đè đúng point cũ, không trùng.

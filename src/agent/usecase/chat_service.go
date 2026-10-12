@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"net/http"
+	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -10,6 +11,7 @@ import (
 	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/common/errors"
+	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/controller/dtos"
 )
 
@@ -67,7 +69,11 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 			Snippet:    snippet(h.Text),
 		})
 	}
-	return dtos.Ok(&dtos.ChatResponse{Answer: res.Answer, QuestionType: s.label(ctx, dto.Model, dto.Message, len(cites) > 0), Cites: cites})
+	qt := s.label(ctx, dto.Model, dto.Message, len(cites) > 0)
+	if os.Getenv("CHAT_DEBUG") == "1" {
+		logs.Infow("chatdbg: label", "question_type", qt, "cites", len(cites))
+	}
+	return dtos.Ok(&dtos.ChatResponse{Answer: res.Answer, QuestionType: qt, Cites: cites})
 }
 
 // label dán nhãn question_type cho response — agent trong loop không bị ép

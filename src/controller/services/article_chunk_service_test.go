@@ -328,6 +328,34 @@ func TestChunkPending_DeletedMidway(t *testing.T) {
 	}
 }
 
+// Chunk mang tiêu đề Điều thì chunk sau (không tiêu đề) thừa hưởng mục đó;
+// metadata số trang/phiên bản/hiệu lực ghi lên article.
+func TestChunkPending_SectionCarryAndMeta(t *testing.T) {
+	text := "Phiên bản: 2024-Q3 hiệu lực từ 01/10/2024\nĐIỀU 5: BẢO HIỂM\n" +
+		strings.Repeat("nội dung bảo hiểm xã hội cho nhân viên chính thức. ", 60)
+	articleRepo := &fakeChunkArticleRepo{list: []*domain.Article{chunkArticle(14, "uploads/h.txt")}}
+	chunkRepo := &fakeChunkRepo{}
+	store := &fakeChunkStorage{blobs: map[string]string{"uploads/h.txt": text}}
+	svc := newChunkTest(articleRepo, chunkRepo, store)
+
+	n, err := svc.ChunkPending(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if n != 1 || len(chunkRepo.saved) < 2 {
+		t.Fatalf("chunked = %d, saved = %d; want 1 và nhiều chunk", n, len(chunkRepo.saved))
+	}
+	for i, c := range chunkRepo.saved {
+		if c.Section != "ĐIỀU 5: BẢO HIỂM" {
+			t.Fatalf("chunk %d section = %q, want ĐIỀU 5: BẢO HIỂM", i, c.Section)
+		}
+	}
+	a := articleRepo.list[0]
+	if a.PageCount != 1 || a.Version != "2024-Q3" || a.EffectiveDate != "01/10/2024" {
+		t.Fatalf("metadata sai: pages=%d version=%q eff=%q", a.PageCount, a.Version, a.EffectiveDate)
+	}
+}
+
 // Lỗi ở bước claim thì trả lỗi ra ngoài để runner log (không nuốt).
 func TestChunkPending_ClaimError(t *testing.T) {
 	articleRepo := &fakeChunkArticleRepo{listErr: errBlobDown}

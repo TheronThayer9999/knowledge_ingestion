@@ -146,17 +146,31 @@ func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, arti
 		return fmt.Errorf("trích text: %w", err)
 	}
 	var chunks []*domain.ArticleChunk
+	carry := ""
+	var head strings.Builder
 	for _, pg := range pages {
 		if strings.TrimSpace(pg.Text) == "" {
 			continue
 		}
+		logPageDebug(article.ID, pg.Num, pg.Text)
 		// Lỗi splitter (tầng semantic gọi Ollama) là transient — trả về để
 		// caller backoff, không failed oan như lỗi file hỏng (permanent).
 		parts, err := s.splitter.Split(ctx, pg.Text)
 		if err != nil {
 			return fmt.Errorf("cắt chunk: %w", err)
 		}
-		for _, p := range parts {
+		logSplitDebug(article.ID, pg.Num, parts)
+		// Gán mục cho từng chunk, carry nối xuyên trang để chunk giữa Điều
+		// không mất ngữ cảnh (xem chunker.Annotate).
+		annotated, next := chunker.Annotate(parts, carry)
+		carry = next
+		logAnnotateDebug(article.ID, pg.Num, len(chunks), annotated)
+		// Gom đầu văn bản để trích metadata (phiên bản/hiệu lực nằm trang đầu).
+		if head.Len() < 3000 {
+			head.WriteString(pg.Text)
+			head.WriteString("\n")
+		}
+		for _, p := range annotated {
 			// PointID sinh 1 lần duy nhất ở đây (UUIDv7, sort được theo thời
 			// gian) rồi lưu DB — phase 2 chỉ đọc lại nên embed chạy lại bao
 			// nhiêu lần cũng upsert đúng point cũ, không trùng.
@@ -167,7 +181,8 @@ func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, arti
 			chunks = append(chunks, &domain.ArticleChunk{
 				ArticleID:  article.ID,
 				ChunkIndex: len(chunks),
-				Content:    p,
+				Content:    p.Text,
+				Section:    p.Section,
 				PointID:    pointID,
 				PageNum:    pg.Num,
 			})
@@ -175,6 +190,15 @@ func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, arti
 	}
 	if len(chunks) == 0 {
 		return fmt.Errorf("%w: không còn trang nào có chữ để chunk", extractor.ErrInvalid)
+	}
+	// Metadata bài (số trang, phiên bản, hiệu lực) — best-effort, rỗng khi
+	// văn bản không ghi; lỗi ghi thì warn chứ không failed cả bài đã cắt xong.
+	article.PageCount = len(pages)
+	if v, e := chunker.ExtractMeta(head.String()); v != "" || e != "" {
+		article.Version, article.EffectiveDate = v, e
+	}
+	if err := s.articleRepo.Update(ctx, article); err != nil {
+		logs.Warnw("chunk: không lưu metadata được (bỏ qua)", "trace_id", traceID, "article_id", article.ID, "error", err)
 	}
 	if err := s.chunkRepo.CreateBatch(ctx, chunks); err != nil {
 		return fmt.Errorf("lưu chunk: %w", err)

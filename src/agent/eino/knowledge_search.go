@@ -47,9 +47,9 @@ type knowledgeSearchHit struct {
 
 const knowledgeSearchDesc = `Tìm đoạn trích trong các tài liệu mà NGƯỜI DÙNG ĐANG HỎI đã upload (không phải tài liệu công khai trên mạng).
 
-KHI NÀO GỌI: mọi câu hỏi cần căn cứ từ tài liệu — hỏi một thông tin cụ thể, tóm tắt, so sánh, quy trình nhiều bước, suy luận từ nhiều đoạn, tính toán trên số liệu trong tài liệu, áp dụng vào trường hợp "nếu/tôi/công ty tôi...".
+KHI NÀO GỌI: mặc định mọi câu hỏi có nội dung tri thức (khái niệm, định nghĩa, con số, điều khoản, tên riêng, sự kiện, nguyên lý, thuật ngữ...) — kể cả câu nghe như kiến thức phổ thông — đều phải gọi trước khi trả lời. Hỏi một thông tin cụ thể, tóm tắt, so sánh, quy trình nhiều bước, suy luận từ nhiều đoạn, tính toán trên số liệu trong tài liệu, áp dụng vào trường hợp "nếu/tôi/công ty tôi...".
 
-KHI NÀO KHÔNG GỌI: chào hỏi, cảm ơn, trò chuyện xã giao; câu hỏi kiến thức chung không dính gì đến tài liệu. Những trường hợp này đáp thẳng, không gọi tool.
+KHI NÀO KHÔNG GỌI: chỉ chào hỏi, cảm ơn, xưng hô thuần túy không kèm nội dung tri thức. Khi không chắc câu hỏi có dính đến tài liệu hay không, luôn gọi một lần trước rồi mới kết luận. Những trường hợp đáp thẳng này không gọi tool.
 
 CÁCH ĐẶT QUERY: viết bằng tiếng Việt, giữ nguyên các từ khóa quan trọng trong câu hỏi (tên văn bản, số hiệu, thuật ngữ chuyên ngành) kèm theo ý hỏi. Ví dụ câu "mức phạt chậm nộp thuế là bao nhiêu" thì query là "mức phạt chậm nộp thuế". Đừng rút gọn thành 1-2 từ mất nghĩa, cũng đừng bê nguyên cả câu dài dòng.
 
@@ -90,6 +90,7 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher) (einotool.Invokabl
 			if err != nil {
 				return nil, err
 			}
+			logSearchDebug(in.Query, in.Limit, ids, chunks)
 			var ns []int
 			if scope.Collector != nil {
 				ns = scope.Collector.Add(chunks)

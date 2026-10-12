@@ -14,6 +14,8 @@ type VectorPoint struct {
 	CategoryID int64
 	ChunkIndex int
 	PageNum    int
+	// Section tiêu đề mục chứa chunk — payload để agent attribute đúng Điều.
+	Section string
 	Text       string
 }
 
@@ -33,6 +35,7 @@ type ScoredChunk struct {
 	ArticleID  int64
 	ChunkIndex int
 	PageNum    int
+	Section    string
 	Text       string
 }
 
@@ -61,6 +64,11 @@ type IVectorStore interface {
 	// (ensureCollection tạo best-effort) — collection cũ chưa có thì báo lỗi
 	// để service degraded dense-only, không fail cả query.
 	SearchText(ctx context.Context, query string, filter SearchFilter, limit int) ([]*ScoredChunk, error)
+	// ScrollNeighbors đọc các chunk kề chunkIndex của 1 bài trong phạm vi
+	// filter — tool read_context cho agent đọc thêm ngữ cảnh khi đoạn trích
+	// bị cắt giữa Điều. Trả theo ChunkIndex tăng dần, Score = 0 (không phải
+	// rank search). DB chunk đã trim sau embed nên đọc từ Qdrant payload.
+	ScrollNeighbors(ctx context.Context, filter SearchFilter, center, window int) ([]*ScoredChunk, error)
 	// IsPermanentError báo lỗi có retry cũng vậy không (sai dim, mã gRPC
 	// InvalidArgument/NotFound/Unauthenticated...) — service dùng để failed
 	// luôn thay vì backoff. Triển khai ở infra.

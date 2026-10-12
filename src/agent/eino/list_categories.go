@@ -29,7 +29,7 @@ const listCategoriesDesc = `Liệt kê các chủ đề (category) mà NGƯỜI 
 
 KHI NÀO GỌI: người dùng nhắc tên chủ đề bằng lời ("trong chủ đề thuế...", "tài liệu bảo hiểm của tôi...") mà câu hỏi cần căn cứ tài liệu; hoặc hỏi chung chung "tôi có những chủ đề nào". Gọi tool này TRƯỚC rồi đối chiếu tên để lấy đúng ID, sau đó truyền ID vào category_ids của knowledge_search.
 
-KHI NÀO KHÔNG GỌI: người dùng đã nêu rõ ID số; chào hỏi, cảm ơn, trò chuyện xã giao; câu hỏi kiến thức chung không dính tài liệu.
+KHI NÀO KHÔNG GỌI: người dùng đã nêu rõ ID số; chào hỏi, cảm ơn, xưng hô thuần túy không kèm nội dung tri thức. Khi không chắc có dính đến tài liệu hay không, luôn gọi tool tìm kiếm một lần trước rồi mới kết luận.
 
 KẾT QUẢ TRẢ VỀ: JSON gồm các phần tử {id, name, description}. Chỉ dùng ID có trong kết quả, không bịa ID. Không tìm thấy tên nào khớp thì tìm mọi chủ đề (bỏ trống category_ids ở knowledge_search), không đoán.`
 

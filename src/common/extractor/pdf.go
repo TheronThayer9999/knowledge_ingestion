@@ -89,6 +89,32 @@ func extractPDFPages(ctx context.Context, r io.Reader, ocr OCRConfig) ([]Page, e
 		}
 		pages = append(pages, Page{Num: i, Text: text})
 	}
+	// Khử chữ rải ở mức cả file — chữ rải là tính chất tool kết xuất PDF nên
+	// đo cả văn bản rồi mới sửa: file rải thì nối mọi dòng (ngưỡng từng dòng
+	// sẽ sót dòng ngắn), file sạch chỉ chạm dòng đạt ngưỡng strict để câu
+	// ngắn nhiều từ 1-2 chữ không bị nối oan (xem docSpaced/despaceLine).
+	var all strings.Builder
+	for _, pg := range pages {
+		all.WriteString(pg.Text)
+		all.WriteString("\n")
+	}
+	if force := docSpaced(all.String()); force {
+		for i := range pages {
+			lines := strings.Split(pages[i].Text, "\n")
+			for j, l := range lines {
+				lines[j] = joinLine(l)
+			}
+			pages[i].Text = strings.Join(lines, "\n")
+		}
+	} else {
+		for i := range pages {
+			lines := strings.Split(pages[i].Text, "\n")
+			for j, l := range lines {
+				lines[j] = despaceLine(l)
+			}
+			pages[i].Text = strings.Join(lines, "\n")
+		}
+	}
 	return pages, nil
 }
 
@@ -141,9 +167,11 @@ func renderPDFPagePdftoppm(ctx context.Context, binary, pdfPath string, page, dp
 	return png, nil
 }
 
-// pageText lấy text 1 trang theo dòng — mỗi dòng là các mảnh text nối bằng
-// space, các dòng nối bằng \n để chunker cắt đúng biên dòng. Trang lỗi thì
-// rỗng (service skip), không fail cả file vì 1 trang hỏng.
+// pageText lấy text thô 1 trang theo dòng — mỗi dòng là các mảnh text nối
+// bằng space, các dòng nối bằng \n để chunker cắt đúng biên dòng. Khử chữ
+// rải làm ở mức cả file trong extractPDFPages (tính chất file, không phải
+// dòng), nên ở đây giữ text thô. Trang lỗi thì rỗng (service skip), không
+// fail cả file vì 1 trang hỏng.
 func pageText(p pdf.Page) string {
 	rows, err := p.GetTextByRow()
 	if err != nil {

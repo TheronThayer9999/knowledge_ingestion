@@ -165,6 +165,10 @@ func (a adminVectorsAdapter) SearchText(_ context.Context, _ string, _ domain.Se
 	return nil, nil
 }
 
+func (a adminVectorsAdapter) ScrollNeighbors(_ context.Context, _ domain.SearchFilter, _, _ int) ([]*domain.ScoredChunk, error) {
+	return nil, nil
+}
+
 func (a adminVectorsAdapter) UpsertPoints(_ context.Context, _ []*domain.VectorPoint) error {
 	return nil
 }

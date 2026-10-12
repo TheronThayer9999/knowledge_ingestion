@@ -25,7 +25,7 @@ func newEinoChatModel(cfg config.IConfig) (*ollamamodel.ChatModel, error) {
 // chat_system.md + các tool Eino. Thêm tool mới = bọc 1 file trong eino (xem
 // hướng dẫn đầu knowledge_search.go) + thêm 1 dòng ở đây, usecase và prompt
 // file không phải sửa (LLM tự thấy tool qua ToolInfo).
-func newChatAgent(model *ollamamodel.ChatModel, prompts synthesis.Prompts, hybrid *retrieval.HybridSearcher, categoryRepo domain.ICategoryRepositoryImpl) (*eino.ChatAgent, error) {
+func newChatAgent(model *ollamamodel.ChatModel, prompts synthesis.Prompts, hybrid *retrieval.HybridSearcher, categoryRepo domain.ICategoryRepositoryImpl, vectors domain.IVectorStore, articleRepo domain.IArticleRepository) (*eino.ChatAgent, error) {
 	search, err := eino.NewKnowledgeSearchTool(hybrid)
 	if err != nil {
 		return nil, err
@@ -34,7 +34,15 @@ func newChatAgent(model *ollamamodel.ChatModel, prompts synthesis.Prompts, hybri
 	if err != nil {
 		return nil, err
 	}
-	return eino.NewChatAgent(model, prompts.System, search, cats)
+	ctxTool, err := eino.NewReadContextTool(vectors)
+	if err != nil {
+		return nil, err
+	}
+	info, err := eino.NewArticleInfoTool(articleRepo)
+	if err != nil {
+		return nil, err
+	}
+	return eino.NewChatAgent(model, prompts.System, search, cats, ctxTool, info)
 }
 
 // newHybridSearcher dựng pipeline hybrid dùng chung cho cả 2 đường /search

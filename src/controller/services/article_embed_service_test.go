@@ -191,6 +191,9 @@ func (f *fakeVectorStore) Search(_ context.Context, _ []float32, _ domain.Search
 func (f *fakeVectorStore) SearchText(_ context.Context, _ string, _ domain.SearchFilter, _ int) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
+func (f *fakeVectorStore) ScrollNeighbors(_ context.Context, _ domain.SearchFilter, _, _ int) ([]*domain.ScoredChunk, error) {
+	return nil, nil
+}
 func (f *fakeVectorStore) CountByArticle(ctx context.Context, articleID int64) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

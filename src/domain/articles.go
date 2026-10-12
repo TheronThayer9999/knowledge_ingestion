@@ -20,6 +20,15 @@ type Article struct {
 	UserID     int64 `json:"user_id" gorm:"not null;index"`
 	CategoryID int64 `json:"category_id" gorm:"not null;index"`
 
+	// Metadata trích lúc worker chunk (best-effort, rỗng khi văn bản không
+	// ghi): PageCount đếm trang extractor thấy, Version + EffectiveDate trích
+	// từ đầu văn bản ("Phiên bản: 2024-Q3", "hiệu lực từ 01/10/2024"). Tool
+	// article_info đọc các cột này để trả lời câu hỏi metadata mà không cần
+	// đoán từ đoạn trích.
+	PageCount     int    `json:"page_count" gorm:"not null;default:0"`
+	Version       string `json:"version" gorm:"size:50;not null;default:''"`
+	EffectiveDate string `json:"effective_date" gorm:"size:50;not null;default:''"`
+
 	// Cặp cột queue cho worker chunk phase 1 — bài nào chunk_status pending
 	// (hoặc processing quá lease) thì worker claim bằng FOR UPDATE SKIP
 	// LOCKED nên N worker không giẫm nhau. json:"-" vì nội bộ worker.
@@ -129,6 +138,9 @@ type ArticleChunkQueue interface {
 	MarkChunkDone(ctx context.Context, id int64) error
 	MarkChunkError(ctx context.Context, id int64, attempts int) error
 	IsAlive(ctx context.Context, id int64) (bool, error)
+	// Update lưu metadata trích lúc chunk (số trang, phiên bản, hiệu lực) —
+	// repo đã có, thêm vào vai để service không phải ôm cả IArticleRepository.
+	Update(ctx context.Context, article *Article) error
 }
 
 // ArticleEmbedQueue vai queue phase 2 của worker embed.

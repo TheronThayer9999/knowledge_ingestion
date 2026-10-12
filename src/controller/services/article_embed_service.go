@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"knowledge_ingestion/src/common/chunker"
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/utils"
@@ -231,7 +232,10 @@ func (s *articleEmbedService) markEmbedError(ctx context.Context, traceID string
 func (s *articleEmbedService) embedBatch(ctx context.Context, traceID string, batch []*domain.ChunkWithOwner) (int, error) {
 	texts := make([]string, 0, len(batch))
 	for _, it := range batch {
-		texts = append(texts, it.Chunk.Content)
+		// Prepend tiêu đề mục (chunker.Annotate đã gán lúc cắt) để vector +
+		// Qdrant payload luôn mang ngữ cảnh Điều — agent attribute đúng mục,
+		// full-text "ĐIỀU 5" cũng trúng chunk giữa Điều. DB giữ Content thô.
+		texts = append(texts, chunker.HeaderFor(it.Chunk.Section)+it.Chunk.Content)
 	}
 	var vectors [][]float32
 	// Log trước/sau mỗi lần gọi để nhìn thấy nhịp batch Ollama trong log
@@ -265,7 +269,8 @@ func (s *articleEmbedService) embedBatch(ctx context.Context, traceID string, ba
 			CategoryID: it.CategoryID,
 			ChunkIndex: it.Chunk.ChunkIndex,
 			PageNum:    it.Chunk.PageNum,
-			Text:       it.Chunk.Content,
+			Section:    it.Chunk.Section,
+			Text:       texts[i],
 		})
 		ids = append(ids, it.Chunk.ID)
 	}

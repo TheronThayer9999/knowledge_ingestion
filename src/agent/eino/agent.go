@@ -106,11 +106,15 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 		if out := ev.Output; out != nil && out.MessageOutput != nil &&
 			!out.MessageOutput.IsStreaming && out.MessageOutput.Message != nil {
 			answer = out.MessageOutput.Message.Content
+			for _, tc := range out.MessageOutput.Message.ToolCalls {
+				logToolCallDebug(tc.Function.Name, tc.Function.Arguments)
+			}
 		}
 	}
 	var hits = make([]*domain.ScoredChunk, 0)
 	if scope, ok := ScopeFrom(ctx); ok && scope.Collector != nil {
 		hits = scope.Collector.Hits
 	}
+	logAnswerDebug(answer, len(hits))
 	return RunResult{Answer: answer, Hits: hits}, nil
 }
