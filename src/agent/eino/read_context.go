@@ -2,9 +2,9 @@ package eino
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"sort"
-	stderrors "errors"
 
 	einotool "github.com/cloudwego/eino/components/tool"
 	toolutils "github.com/cloudwego/eino/components/tool/utils"
@@ -44,7 +44,7 @@ KHI NÀO GỌI: kết quả knowledge_search trả đoạn liên quan nhưng thi
 
 KHI NÀO KHÔNG GỌI: chưa search lần nào (gọi knowledge_search trước); muốn tìm nội dung mới (đổi từ khóa search thay vì đọc lan man); chào hỏi, cảm ơn.
 
-CÁCH DÙNG: window mặc định 1 (1 chunk trước + 1 sau) là đủ cho hầu hết ca cắt giữa chừng; chỉ tăng khi vẫn thiếu. Kết quả trả các chunk theo đúng thứ tự đọc, trích dẫn bằng [^n] như knowledge_search.`
+CÁCH DÙNG: mỗi chunk khoảng 1000 token nên window 1 (1 chunk trước + 1 sau, tổng khoảng 3 chunk) là đủ cho hầu hết ca cắt giữa chừng hoặc thiếu tên Điều/Khoản. Chỉ tăng window lên 2 khi quy định trải dài hơn, hoặc vẫn thiếu sau khi đọc window 1. Không dùng 3 trừ khi thật sự cần. Kết quả trả các chunk theo đúng thứ tự đọc, trích dẫn bằng [^n] như knowledge_search.`
 
 // NewReadContextTool bọc IVectorStore.ScrollNeighbors thành Eino
 // InvokableTool — DB chunk đã trim sau embed nên đọc từ Qdrant payload.

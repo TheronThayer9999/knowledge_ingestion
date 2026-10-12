@@ -3,6 +3,8 @@ package eino
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/cloudwego/eino/adk"
 	einomodel "github.com/cloudwego/eino/components/model"
@@ -64,6 +66,18 @@ func NewChatAgent(model einomodel.ToolCallingChatModel, instruction string, tls 
 	}, nil
 }
 
+// maxHistoryTurns giữ số lượt hội thoại gần nhất đưa vào agent — lượt cũ hơn
+// không còn ảnh hưởng câu hỏi hiện tại, còn giữ thì tốn token.
+const maxHistoryTurns = 6
+
+// citationRe bắt nhãn trích dẫn [^n] của lượt trước. Số n của lượt cũ không
+// khớp số của lượt đang chạy nên bỏ đi, tránh model nhầm nguồn.
+var citationRe = regexp.MustCompile(`\[\^\d+\]`)
+
+func stripCitations(s string) string {
+	return strings.TrimSpace(citationRe.ReplaceAllString(s, ""))
+}
+
 // RunResult là output 1 lượt chat: câu trả lời markdown + hits đã gom qua các
 // lượt gọi tool (để dựng cites, khớp [^n] trong answer).
 type RunResult struct {
@@ -80,10 +94,13 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 	if a == nil || a.runner == nil {
 		return RunResult{}, fmt.Errorf("eino agent: chưa được dựng")
 	}
-	msgs := make([]*schema.Message, 0, len(history)+1)
+	msgs := make([]*schema.Message, 0, maxHistoryTurns+1)
+	if len(history) > maxHistoryTurns {
+		history = history[len(history)-maxHistoryTurns:]
+	}
 	for _, h := range history {
 		if h.Role == "assistant" {
-			msgs = append(msgs, schema.AssistantMessage(h.Content, nil))
+			msgs = append(msgs, schema.AssistantMessage(stripCitations(h.Content), nil))
 		} else {
 			msgs = append(msgs, schema.UserMessage(h.Content))
 		}

@@ -105,14 +105,20 @@ func TestArticleInfoToolSingleArticle(t *testing.T) {
 	}
 }
 
-// Không ID, không category, scope cũng không khoanh → từ chối chứ không quét bừa.
+// Không ID, không category, scope cũng không khoanh → trả rỗng chứ không quét
+// bừa, và không lỗi để agent tự xoay thay vì abort cả run thành 500.
 func TestArticleInfoToolNeedsScope(t *testing.T) {
 	tool, err := NewArticleInfoTool(&fakeInfoArticleRepo{})
 	if err != nil {
 		t.Fatalf("NewArticleInfoTool: %v", err)
 	}
 	ctx := WithScope(context.Background(), Scope{UserID: 3})
-	if _, err := tool.InvokableRun(ctx, `{}`); err == nil {
-		t.Fatal("không rõ phạm vi phải lỗi")
+	raw, err := tool.InvokableRun(ctx, `{}`)
+	if err != nil {
+		t.Fatalf("không rõ phạm vi phải trả rỗng, không lỗi: %v", err)
+	}
+	var got []articleInfoItem
+	if err := json.Unmarshal([]byte(raw), &got); err != nil || len(got) != 0 {
+		t.Fatalf("phải trả danh sách rỗng, got %q: %v", raw, err)
 	}
 }

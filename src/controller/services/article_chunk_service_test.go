@@ -346,6 +346,14 @@ func TestChunkPending_SectionCarryAndMeta(t *testing.T) {
 		t.Fatalf("chunked = %d, saved = %d; want 1 và nhiều chunk", n, len(chunkRepo.saved))
 	}
 	for i, c := range chunkRepo.saved {
+		// Chunk 0 là phần mở đầu trước tiêu đề đầu (metadata phiên bản) —
+		// heading rỗng, hưởng carry rỗng, không gán bừa vào Điều 5.
+		if i == 0 {
+			if c.Section != "" {
+				t.Fatalf("chunk mở đầu section = %q, want rỗng", c.Section)
+			}
+			continue
+		}
 		if c.Section != "ĐIỀU 5: BẢO HIỂM" {
 			t.Fatalf("chunk %d section = %q, want ĐIỀU 5: BẢO HIỂM", i, c.Section)
 		}

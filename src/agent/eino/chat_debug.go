@@ -34,7 +34,7 @@ func logSearchDebug(query string, limit int, categories []int64, chunks []*domai
 		}
 		logs.Infow("chatdbg: search hit", "idx", i, "article_id", h.ArticleID, "page", h.PageNum,
 			"chunk_index", h.ChunkIndex, "score", h.Score, "section", h.Section,
-			"head", dbgHead(h.Text, 80))
+			"text", h.Text)
 	}
 }
 
@@ -49,7 +49,7 @@ func logReadContextDebug(articleID int64, chunkIndex, window int, chunks []*doma
 			continue
 		}
 		logs.Infow("chatdbg: context chunk", "article_id", h.ArticleID, "chunk_index", h.ChunkIndex,
-			"section", h.Section, "head", dbgHead(h.Text, 80))
+			"section", h.Section, "text", h.Text)
 	}
 }
 

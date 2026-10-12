@@ -153,39 +153,54 @@ func (s *articleChunkService) chunkOne(ctx context.Context, traceID string, arti
 			continue
 		}
 		logPageDebug(article.ID, pg.Num, pg.Text)
-		// Lỗi splitter (tầng semantic gọi Ollama) là transient — trả về để
-		// caller backoff, không failed oan như lỗi file hỏng (permanent).
-		parts, err := s.splitter.Split(ctx, pg.Text)
-		if err != nil {
-			return fmt.Errorf("cắt chunk: %w", err)
-		}
-		logSplitDebug(article.ID, pg.Num, parts)
-		// Gán mục cho từng chunk, carry nối xuyên trang để chunk giữa Điều
-		// không mất ngữ cảnh (xem chunker.Annotate).
-		annotated, next := chunker.Annotate(parts, carry)
-		carry = next
-		logAnnotateDebug(article.ID, pg.Num, len(chunks), annotated)
-		// Gom đầu văn bản để trích metadata (phiên bản/hiệu lực nằm trang đầu).
-		if head.Len() < 3000 {
-			head.WriteString(pg.Text)
-			head.WriteString("\n")
-		}
-		for _, p := range annotated {
-			// PointID sinh 1 lần duy nhất ở đây (UUIDv7, sort được theo thời
-			// gian) rồi lưu DB — phase 2 chỉ đọc lại nên embed chạy lại bao
-			// nhiêu lần cũng upsert đúng point cũ, không trùng.
-			pointID, err := utils.NewUUIDv7()
-			if err != nil {
-				return fmt.Errorf("sinh point id: %w", err)
+		// Chẻ theo khối Điều/mục trước rồi mới cắt size trong từng khối —
+		// chunk không bao giờ trộn 2 Điều, overlap không chảy qua ranh giới
+		// Điều nên LLM luôn biết quy tắc thuộc Điều nào (xem SplitBlocks).
+		// Văn bản không có Điều thì 1 block duy nhất, hành vi như cũ.
+		blocks := chunker.SplitBlocks(pg.Text)
+		for _, b := range blocks {
+			if strings.TrimSpace(b.Text) == "" {
+				continue
 			}
-			chunks = append(chunks, &domain.ArticleChunk{
-				ArticleID:  article.ID,
-				ChunkIndex: len(chunks),
-				Content:    p.Text,
-				Section:    p.Section,
-				PointID:    pointID,
-				PageNum:    pg.Num,
-			})
+			// Lỗi splitter (tầng semantic gọi Ollama) là transient — trả về để
+			// caller backoff, không failed oan như lỗi file hỏng (permanent).
+			parts, err := s.splitter.Split(ctx, b.Text)
+			if err != nil {
+				return fmt.Errorf("cắt chunk: %w", err)
+			}
+			logSplitDebug(article.ID, pg.Num, parts)
+			// Gán mục cho từng chunk: block có tiêu đề thì lấy đó làm gốc,
+			// không thì thừa hưởng carry nối xuyên trang để chunk giữa Điều
+			// không mất ngữ cảnh (xem chunker.Annotate).
+			base := carry
+			if b.Heading != "" {
+				base = b.Heading
+			}
+			annotated, next := chunker.Annotate(parts, base)
+			carry = next
+			logAnnotateDebug(article.ID, pg.Num, len(chunks), annotated)
+			// Gom đầu văn bản để trích metadata (phiên bản/hiệu lực nằm trang đầu).
+			if head.Len() < 3000 {
+				head.WriteString(pg.Text)
+				head.WriteString("\n")
+			}
+			for _, p := range annotated {
+				// PointID sinh 1 lần duy nhất ở đây (UUIDv7, sort được theo thời
+				// gian) rồi lưu DB — phase 2 chỉ đọc lại nên embed chạy lại bao
+				// nhiêu lần cũng upsert đúng point cũ, không trùng.
+				pointID, err := utils.NewUUIDv7()
+				if err != nil {
+					return fmt.Errorf("sinh point id: %w", err)
+				}
+				chunks = append(chunks, &domain.ArticleChunk{
+					ArticleID:  article.ID,
+					ChunkIndex: len(chunks),
+					Content:    p.Text,
+					Section:    p.Section,
+					PointID:    pointID,
+					PageNum:    pg.Num,
+				})
+			}
 		}
 	}
 	if len(chunks) == 0 {

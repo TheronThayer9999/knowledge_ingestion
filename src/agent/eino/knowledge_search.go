@@ -9,6 +9,8 @@ import (
 	toolutils "github.com/cloudwego/eino/components/tool/utils"
 
 	"knowledge_ingestion/src/agent/retrieval"
+	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/domain"
 )
 
 // Thêm tool mới cho agent chỉ cần 3 bước, không đụng usecase/prompt:
@@ -37,13 +39,26 @@ type KnowledgeSearchArgs struct {
 
 // knowledgeSearchHit là 1 hit trả cho LLM — n khớp HitCollector để cites.
 type knowledgeSearchHit struct {
-	N          int     `json:"n"`
-	ArticleID  int64   `json:"article_id"`
-	PageNum    int     `json:"page_num"`
-	ChunkIndex int     `json:"chunk_index"`
-	Score      float32 `json:"score"`
-	Text       string  `json:"text"`
+	N          int                      `json:"n"`
+	ArticleID  int64                    `json:"article_id"`
+	PageNum    int                      `json:"page_num"`
+	ChunkIndex int                      `json:"chunk_index"`
+	Score      float32                  `json:"score"`
+	Text       string                   `json:"text"`
+	Context    []knowledgeSearchContext `json:"context,omitempty"`
 }
+
+// knowledgeSearchContext là chunk kề trước/sau của 1 hit — chỉ để hiểu ngữ
+// cảnh, KHÔNG có n và KHÔNG trích dẫn [^n] (cites chỉ đếm hit chính).
+type knowledgeSearchContext struct {
+	ChunkIndex int    `json:"chunk_index"`
+	Section    string `json:"section,omitempty"`
+	Text       string `json:"text"`
+}
+
+// neighborWindow là số chunk kề lấy thêm mỗi bên của mỗi hit. Chunk ~1000 ký
+// tự nên 1 bên đã đủ câu/khoản bị cắt; mở rộng hơn làm context phình nhanh.
+const neighborWindow = 1
 
 const knowledgeSearchDesc = `Tìm đoạn trích trong các tài liệu mà NGƯỜI DÙNG ĐANG HỎI đã upload (không phải tài liệu công khai trên mạng).
 
@@ -53,17 +68,65 @@ KHI NÀO KHÔNG GỌI: chỉ chào hỏi, cảm ơn, xưng hô thuần túy khô
 
 CÁCH ĐẶT QUERY: viết bằng tiếng Việt, giữ nguyên các từ khóa quan trọng trong câu hỏi (tên văn bản, số hiệu, thuật ngữ chuyên ngành) kèm theo ý hỏi. Ví dụ câu "mức phạt chậm nộp thuế là bao nhiêu" thì query là "mức phạt chậm nộp thuế". Đừng rút gọn thành 1-2 từ mất nghĩa, cũng đừng bê nguyên cả câu dài dòng.
 
-KẾT QUẢ TRẢ VỀ: JSON gồm các phần tử {n, article_id, page_num, chunk_index, score, text}. n là số thứ tự nguồn — khi trả lời PHẢI trích dẫn bằng [^n] khớp đúng số này, đặt ngay sau câu dùng thông tin đó; chỉ dùng số n có trong kết quả, không bịa số. score chỉ để tham khảo độ liên quan, KHÔNG nhắc đến trong câu trả lời.
+KẾT QUẢ TRẢ VỀ: JSON gồm các phần tử {n, article_id, page_num, chunk_index, score, text, context}. n là số thứ tự nguồn — khi trả lời PHẢI trích dẫn bằng [^n] khớp đúng số này, đặt ngay sau câu dùng thông tin đó; chỉ dùng số n có trong kết quả, không bịa số. score chỉ để tham khảo độ liên quan, KHÔNG nhắc đến trong câu trả lời. context là đoạn kề trước/sau của đúng đoạn đó, đã có sẵn để hiểu đoạn bị cắt (ví dụ tên Điều/Khoản hoặc vế còn lại của quy định); context KHÔNG có n và KHÔNG trích dẫn bằng [^n], chỉ dùng để hiểu nội dung của đoạn n.
 
 NẾU KẾT QUẢ RỖNG HOẶC CHƯA ĐỦ CĂN CỨ: đổi từ khóa (dùng từ đồng nghĩa, tên văn bản hoặc số hiệu khác) rồi gọi lại, tối đa 1-2 lần. Vẫn không có thì kết luận không tìm thấy trong tài liệu, không đoán.`
+
+// neighborsOf lấy chunk kề (window neighborWindow) cho từng hit, aligned theo
+// index với chunks. Bỏ chunk kề đã là hit khác (tránh lặp) và cache theo
+// (bài, chunk) để hit cùng tâm không gọi Qdrant lại. Lỗi hạ tầng chỉ bỏ context
+// của hit đó, không làm hỏng cả lượt search.
+func neighborsOf(ctx context.Context, vectors domain.IVectorStore, scope Scope, ids []int64, chunks []*domain.ScoredChunk) [][]knowledgeSearchContext {
+	out := make([][]knowledgeSearchContext, len(chunks))
+	hitKeys := make(map[[2]int64]bool, len(chunks))
+	for _, h := range chunks {
+		if h != nil {
+			hitKeys[[2]int64{h.ArticleID, int64(h.ChunkIndex)}] = true
+		}
+	}
+	cache := make(map[[2]int64][]*domain.ScoredChunk)
+	for i, h := range chunks {
+		if h == nil {
+			continue
+		}
+		key := [2]int64{h.ArticleID, int64(h.ChunkIndex)}
+		near, ok := cache[key]
+		if !ok {
+			var err error
+			near, err = vectors.ScrollNeighbors(ctx, domain.SearchFilter{
+				UserID:      scope.UserID,
+				CategoryIDs: ids,
+				ArticleID:   h.ArticleID,
+			}, h.ChunkIndex, neighborWindow)
+			if err != nil {
+				logs.Warnw("knowledge_search: lấy chunk kề lỗi, bỏ context của hit", "article_id", h.ArticleID, "chunk_index", h.ChunkIndex, "error", err)
+				near = nil
+			}
+			cache[key] = near
+		}
+		for _, n := range near {
+			if n == nil || n.ChunkIndex == h.ChunkIndex {
+				continue
+			}
+			if hitKeys[[2]int64{n.ArticleID, int64(n.ChunkIndex)}] {
+				continue
+			}
+			out[i] = append(out[i], knowledgeSearchContext{ChunkIndex: n.ChunkIndex, Section: n.Section, Text: n.Text})
+		}
+	}
+	return out
+}
 
 // NewKnowledgeSearchTool bọc HybridSearcher thành Eino InvokableTool — gọi
 // thẳng pipeline search. Trả slice struct để InferTool tự encode JSON (đừng
 // Marshal tay thành string). Limit LLM gợi ý được HybridSearcher kẹp trần,
 // category DTO ép thắng gợi ý LLM.
-func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher) (einotool.InvokableTool, error) {
+func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher, vectors domain.IVectorStore) (einotool.InvokableTool, error) {
 	if hybrid == nil {
 		return nil, fmt.Errorf("eino knowledge_search: searcher is required")
+	}
+	if vectors == nil {
+		return nil, fmt.Errorf("eino knowledge_search: vector store is required")
 	}
 	return toolutils.InferTool(KnowledgeSearchName, knowledgeSearchDesc,
 		func(ctx context.Context, in KnowledgeSearchArgs) ([]knowledgeSearchHit, error) {
@@ -100,6 +163,7 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher) (einotool.Invokabl
 					ns[i] = i + 1
 				}
 			}
+			neighbors := neighborsOf(ctx, vectors, scope, ids, chunks)
 			out := make([]knowledgeSearchHit, 0, len(chunks))
 			for i, h := range chunks {
 				if h == nil || ns[i] <= 0 {
@@ -112,6 +176,7 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher) (einotool.Invokabl
 					ChunkIndex: h.ChunkIndex,
 					Score:      h.Score,
 					Text:       h.Text,
+					Context:    neighbors[i],
 				})
 			}
 			return out, nil

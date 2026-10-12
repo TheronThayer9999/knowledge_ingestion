@@ -26,7 +26,7 @@ func newEinoChatModel(cfg config.IConfig) (*ollamamodel.ChatModel, error) {
 // hướng dẫn đầu knowledge_search.go) + thêm 1 dòng ở đây, usecase và prompt
 // file không phải sửa (LLM tự thấy tool qua ToolInfo).
 func newChatAgent(model *ollamamodel.ChatModel, prompts synthesis.Prompts, hybrid *retrieval.HybridSearcher, categoryRepo domain.ICategoryRepositoryImpl, vectors domain.IVectorStore, articleRepo domain.IArticleRepository) (*eino.ChatAgent, error) {
-	search, err := eino.NewKnowledgeSearchTool(hybrid)
+	search, err := eino.NewKnowledgeSearchTool(hybrid, vectors)
 	if err != nil {
 		return nil, err
 	}
