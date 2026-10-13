@@ -10,14 +10,6 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// weatherTool, calculatorTool
-func weatherTool() string {
-	return "call weatherTool() ok"
-}
-func calculator() string {
-	return "call calculator() ok"
-}
-
 // Tools: []tool.BaseTool{weatherTool, calculatorTool},
 func main() {
 	ctx := context.Background()
