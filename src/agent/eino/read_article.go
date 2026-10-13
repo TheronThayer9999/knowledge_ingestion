@@ -94,7 +94,7 @@ func NewReadArticleTool(vectors domain.IVectorStore) (einotool.InvokableTool, er
 				total = 0
 			}
 			if scope.Collector != nil {
-				scope.Collector.Searched = true
+				scope.Collector.MarkSearched()
 			}
 			page := &readArticlePage{
 				ArticleID:  int64(in.ArticleID),

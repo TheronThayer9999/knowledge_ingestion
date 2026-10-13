@@ -145,8 +145,7 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 	var hits = make([]*domain.ScoredChunk, 0)
 	searched := false
 	if scope, ok := ScopeFrom(ctx); ok && scope.Collector != nil {
-		hits = scope.Collector.Hits
-		searched = scope.Collector.Searched
+		hits, searched = scope.Collector.Snapshot()
 	}
 	return RunResult{Answer: answer, Hits: hits, Searched: searched}, nil
 }

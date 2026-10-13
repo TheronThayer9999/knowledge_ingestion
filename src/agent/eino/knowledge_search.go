@@ -60,6 +60,14 @@ type knowledgeSearchContext struct {
 // tự nên 1 bên đã đủ câu/khoản bị cắt; mở rộng hơn làm context phình nhanh.
 const neighborWindow = 1
 
+// knowledgeSearchResult là kết quả tool trả LLM — bọc hits bằng message để
+// câu trả lời tool luôn có lời (kể cả khi query rỗng hoặc không tìm thấy),
+// model tự hiểu mà không cần hard-error làm rã cả lượt (NodeRunError → 500).
+type knowledgeSearchResult struct {
+	Message string               `json:"message"`
+	Hits    []knowledgeSearchHit `json:"hits"`
+}
+
 const knowledgeSearchDesc = `Tìm đoạn trích trong các tài liệu mà NGƯỜI DÙNG ĐANG HỎI đã upload (không phải tài liệu công khai trên mạng).
 
 KHI NÀO GỌI: mặc định mọi câu hỏi có nội dung tri thức (khái niệm, định nghĩa, con số, điều khoản, tên riêng, sự kiện, nguyên lý, thuật ngữ...) — kể cả câu nghe như kiến thức phổ thông — đều phải gọi trước khi trả lời. Hỏi một thông tin cụ thể, tóm tắt, so sánh, quy trình nhiều bước, suy luận từ nhiều đoạn, tính toán trên số liệu trong tài liệu, áp dụng vào trường hợp "nếu/tôi/công ty tôi...".
@@ -68,7 +76,7 @@ KHI NÀO KHÔNG GỌI: chỉ chào hỏi, cảm ơn, xưng hô thuần túy khô
 
 CÁCH ĐẶT QUERY: viết bằng tiếng Việt, giữ nguyên các từ khóa quan trọng trong câu hỏi (tên văn bản, số hiệu, thuật ngữ chuyên ngành) kèm theo ý hỏi. Ví dụ câu "mức phạt chậm nộp thuế là bao nhiêu" thì query là "mức phạt chậm nộp thuế". Đừng rút gọn thành 1-2 từ mất nghĩa, cũng đừng bê nguyên cả câu dài dòng.
 
-KẾT QUẢ TRẢ VỀ: JSON gồm các phần tử {n, article_id, page_num, chunk_index, score, text, context}. n là số thứ tự nguồn — khi trả lời PHẢI trích dẫn bằng [^n] khớp đúng số này, đặt ngay sau câu dùng thông tin đó; chỉ dùng số n có trong kết quả, không bịa số. score chỉ để tham khảo độ liên quan, KHÔNG nhắc đến trong câu trả lời. context là đoạn kề trước/sau của đúng đoạn đó, đã có sẵn để hiểu đoạn bị cắt (ví dụ tên Điều/Khoản hoặc vế còn lại của quy định); context KHÔNG có n và KHÔNG trích dẫn bằng [^n], chỉ dùng để hiểu nội dung của đoạn n.
+KẾT QUẢ TRẢ VỀ: object {message, hits} — message là lời của công cụ (gợi ý cách sửa query khi rỗng hoặc không tìm thấy), hits là mảng JSON gồm các phần tử {n, article_id, page_num, chunk_index, score, text, context}. n là số thứ tự nguồn — khi trả lời PHẢI trích dẫn bằng [^n] khớp đúng số này, đặt ngay sau câu dùng thông tin đó; chỉ dùng số n có trong hits, không bịa số. score chỉ để tham khảo độ liên quan, KHÔNG nhắc đến trong câu trả lời. context là đoạn kề trước/sau của đúng đoạn đó, đã có sẵn để hiểu đoạn bị cắt (ví dụ tên Điều/Khoản hoặc vế còn lại của quy định); context KHÔNG có n và KHÔNG trích dẫn bằng [^n], chỉ dùng để hiểu nội dung của đoạn n.
 
 NẾU KẾT QUẢ RỖNG HOẶC CHƯA ĐỦ CĂN CỨ: đổi từ khóa (dùng từ đồng nghĩa, tên văn bản hoặc số hiệu khác) rồi gọi lại, tối đa 1-2 lần. Vẫn không có thì kết luận không tìm thấy trong tài liệu, không đoán.`
 
@@ -129,13 +137,17 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher, vectors domain.IVe
 		return nil, fmt.Errorf("eino knowledge_search: vector store is required")
 	}
 	return toolutils.InferTool(KnowledgeSearchName, knowledgeSearchDesc,
-		func(ctx context.Context, in KnowledgeSearchArgs) ([]knowledgeSearchHit, error) {
+		func(ctx context.Context, in KnowledgeSearchArgs) (knowledgeSearchResult, error) {
 			scope, ok := ScopeFrom(ctx)
 			if !ok {
-				return nil, fmt.Errorf("eino knowledge_search: thiếu scope request (user_id) trong ctx")
+				return knowledgeSearchResult{}, fmt.Errorf("eino knowledge_search: thiếu scope request (user_id) trong ctx")
 			}
+			// Query rỗng là lỗi soft — trả message bảo model tự sửa thay vì
+			// error làm rã cả lượt (NodeRunError → 500 cho cả request chat).
 			if strings.TrimSpace(in.Query) == "" {
-				return nil, fmt.Errorf("eino knowledge_search: query rỗng")
+				return knowledgeSearchResult{
+					Message: "query rỗng — hãy gọi lại với query là cụm từ khóa tiếng Việt giữ nguyên thuật ngữ và số hiệu trong câu hỏi của người dùng.",
+				}, nil
 			}
 			// Category DTO ép thắng gợi ý LLM — LLM không được mở rộng phạm
 			// vi ra ngoài các chủ đề user đã khoanh.
@@ -156,12 +168,12 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher, vectors domain.IVe
 				ScoreThreshold: scope.ScoreThreshold,
 			})
 			if err != nil {
-				return nil, err
+				return knowledgeSearchResult{}, err
 			}
 			// Đã đọc tài liệu dù kết quả rỗng — nhãn response classify thay vì
 			// chitchat oan.
 			if scope.Collector != nil {
-				scope.Collector.Searched = true
+				scope.Collector.MarkSearched()
 			}
 			var ns []int
 			if scope.Collector != nil {
@@ -188,6 +200,10 @@ func NewKnowledgeSearchTool(hybrid *retrieval.HybridSearcher, vectors domain.IVe
 					Context:    neighbors[i],
 				})
 			}
-			return out, nil
+			res := knowledgeSearchResult{Message: "Đã tìm trong tài liệu của người dùng.", Hits: out}
+			if len(out) == 0 {
+				res.Message = "Không tìm thấy đoạn nào khớp — hãy thử cụm từ khóa khác (từ đồng nghĩa, tên văn bản hoặc số hiệu khác) rồi gọi lại, tối đa 1-2 lần; vẫn không có thì kết luận không tìm thấy, không đoán."
+			}
+			return res, nil
 		})
 }

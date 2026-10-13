@@ -40,10 +40,7 @@ func (c *testConfig) GetStorage() config.S3Config { return c.inner.GetStorage() 
 
 func (c *testConfig) GetEmbedding() config.EmbeddingConfig { return c.inner.GetEmbedding() }
 
-func (c *testConfig) GetLLM() config.LLMConfig { return c.inner.GetLLM() }
-func (c *testConfig) GetOpenRouter() config.OpenRouterConfig {
-	return c.inner.GetOpenRouter()
-}
+func (c *testConfig) GetLLMs() config.LLMsConfig { return c.inner.GetLLMs() }
 
 func (c *testConfig) GetQdrant() config.QdrantConfig { return c.inner.GetQdrant() }
 

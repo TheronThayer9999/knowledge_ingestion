@@ -73,7 +73,7 @@ func NewListSectionsTool(vectors domain.IVectorStore) (einotool.InvokableTool, e
 				return nil, err
 			}
 			if scope.Collector != nil {
-				scope.Collector.Searched = true
+				scope.Collector.MarkSearched()
 			}
 			if sections == nil {
 				sections = []domain.SectionSpan{}

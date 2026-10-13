@@ -13,8 +13,7 @@ type IConfig interface {
 	GetDatabase() DBConfig
 	GetStorage() S3Config
 	GetEmbedding() EmbeddingConfig
-	GetLLM() LLMConfig
-	GetOpenRouter() OpenRouterConfig
+	GetLLMs() LLMsConfig
 	GetQdrant() QdrantConfig
 	GetOCR() OCRConfig
 	GetRedis() RedisConfig // Thêm method này
@@ -31,8 +30,7 @@ type appConfig struct {
 	Database  DBConfig        `json:"database"`
 	Storage   S3Config        `json:"storage"`
 	Embedding EmbeddingConfig `json:"embedding"`
-	LLM       LLMConfig       `json:"llm"`
-	OpenRouter OpenRouterConfig `json:"openrouter"`
+	LLMs      LLMsConfig      `json:"llms"`
 	Qdrant    QdrantConfig    `json:"qdrant"`
 	OCR       OCRConfig       `json:"ocr"`
 	RedisCli  RedisConfig     `json:"redis"`
@@ -74,34 +72,50 @@ type EmbeddingConfig struct {
 	Dim      int    `json:"dim"`
 }
 
-// LLMConfig giữ default kết nối tới Ollama cho agent (phân loại câu hỏi,
-// tổng hợp trả lời) — KHÔNG giữ model cố định: model do user truyền theo mỗi
-// request (lấy danh sách qua GET /api/tags rồi chọn). Eino đọc qua
-// eino-ext/components/model/ollama nên provider hiện chỉ "ollama".
-type LLMConfig struct {
-	Provider string `json:"provider"` // "ollama", "openai", ...
-	// Model rỗng nghĩa là chưa chọn — caller phải truyền model theo request,
-	// để trống ở config để không kẹt vào một model duy nhất.
-	Model       string  `json:"model"`
-	BaseURL     string  `json:"base_url"` // rỗng thì mượn embedding.base_url
-	APIKey      string  `json:"api_key"`  // Ollama để trống
-	Temperature float64 `json:"temperature"`
-	MaxTokens   int     `json:"max_tokens"`
-	TimeoutSec  int     `json:"timeout_sec"`
+// LLMsConfig gom toàn bộ backend LLM vào một map thống nhất theo tên slug —
+// thêm backend mới (Groq, DeepSeek, Together, ...) chỉ cần khai báo thêm 1
+// entry trong config, không sửa code. Request chọn backend qua field
+// `provider`, model mặc định theo từng entry. Protocol lặp lại nhiều nhất
+// (OpenAI-compatible: OpenRouter/Groq/OpenAI/DeepSeek) gói trong type
+// "openai", Ollama native giữ type "ollama".
+type LLMsConfig struct {
+	// DefaultProvider là provider khi request không ép (field `provider`
+	// rỗng) — trống thì mặc định "ollama".
+	DefaultProvider string `json:"default_provider"`
+	// Providers là map slug (request chọn qua field `provider`) → cấu hình.
+	Providers map[string]LLMProviderConfig `json:"providers"`
 }
 
-// OpenRouterConfig giữ kết nối tới OpenRouter (OpenAI-compatible
-// /api/v1/chat/completions) cho agent — provider thứ hai bên cạnh Ollama,
-// request chọn qua field `provider`, không kẹt 1 backend trong config.
-// Model mặc định là bản free để linh hoạt thử nghiệm; request nào cũng có
-// thể ép model khác qua field `model` như với Ollama.
-type OpenRouterConfig struct {
-	APIKey string `json:"api_key"` // rỗng = chưa cấu hình, request openrouter trả 400
-	// Model mặc định khi request không ép model — bản free theo yêu cầu.
-	Model string `json:"model"`
-	// BaseURL rỗng thì https://openrouter.ai/api/v1 (OpenAI-compatible).
-	BaseURL    string `json:"base_url"`
-	TimeoutSec int    `json:"timeout_sec"`
+// Protocol type của 1 entry LLMProviders — chọn cách dựng client.
+const (
+	// LLMTypeOllama: Ollama native /api/chat (local + cloud qua Bearer key).
+	LLMTypeOllama = "ollama"
+	// LLMTypeOpenAI: OpenAI-compatible /chat/completions — dùng chung cho
+	// OpenRouter, Groq, OpenAI, DeepSeek, ... (cùng eino-ext openai).
+	LLMTypeOpenAI = "openai"
+)
+
+// LLMProviderConfig là cấu hình chung 1 backend LLM. `type` bắt buộc phải
+// là "ollama" hoặc "openai" (validate lúc Load, fail-fast). Với type
+// "openai", api_key bắt buộc (rỗng thì loader bỏ qua provider — boot vẫn
+// lên, request nào chọn nó mới 400); base_url bắt buộc vì không có default
+// chung cho mọi backend OpenAI-compatible. Model rỗng nghĩa là chưa chọn —
+// request phải ép model theo mỗi lượt.
+type LLMProviderConfig struct {
+	Type        string  `json:"type"`
+	Model       string  `json:"model"`
+	BaseURL     string  `json:"base_url"`
+	APIKey      string  `json:"api_key"`
+	Temperature float64 `json:"temperature"`
+	// TopP 0 = không gửi (provider tự quyết) — chỉ set khi muốn ép nucleus
+	// sampling; Generally recommend alter TopP hoặc Temperature, không cả hai.
+	TopP       float64 `json:"top_p"`
+	MaxTokens  int     `json:"max_tokens"`
+	TimeoutSec int     `json:"timeout_sec"`
+	// RateLimitRPM giữ nhịp tối đa request/phút gửi vào backend (0 = không
+	// giới hạn) — Groq gói free chỉ ~30 req/phút, vượt là 429. Token bucket
+	// san đều theo thời gian thay vì dồn dập rồi đợi server chối.
+	RateLimitRPM int `json:"rate_limit_rpm"`
 }
 
 // QdrantConfig giữ địa chỉ Qdrant — worker embed upsert vector qua gRPC
@@ -219,53 +233,59 @@ func Load(path string) (IConfig, error) {
 	if cfg.Embedding.Dim <= 0 {
 		return nil, fmt.Errorf("embedding.dim must be > 0")
 	}
-	if cfg.LLM.Provider == "" {
-		cfg.LLM.Provider = "ollama"
+	// llms là map provider thống nhất — thêm backend mới chỉ cần khai báo
+	// trong config (type "openai" cho mọi backend OpenAI-compatible, "ollama"
+	// cho Ollama native). Fail-fast khi type lạ để lỗi cấu hình bắt ngay lúc
+	// boot; thiếu api_key thì chỉ warn + bỏ qua provider đó (boot vẫn lên,
+	// request nào chọn nó mới 400). Key ưu tiên env <TÊN_PROVIDER>_API_KEY
+	// (vd GROQ_API_KEY, OPENROUTER_API_KEY) để không commit secret vào file.
+	if cfg.LLMs.DefaultProvider == "" {
+		cfg.LLMs.DefaultProvider = "ollama"
 	}
-	// Model KHÔNG default — user list model từ Ollama rồi truyền theo request.
-	// Cùng Ollama server với embedding là setup phổ biến nhất nên mượn khi
-	// llm.base_url bỏ trống (vd local); Ollama Cloud thì khai base_url riêng.
-	if cfg.LLM.BaseURL == "" {
-		cfg.LLM.BaseURL = cfg.Embedding.BaseURL
-	}
-	if cfg.LLM.BaseURL == "" {
-		cfg.LLM.BaseURL = "http://localhost:11434"
-	}
-	// APIKey ưu tiên env để không commit secret (Ollama Cloud) vào file.
-	if envKey := os.Getenv("OLLAMA_API_KEY"); envKey != "" {
-		cfg.LLM.APIKey = envKey
-	}
-	if cfg.LLM.Temperature < 0 || cfg.LLM.Temperature > 2 {
-		// RAG cần câu trả lời bám tài liệu nên mặc định 0 (tham lam, ít bịa).
-		cfg.LLM.Temperature = 0
-	}
-	if cfg.LLM.MaxTokens <= 0 {
-		cfg.LLM.MaxTokens = 2048
-	}
-	if cfg.LLM.TimeoutSec <= 0 {
-		cfg.LLM.TimeoutSec = 120
-	}
-	if cfg.LLM.TimeoutSec > 3600 {
-		cfg.LLM.TimeoutSec = 3600
-	}
-	// OpenRouter là provider tùy chọn: thiếu key vẫn boot bình thường (chỉ
-	// request nào chọn provider=openrouter mới báo chưa cấu hình). Key ưu
-	// tiên env để không commit secret vào file — nhưng user chọn để trong
-	// config.json thì vẫn ăn (env thắng khi cả hai cùng có).
-	if cfg.OpenRouter.BaseURL == "" {
-		cfg.OpenRouter.BaseURL = "https://openrouter.ai/api/v1"
-	}
-	if cfg.OpenRouter.Model == "" {
-		cfg.OpenRouter.Model = "apodex/apodex-1.1-mini:free"
-	}
-	if envKey := os.Getenv("OPENROUTER_API_KEY"); envKey != "" {
-		cfg.OpenRouter.APIKey = envKey
-	}
-	if cfg.OpenRouter.TimeoutSec <= 0 {
-		cfg.OpenRouter.TimeoutSec = 120
-	}
-	if cfg.OpenRouter.TimeoutSec > 3600 {
-		cfg.OpenRouter.TimeoutSec = 3600
+	cfg.LLMs.DefaultProvider = strings.ToLower(strings.TrimSpace(cfg.LLMs.DefaultProvider))
+	for name, p := range cfg.LLMs.Providers {
+		switch strings.ToLower(strings.TrimSpace(p.Type)) {
+		case LLMTypeOllama, LLMTypeOpenAI:
+			p.Type = strings.ToLower(strings.TrimSpace(p.Type))
+		default:
+			return nil, fmt.Errorf("llms.providers.%s.type phải là %q hoặc %q, got %q",
+				name, LLMTypeOllama, LLMTypeOpenAI, p.Type)
+		}
+		// Cùng Ollama server với embedding là setup phổ biến nhất nên mượn
+		// khi base_url bỏ trống (vd local); Ollama Cloud thì khai base_url
+		// riêng trong config.
+		if p.Type == LLMTypeOllama && p.BaseURL == "" {
+			p.BaseURL = cfg.Embedding.BaseURL
+		}
+		if p.Type == LLMTypeOllama && p.BaseURL == "" {
+			p.BaseURL = "http://localhost:11434"
+		}
+		if envKey := os.Getenv(strings.ToUpper(name) + "_API_KEY"); envKey != "" {
+			p.APIKey = envKey
+		}
+		// RAG cần câu trả lời bám tài liệu nên mặc định 0 (tham lam, ít
+		// bịa); >2 là ngoài range OpenAI-compatible thì giữ 0.
+		if p.Temperature < 0 || p.Temperature > 2 {
+			p.Temperature = 0
+		}
+		if p.TopP < 0 || p.TopP > 1 {
+			p.TopP = 0 // 0 = không gửi, provider tự quyết
+		}
+		if p.MaxTokens <= 0 {
+			p.MaxTokens = 2048
+		}
+		if p.TimeoutSec <= 0 {
+			p.TimeoutSec = 120
+		}
+		// Kẹp trần 1 giờ — time.Duration(o.TimeoutSec)*time.Second tràn số
+		// với giá trị khổng lồ (thành âm rồi rơi về default một cách tình cờ).
+		if p.TimeoutSec > 3600 {
+			p.TimeoutSec = 3600
+		}
+		if p.RateLimitRPM < 0 {
+			p.RateLimitRPM = 0 // âm là lỗi nhập liệu — coi như không giới hạn
+		}
+		cfg.LLMs.Providers[name] = p
 	}
 	if cfg.Qdrant.Host == "" {
 		return nil, fmt.Errorf("qdrant.host is required")
@@ -381,8 +401,7 @@ func (c *appConfig) GetApp() AppConfig             { return c.App }
 func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
 func (c *appConfig) GetStorage() S3Config          { return c.Storage }
 func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }
-func (c *appConfig) GetLLM() LLMConfig             { return c.LLM }
-func (c *appConfig) GetOpenRouter() OpenRouterConfig { return c.OpenRouter }
+func (c *appConfig) GetLLMs() LLMsConfig              { return c.LLMs }
 func (c *appConfig) GetQdrant() QdrantConfig       { return c.Qdrant }
 func (c *appConfig) GetOCR() OCRConfig             { return c.OCR }
 func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }

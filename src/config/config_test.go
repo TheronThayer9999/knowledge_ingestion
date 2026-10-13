@@ -26,20 +26,40 @@ func TestLoadProjectConfig(t *testing.T) {
 		t.Errorf("embedding.dim = %d, want > 0", ec.Dim)
 	}
 
-	lc := cfg.GetLLM()
-	if lc.Provider != "ollama" {
-		t.Errorf("llm.provider = %q, want ollama", lc.Provider)
+	lms := cfg.GetLLMs()
+	if lms.DefaultProvider != "ollama" {
+		t.Errorf("llms.default_provider = %q, want ollama", lms.DefaultProvider)
 	}
-	if !isCloudURL(lc.BaseURL) {
-		t.Errorf("llm chạy Cloud, got base_url %q", lc.BaseURL)
+	oll, ok := lms.Providers["ollama"]
+	if !ok {
+		t.Fatal("llms.providers thiếu ollama")
 	}
-	if lc.Model == "" {
-		t.Error("llm.model rỗng — chưa chọn model mặc định")
+	if !isCloudURL(oll.BaseURL) {
+		t.Errorf("ollama chạy Cloud, got base_url %q", oll.BaseURL)
 	}
-	// Local không cần key — Cloud thì đè bằng env OLLAMA_API_KEY, không commit
-	// key vào file.
-	if lc.MaxTokens <= 0 {
-		t.Errorf("llm.max_tokens = %d, want > 0", lc.MaxTokens)
+	if oll.Model == "" {
+		t.Error("ollama.model rỗng — chưa chọn model mặc định")
+	}
+	if oll.MaxTokens <= 0 {
+		t.Errorf("ollama.max_tokens = %d, want > 0", oll.MaxTokens)
+	}
+	// OpenRouter + Groq là backend OpenAI-compatible — phải có base_url và
+	// key (key có thể trống ở máy khác, env OPENROUTER_API_KEY/GROQ_API_KEY
+	// đè lại khi cần).
+	for _, slug := range []string{"openrouter", "groq"} {
+		p, ok := lms.Providers[slug]
+		if !ok {
+			t.Fatalf("llms.providers thiếu %s", slug)
+		}
+		if p.Type != "openai" {
+			t.Errorf("%s.type = %q, want openai", slug, p.Type)
+		}
+		if p.BaseURL == "" {
+			t.Errorf("%s.base_url rỗng", slug)
+		}
+		if p.Model == "" {
+			t.Errorf("%s.model rỗng", slug)
+		}
 	}
 }
 

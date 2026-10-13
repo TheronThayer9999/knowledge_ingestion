@@ -2,6 +2,7 @@ package eino
 
 import (
 	"context"
+	"sync"
 
 	"knowledge_ingestion/src/domain"
 )
@@ -44,7 +45,10 @@ const maxCollectedHits = 30
 
 // HitCollector gom hit qua các lượt gọi tool trong 1 request — n đánh theo
 // thứ tự thấy lần đầu, khớp số [^n] tool trả cho LLM và cites trả frontend.
+// Có mutex vì Eino gọi parallel tool call (nhiều goroutine cùng gom hit) —
+// thiếu thì fatal "concurrent map writes" kill cả process.
 type HitCollector struct {
+	mu   sync.Mutex
 	Hits []*domain.ScoredChunk
 	seen map[string]int
 	// Searched đánh dấu agent đã đọc tài liệu (search/info/sections/context),
@@ -53,9 +57,26 @@ type HitCollector struct {
 	Searched bool
 }
 
+// MarkSearched set cờ đã tra cứu — thread-safe cho tool chạy song song.
+func (c *HitCollector) MarkSearched() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Searched = true
+}
+
+// Snapshot trả bản chốt Hits/Searched sau khi agent xong lượt — copy slice
+// header dưới lock để đọc an toàn.
+func (c *HitCollector) Snapshot() ([]*domain.ScoredChunk, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Hits, c.Searched
+}
+
 // Add gom hits, trả n cho từng hit theo thứ tự đầu vào — hit trùng PointID
 // giữ n cũ, quá trần thì n=0 (tool bỏ khỏi kết quả trả LLM).
 func (c *HitCollector) Add(hits []*domain.ScoredChunk) []int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.seen == nil {
 		c.seen = make(map[string]int)
 	}

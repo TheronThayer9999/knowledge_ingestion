@@ -77,13 +77,17 @@ const emptyAnswerRetryNote = "\n\n(Hệ thống: câu trả lời vừa rồi b�
 
 func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Result[*dtos.ChatResponse] {
 	if strings.TrimSpace(dto.Message) == "" {
-		return dtos.Fail[*dtos.ChatResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "message rỗng"))
+		return dtos.Fail[*dtos.ChatResponse](
+			errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "message rỗng"),
+		)
 	}
 	// Provider/model theo request, rỗng thì mặc định theo cấu hình — chọn
 	// sai provider (chưa cấu hình key) thì 400 rõ lý do, không 500.
 	agent, model, err := s.providers.Resolve(dto.Provider, dto.Model)
 	if err != nil {
-		return dtos.Fail[*dtos.ChatResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, err.Error()))
+		return dtos.Fail[*dtos.ChatResponse](
+			errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, err.Error()),
+		)
 	}
 
 	// Phạm vi tin cậy theo ctx cho tool đọc lúc thực thi: user từ token,

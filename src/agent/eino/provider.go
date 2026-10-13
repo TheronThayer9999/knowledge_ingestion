@@ -12,11 +12,13 @@ import (
 	"knowledge_ingestion/src/config"
 )
 
-// LLMProvider là hợp đồng 1 backend LLM cắm vào chat — thêm backend mới chỉ
-// cần 1 struct implement 3 method này + 1 dòng đăng ký ở
-// loader.newProviderAgents. Không sửa usecase, prompt, Resolve hay validation.
+// LLMProvider là hợp đồng 1 backend LLM cắm vào chat — mặc định đã có
+// configProvider (provider.go) cover cả "ollama" lẫn mọi backend
+// OpenAI-compatible qua type trong config; thêm protocol lạ hẳn mới cần
+// struct implement 3 method này. Không sửa usecase, prompt, Resolve hay
+// validation.
 type LLMProvider interface {
-	// Name là slug request chọn qua field `provider` (vd "ollama").
+	// Name là slug request chọn qua field `provider` (vd "ollama", "groq").
 	Name() string
 	// NewModel dựng client tool-calling; thiếu key/cấu hình thì trả lỗi để
 	// registry bỏ qua provider này (boot vẫn lên).
@@ -25,35 +27,33 @@ type LLMProvider interface {
 	DefaultModel() string
 }
 
-// ollamaProvider bọc config LLM thành LLMProvider.
-type ollamaProvider struct{ cfg config.LLMConfig }
-
-// NewOllamaProvider đăng ký backend Ollama (local + cloud qua Bearer key).
-func NewOllamaProvider(cfg config.LLMConfig) LLMProvider { return ollamaProvider{cfg: cfg} }
-
-func (p ollamaProvider) Name() string { return ProviderOllama }
-
-func (p ollamaProvider) NewModel() (einomodel.ToolCallingChatModel, error) {
-	return NewChatModel(p.cfg)
+// configProvider bọc 1 entry llms.providers (config.LLMProviderConfig) thành
+// LLMProvider — `type` trong config chọn cách dựng client ("ollama" native,
+// "openai" cho mọi backend OpenAI-compatible). Thêm backend mới chỉ cần
+// khai báo config, không viết struct provider mới.
+type configProvider struct {
+	slug string
+	cfg  config.LLMProviderConfig
 }
 
-func (p ollamaProvider) DefaultModel() string { return p.cfg.Model }
-
-// openRouterProvider bọc config OpenRouter thành LLMProvider.
-type openRouterProvider struct{ cfg config.OpenRouterConfig }
-
-// NewOpenRouterProvider đăng ký backend OpenRouter (OpenAI-compatible).
-func NewOpenRouterProvider(cfg config.OpenRouterConfig) LLMProvider {
-	return openRouterProvider{cfg: cfg}
+// NewConfigProvider đăng ký backend từ 1 entry config (slug là key trong
+// map llms.providers — request chọn qua field `provider`).
+func NewConfigProvider(slug string, cfg config.LLMProviderConfig) LLMProvider {
+	return configProvider{slug: strings.ToLower(strings.TrimSpace(slug)), cfg: cfg}
 }
 
-func (p openRouterProvider) Name() string { return ProviderOpenRouter }
+func (p configProvider) Name() string { return p.slug }
 
-func (p openRouterProvider) NewModel() (einomodel.ToolCallingChatModel, error) {
-	return NewOpenRouterChatModel(p.cfg)
+func (p configProvider) NewModel() (einomodel.ToolCallingChatModel, error) {
+	switch p.cfg.Type {
+	case config.LLMTypeOpenAI:
+		return NewOpenAIChatModel(p.slug, p.cfg)
+	default: // config.LLMTypeOllama — Load đã validate, default an toàn
+		return NewChatModel(p.cfg)
+	}
 }
 
-func (p openRouterProvider) DefaultModel() string { return p.cfg.Model }
+func (p configProvider) DefaultModel() string { return p.cfg.Model }
 
 // BuildProviderAgents dựng agent cho từng provider đã đăng ký — provider nào
 // NewModel lỗi (thiếu key/cấu hình) thì warn + bỏ qua, boot vẫn lên; request

@@ -80,7 +80,7 @@ func NewReadContextTool(vectors domain.IVectorStore) (einotool.InvokableTool, er
 				return nil, err
 			}
 			if scope.Collector != nil {
-				scope.Collector.Searched = true
+				scope.Collector.MarkSearched()
 			}
 			if len(chunks) == 0 {
 				// Hết chunk quanh điểm hỏi (ID bịa, chunk_index quá đà) — trả
@@ -180,7 +180,7 @@ func NewArticleInfoTool(repo domain.IArticleRepository) (einotool.InvokableTool,
 					return nil, err
 				}
 				if scope.Collector != nil {
-					scope.Collector.Searched = true
+					scope.Collector.MarkSearched()
 				}
 				return []articleInfoItem{toItem(a)}, nil
 			}
@@ -208,7 +208,7 @@ func NewArticleInfoTool(repo domain.IArticleRepository) (einotool.InvokableTool,
 				}
 			}
 			if scope.Collector != nil {
-				scope.Collector.Searched = true
+				scope.Collector.MarkSearched()
 			}
 			return out, nil
 		})

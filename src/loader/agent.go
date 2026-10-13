@@ -1,8 +1,6 @@
 package loader
 
 import (
-	"strings"
-
 	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/agent/retrieval"
@@ -18,14 +16,14 @@ import (
 
 // ProviderAgents là registry agent chat theo backend LLM — xem eino package
 // (định nghĩa ở đó để usecase dùng được mà không cycle import với loader).
-// Thêm backend mới thì thêm 1 case ở newProviderAgents, usecase và prompt
-// file không phải sửa.
+// Thêm backend mới chỉ cần khai báo trong config llms.providers, usecase và
+// prompt file không phải sửa.
 type ProviderAgents = eino.ProviderAgents
 
-// newProviderAgents dựng agent cho từng backend đã đăng ký qua
-// eino.BuildProviderAgents — thêm backend mới thì thêm 1 dòng đăng ký dưới
-// đây, không sửa usecase/prompt. Provider nào thiếu cấu hình (vd openrouter
-// thiếu key) thì boot vẫn lên, request nào chọn nó mới 400.
+// newProviderAgents dựng agent cho từng provider trong llms.providers (map
+// slug → cấu hình) qua eino.BuildProviderAgents — thêm backend mới (Groq,
+// DeepSeek, ...) chỉ cần config, không sửa usecase/prompt. Provider nào thiếu
+// cấu hình (vd thiếu key) thì boot vẫn lên, request nào chọn nó mới 400.
 func newProviderAgents(
 	cfg config.IConfig, prompts synthesis.Prompts,
 	hybrid *retrieval.HybridSearcher,
@@ -57,16 +55,16 @@ func newProviderAgents(
 	if err != nil {
 		return nil, err
 	}
-	llm := cfg.GetLLM()
-	defaultProvider := eino.ProviderOllama
-	if strings.TrimSpace(llm.Provider) != "" {
-		defaultProvider = strings.ToLower(strings.TrimSpace(llm.Provider))
-	}
+	llms := cfg.GetLLMs()
 	tools := []einotool.BaseTool{search, cats, ctxTool, info, sections, readArt}
-	return eino.BuildProviderAgents(prompts.System, defaultProvider, tools,
-		eino.NewOllamaProvider(llm),
-		eino.NewOpenRouterProvider(cfg.GetOpenRouter()),
-	)
+	// Dựng provider từ map llms.providers — thêm backend mới (Groq, DeepSeek,
+	// ...) chỉ cần khai báo config, dòng dưới không đổi. Map thì thứ tự không
+	// xác định nhưng BuildProviderAgents lưu theo slug nên kết quả ổn định.
+	providers := make([]eino.LLMProvider, 0, len(llms.Providers))
+	for slug, pcfg := range llms.Providers {
+		providers = append(providers, eino.NewConfigProvider(slug, pcfg))
+	}
+	return eino.BuildProviderAgents(prompts.System, llms.DefaultProvider, tools, providers...)
 }
 
 // newHybridSearcher dựng pipeline hybrid dùng chung cho cả 2 đường /search
