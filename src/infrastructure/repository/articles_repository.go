@@ -172,14 +172,14 @@ func (a *ArticleRepository) ResetQueue(ctx context.Context, ids []int64, userID 
 	res := dbConn(ctx, a.db).Model(&domain.Article{}).
 		Where("id IN ? AND user_id = ?", ids, userID).
 		Updates(map[string]any{
-			"chunk_status":          domain.QueuePending,
-			"embed_status":          domain.QueuePending,
-			"chunk_attempts":        0,
-			"embed_attempts":        0,
-			"chunk_next_retry_at":   now,
-			"embed_next_retry_at":   now,
-			"embedded_at":           nil,
-			"updated_at":            now,
+			"chunk_status":        domain.QueuePending,
+			"embed_status":        domain.QueuePending,
+			"chunk_attempts":      0,
+			"embed_attempts":      0,
+			"chunk_next_retry_at": now,
+			"embed_next_retry_at": now,
+			"embedded_at":         nil,
+			"updated_at":          now,
 		})
 	if res.Error != nil {
 		return 0, res.Error
@@ -194,15 +194,6 @@ func (a *ArticleRepository) ResetQueue(ctx context.Context, ids []int64, userID 
 //	... FOR UPDATE SKIP LOCKED rồi đánh processing + hẹn lease ngay (cùng
 //	pattern outbox ClaimPending).
 func (a *ArticleRepository) ClaimChunkPending(ctx context.Context, limit int, lease time.Duration) ([]*domain.Article, error) {
-	return a.claimPending(ctx, limit, lease, false)
-}
-
-// ClaimEmbedPending như ClaimChunkPending nhưng chỉ hốt bài đã chunk done.
-func (a *ArticleRepository) ClaimEmbedPending(ctx context.Context, limit int, lease time.Duration) ([]*domain.Article, error) {
-	return a.claimPending(ctx, limit, lease, true)
-}
-
-func (a *ArticleRepository) claimPending(ctx context.Context, limit int, lease time.Duration, embed bool) ([]*domain.Article, error) {
 	// Guard limit để hằng số claim nào bị set 0 nhầm cũng không hốt toàn bảng
 	// (gorm Limit(0) nghĩa là bỏ limit).
 	if limit <= 0 {
@@ -210,22 +201,14 @@ func (a *ArticleRepository) claimPending(ctx context.Context, limit int, lease t
 	}
 	articles := make([]*domain.Article, 0, limit)
 	now := time.Now()
-	statusCol, retryCol := "chunk_status", "chunk_next_retry_at"
-	if embed {
-		statusCol, retryCol = "embed_status", "embed_next_retry_at"
-	}
 	err := dbConn(ctx, a.db).Transaction(func(tx *gorm.DB) error {
 		tx = tx.WithContext(ctx)
 		q := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
-			Where(statusCol+" IN ? AND "+retryCol+" <= ?", []string{domain.QueuePending, domain.QueueProcessing}, now).
+			Where("chunk_status IN ? AND chunk_next_retry_at <= ?",
+				[]string{domain.QueuePending, domain.QueueProcessing}, now).
 			Where("storage_key <> ''").
 			Order("id ASC").
 			Limit(limit)
-		if embed {
-			// Phase 2 chỉ chạy khi phase 1 xong — đúng thứ tự chunk hết file
-			// rồi mới embedding.
-			q = q.Where("chunk_status = ?", domain.QueueDone)
-		}
 		if err := q.Find(&articles).Error; err != nil {
 			return err
 		}
@@ -239,12 +222,46 @@ func (a *ArticleRepository) claimPending(ctx context.Context, limit int, lease t
 		// Claim chỉ đổi status + hẹn lease, KHÔNG tăng attempts ở đây —
 		// attempts là số lần LỖI, tăng trong markError. Tăng ở claim thì job
 		// chậm bị reclaim lease vài lần (chưa lỗi lần nào) cũng đủ failed oan.
-		updates := map[string]any{"updated_at": now, retryCol: now.Add(lease)}
-		if embed {
-			updates["embed_status"] = domain.QueueProcessing
-		} else {
-			updates["chunk_status"] = domain.QueueProcessing
+		updates := map[string]any{"updated_at": now, "chunk_next_retry_at": now.Add(lease), "chunk_status": domain.QueueProcessing}
+		return tx.Model(&domain.Article{}).Where("id IN ?", ids).Updates(updates).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return articles, nil
+}
+
+// ClaimEmbedPending như ClaimChunkPending nhưng cho phase 2 — chỉ hốt bài
+// đã chunk done (đúng thứ tự chunk hết file rồi mới embedding).
+func (a *ArticleRepository) ClaimEmbedPending(ctx context.Context, limit int, lease time.Duration) ([]*domain.Article, error) {
+	// Guard limit để hằng số claim nào bị set 0 nhầm cũng không hốt toàn bảng
+	// (gorm Limit(0) nghĩa là bỏ limit).
+	if limit <= 0 {
+		limit = 10
+	}
+	articles := make([]*domain.Article, 0, limit)
+	now := time.Now()
+	err := dbConn(ctx, a.db).Transaction(func(tx *gorm.DB) error {
+		tx = tx.WithContext(ctx)
+		q := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+			Where("embed_status IN ? AND embed_next_retry_at <= ?", []string{domain.QueuePending, domain.QueueProcessing}, now).
+			Where("storage_key <> ''").
+			// Phase 2 chỉ chạy khi phase 1 xong — đúng thứ tự chunk hết file
+			// rồi mới embedding.
+			Where("chunk_status = ?", domain.QueueDone).
+			Order("id ASC").
+			Limit(limit)
+		if err := q.Find(&articles).Error; err != nil {
+			return err
 		}
+		if len(articles) == 0 {
+			return nil
+		}
+		ids := make([]int64, 0, len(articles))
+		for _, ar := range articles {
+			ids = append(ids, ar.ID)
+		}
+		updates := map[string]any{"updated_at": now, "embed_next_retry_at": now.Add(lease), "embed_status": domain.QueueProcessing}
 		return tx.Model(&domain.Article{}).Where("id IN ?", ids).Updates(updates).Error
 	})
 	if err != nil {

@@ -39,8 +39,17 @@ type articleChunkService struct {
 	splitter chunker.Chunker
 }
 
-func NewArticleChunkService(articleRepo domain.ArticleChunkQueue, chunkRepo domain.IArticleChunkRepository, storage storage.IStorage, ocr extractor.OCRConfig, splitter chunker.Chunker) IArticleChunkService {
-	return &articleChunkService{articleRepo: articleRepo, chunkRepo: chunkRepo, storage: storage, ocr: ocr, splitter: splitter}
+func NewArticleChunkService(
+	articleRepo domain.ArticleChunkQueue,
+	chunkRepo domain.IArticleChunkRepository,
+	storage storage.IStorage,
+	ocr extractor.OCRConfig,
+	splitter chunker.Chunker) IArticleChunkService {
+	return &articleChunkService{
+		articleRepo: articleRepo,
+		chunkRepo:   chunkRepo, storage: storage,
+		ocr:      ocr,
+		splitter: splitter}
 }
 
 // ChunkPending claim 1 đợt bài rồi chunk song song trong pool giới hạn, trả
