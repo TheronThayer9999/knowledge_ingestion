@@ -7,8 +7,6 @@ import (
 	"knowledge_ingestion/src/agent/synthesis"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/domain"
-
-	einotool "github.com/cloudwego/eino/components/tool"
 )
 
 // Wiring agent tập trung ở file này — thêm tool/prompt/model mới cho agent
@@ -31,32 +29,16 @@ func newProviderAgents(
 	vectors domain.IVectorStore,
 	articleRepo domain.IArticleRepository) (*ProviderAgents, error) {
 
-	search, err := eino.NewKnowledgeSearchTool(hybrid, vectors)
-	if err != nil {
-		return nil, err
-	}
-	cats, err := eino.NewListCategoriesTool(categoryRepo)
-	if err != nil {
-		return nil, err
-	}
-	ctxTool, err := eino.NewReadContextTool(vectors)
-	if err != nil {
-		return nil, err
-	}
-	info, err := eino.NewArticleInfoTool(articleRepo)
-	if err != nil {
-		return nil, err
-	}
-	sections, err := eino.NewListSectionsTool(vectors)
-	if err != nil {
-		return nil, err
-	}
-	readArt, err := eino.NewReadArticleTool(vectors)
+	tools, err := eino.NewDefaultTools(eino.ToolDeps{
+		Hybrid:     hybrid,
+		Vectors:    vectors,
+		Categories: categoryRepo,
+		Articles:   articleRepo,
+	})
 	if err != nil {
 		return nil, err
 	}
 	llms := cfg.GetLLMs()
-	tools := []einotool.BaseTool{search, cats, ctxTool, info, sections, readArt}
 	// Dựng provider từ map llms.providers — thêm backend mới (Groq, DeepSeek,
 	// ...) chỉ cần khai báo config, dòng dưới không đổi. Map thì thứ tự không
 	// xác định nhưng BuildProviderAgents lưu theo slug nên kết quả ổn định.

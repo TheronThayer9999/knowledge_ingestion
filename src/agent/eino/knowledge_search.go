@@ -13,15 +13,8 @@ import (
 	"knowledge_ingestion/src/domain"
 )
 
-// Thêm tool mới cho agent chỉ cần 3 bước, không đụng usecase/prompt:
-//  1. Tạo 1 file trong package này: struct Args (field nào LLM được truyền thì
-//     khai báo + tag jsonschema mô tả), 1 const desc (khi nào gọi/không gọi,
-//     định dạng kết quả trả về), 1 constructor NewXTool bọc InferTool.
-//     Desc + schema args là nguồn thật duy nhất LLM thấy — viết cho LLM đọc,
-//     đừng ghi tóm tắt ở prompt file.
-//  2. Đăng ký 1 dòng trong loader.newProviderAgents.
-//  3. Phạm vi tin cậy (user, category ép) đọc qua ScopeFrom(ctx), không tin
-//     args LLM. Kết quả nhiều vòng gom qua scope.Collector để cites khớp [^n].
+// Thêm tool mới cho agent chỉ cần 3 bước, không đụng usecase/prompt — xem
+// hướng dẫn và ví dụ MyInput/MyOutput ở chaintool.go (NewChainTool).
 
 // KnowledgeSearchName là tên tool duy nhất LLM thấy.
 const KnowledgeSearchName = "knowledge_search"

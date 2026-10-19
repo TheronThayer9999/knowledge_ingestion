@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	einotool "github.com/cloudwego/eino/components/tool"
-	toolutils "github.com/cloudwego/eino/components/tool/utils"
 
 	"knowledge_ingestion/src/domain"
 )
@@ -33,14 +32,15 @@ KHI NÀO KHÔNG GỌI: người dùng đã nêu rõ ID số; chào hỏi, cảm 
 
 KẾT QUẢ TRẢ VỀ: JSON gồm các phần tử {id, name, description}. Chỉ dùng ID có trong kết quả, không bịa ID. Không tìm thấy tên nào khớp thì tìm mọi chủ đề (bỏ trống category_ids ở knowledge_search), không đoán.`
 
-// NewListCategoriesTool bọc CategoryRepository thành Eino InvokableTool —
+// NewListCategoriesTool bọc CategoryRepository thành tool — đi qua chain 1
+// lambda + graph-tool (xem chaintool.go) nên cùng họ với graph nhiều node;
 // chỉ liệt kê chủ đề của đúng owner trong Scope, LLM không có đường đọc ké
 // chủ đề của user khác.
 func NewListCategoriesTool(repo domain.ICategoryRepositoryImpl) (einotool.InvokableTool, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("eino list_categories: category repo is required")
 	}
-	return toolutils.InferTool(ListCategoriesName, listCategoriesDesc,
+	return NewChainTool(ListCategoriesName, listCategoriesDesc,
 		func(ctx context.Context, _ ListCategoriesArgs) ([]listCategoriesItem, error) {
 			scope, ok := ScopeFrom(ctx)
 			if !ok {

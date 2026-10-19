@@ -72,6 +72,14 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		authed.POST("/admin/rebuild-vectors", adminAPI.Rebuild)
 		authed.POST("/search", searchAPI.Query)
 		authed.POST("/chat", chatAPI.Chat)
+
+		//chunksGroup := authed.Group("/chunks")
+		//{
+		//chunksGroup.GET("/", getChunksHandler)
+		//chunksGroup.POST("/", createChunkHandler)
+		// ... other routes
+		//}
+
 	}
 
 	return &Router{Engine: engine}
