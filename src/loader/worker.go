@@ -32,18 +32,23 @@ func LoadWorkerInfra() []fx.Option {
 		fx.Provide(embedding.NewEmbedder),
 		fx.Provide(qdrant.NewConnection),
 		fx.Provide(repository.NewArticleRepository),
-		fx.Provide(repository.NewArticleChunkRepository),
+		fx.Provide(repository.NewArticlePageRepository),
+		// Cache embed — tránh gọi lại model cho chunk đã tính. Ý tưởng lấy từ
+		// AnythingLLM (cachedVectorInformation) nhưng khoá theo NỘI DUNG chunk
+		// thay vì cả file, nên trùng lặp giữa các bài cũng ăn.
+		fx.Provide(repository.NewEmbedCacheRepository),
 		fx.Provide(repository.NewUnitOfWork),
 		// PurgeOptions cho janitor dọn chunk già — map từ config worker để đổi
 		// config + restart là ăn ngay.
 		fx.Provide(func(cfg config.IConfig) services.PurgeOptions {
 			w := cfg.GetWorker()
 			return services.PurgeOptions{
-				ChunkRetention: time.Duration(w.ChunkRetentionHours) * time.Hour,
-				TrimInterval:   time.Duration(w.TrimIntervalHours) * time.Hour,
+				TrimInterval: time.Duration(w.TrimIntervalHours) * time.Hour,
 			}
 		}),
-		// Chunker cho worker chunk phase 1 — dựng 1 lần từ config rồi tái dùng
+		// Chunker + OCR cho worker chunk phase 1.
+		//
+		// Chunker chiến lược cắt — dựng 1 lần từ config rồi tái dùng
 		// (splitter Eino stateless, pool chunk gọi song song an toàn). Tầng
 		// semantic cần domain.Embedder (client Ollama đã Provide ở trên).
 		fx.Provide(func(cfg config.IConfig, embedder domain.Embedder) (chunker.Chunker, error) {
@@ -56,14 +61,9 @@ func LoadWorkerInfra() []fx.Option {
 				return chunker.NewRecursive(chunker.Option{})
 			}
 		}),
-		// Role interface hẹp cho worker — cùng 1 instance ArticleRepository,
-		// fx match theo type tường minh nên bind 1 dòng mỗi vai.
-		fx.Provide(func(r domain.IArticleRepository) domain.ArticleChunkQueue { return r }),
-		fx.Provide(func(r domain.IArticleRepository) domain.ArticleEmbedQueue { return r }),
-		fx.Provide(func(r domain.IArticleRepository) domain.ArticleJanitor { return r }),
-		// OCR cho worker chunk — map từ config sang struct của extractor để
-		// extractor không phụ thuộc config (sau này tách OCR thành API riêng
-		// cũng dùng struct này làm contract).
+		// OCR map từ config sang struct của extractor để extractor không phụ
+		// thuộc config (sau này tách OCR thành API riêng cũng dùng struct này
+		// làm contract).
 		fx.Provide(func(cfg config.IConfig) extractor.OCRConfig {
 			o := cfg.GetOCR()
 			if o.Enabled && o.RenderBinary == "" {
@@ -79,7 +79,14 @@ func LoadWorkerInfra() []fx.Option {
 				Timeout:      time.Duration(o.TimeoutSec) * time.Second,
 				RenderBinary: o.RenderBinary,
 				RenderDPI:    o.RenderDPI,
+				MinTextChars: o.MinTextChars,
+				PSM:          o.PSM,
 			}
 		}),
+		// Role interface hẹp cho worker — cùng 1 instance ArticleRepository,
+		// fx match theo type tường minh nên bind 1 dòng mỗi vai.
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleExtractQueue { return r }),
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleIndexQueue { return r }),
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleJanitor { return r }),
 	}
 }

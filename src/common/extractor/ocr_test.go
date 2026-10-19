@@ -33,6 +33,21 @@ func tesseractPath(t *testing.T) string {
 	return ""
 }
 
+// popplerPdftoppm tìm pdftoppm (poppler) để trích PDF thật. Thiếu thì skip.
+// Các công cụ khác của poppler (pdfinfo, pdftotext) suy từ thư mục này.
+func popplerPdftoppm(t *testing.T) string {
+	t.Helper()
+	if p, err := exec.LookPath("pdftoppm"); err == nil {
+		return p
+	}
+	def := `D:\code\tools\poppler\poppler-24.08.0\Library\bin\pdftoppm.exe`
+	if _, err := os.Stat(def); err == nil {
+		return def
+	}
+	t.Skip("máy không có poppler (pdftoppm/pdftotext), bỏ qua test PDF thật")
+	return ""
+}
+
 // whitePNG vẽ ảnh trắng PNG trong RAM — OCR phải ra rỗng.
 func whitePNG(t *testing.T) []byte {
 	t.Helper()
@@ -80,8 +95,8 @@ func TestPDFBlankPageRenderFallback(t *testing.T) {
 	}
 
 	raw := buildPDF(t, " ")
-	pages, err := ExtractPages(context.Background(), "uploads/scan.pdf", bytes.NewReader(raw),
-		OCRConfig{Enabled: true, Binary: bin, Lang: "vie", RenderBinary: "fake-pdftoppm", RenderDPI: 300})
+	pages, err := collectPages("uploads/scan.pdf", bytes.NewReader(raw),
+		OCRConfig{Enabled: true, Binary: bin, Lang: "vie", RenderBinary: popplerPdftoppm(t), RenderDPI: 300})
 	if err != nil {
 		t.Fatalf("trang scan ocr hỏng phải skip êm, got err %v", err)
 	}
@@ -93,8 +108,8 @@ func TestPDFBlankPageRenderFallback(t *testing.T) {
 	}
 }
 
-// Không cấu hình renderer → trang trắng skip luôn, không gọi render.
-func TestPDFBlankPageSkipsWithoutRenderer(t *testing.T) {
+// OCR tắt → trang trắng skip luôn, không gọi render (dù đã có pdftoppm).
+func TestPDFBlankPageSkipsWithoutOCR(t *testing.T) {
 	old := pdfPageRenderer
 	defer func() { pdfPageRenderer = old }()
 	called := false
@@ -104,7 +119,8 @@ func TestPDFBlankPageSkipsWithoutRenderer(t *testing.T) {
 	}
 
 	raw := buildPDF(t, " ")
-	pages, err := ExtractPages(context.Background(), "uploads/scan.pdf", bytes.NewReader(raw), OCRConfig{})
+	pages, err := collectPages("uploads/scan.pdf", bytes.NewReader(raw),
+		OCRConfig{Enabled: false, RenderBinary: popplerPdftoppm(t)})
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -112,6 +128,6 @@ func TestPDFBlankPageSkipsWithoutRenderer(t *testing.T) {
 		t.Fatalf("trang trắng phải rỗng, got %+v", pages)
 	}
 	if called {
-		t.Fatal("không cấu hình render thì không được gọi renderer")
+		t.Fatal("OCR tắt thì không được gọi renderer")
 	}
 }

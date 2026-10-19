@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"go.uber.org/fx"
 )
@@ -39,28 +38,31 @@ func main() {
 		}),
 		fx.Options(loader.LoadWorkerInfra()...),
 		fx.Provide(services.NewArticlePurgeService),
-		fx.Provide(services.NewArticleChunkService),
-		fx.Provide(services.NewArticleEmbedService),
+		fx.Provide(services.NewArticleExtractService),
+		fx.Provide(services.NewArticleIndexService),
 		// Thêm job mới = inject service ở tham số + append 1 dòng Schedule:
 		// {Name: "...", Interval: ..., Run: asJob(svc.Method)}.
-		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, chunk services.IArticleChunkService, embed services.IArticleEmbedService, opts services.PurgeOptions) {
+		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, extract services.IArticleExtractService, index services.IArticleIndexService, opts services.PurgeOptions) {
 			NewRunner([]Schedule{
 				{Name: "purge-articles", Interval: constants.PURGE_GRACE_PERIOD, Run: func(ctx context.Context) error {
 					_, err := purge.PurgeDeleted(ctx)
 					return err
 				}},
-				{Name: "trim-old-chunks", Interval: opts.TrimInterval, Run: func(ctx context.Context) error {
-					_, err := purge.TrimOldChunks(ctx)
+				{Name: "trim-orphan-pages", Interval: opts.TrimInterval, Run: func(ctx context.Context) error {
+					_, err := purge.TrimOrphanPages(ctx)
 					return err
 				}},
-				// Timeout riêng vì bài 500 trang chunk/embed trong 1 phút mặc
-				// định không xong — cancel giữa chừng rồi làm lại là đói.
-				{Name: "chunk-articles", Interval: constants.CHUNK_INTERVAL, Timeout: 12 * time.Minute, Run: func(ctx context.Context) error {
-					_, err := chunk.ChunkPending(ctx)
+				// Timeout riêng vì bài 500 trang OCR mất ~17 phút — cancel giữa
+				// chừng thì mất công. Nhờ EXTRACT_FLUSH_PAGES nên hết giờ chỉ
+				// mất tối đa 1 lô trang, kỳ sau nhảy tiếp.
+				{Name: "extract-articles", Interval: constants.EXTRACT_INTERVAL, Timeout: constants.EXTRACT_JOB_TIMEOUT, Run: func(ctx context.Context) error {
+					_, err := extract.ExtractPending(ctx)
 					return err
 				}},
-				{Name: "embed-articles", Interval: constants.EMBED_INTERVAL, Timeout: 25 * time.Minute, Run: func(ctx context.Context) error {
-					_, err := embed.EmbedPending(ctx)
+				// Phase index không còn OCR nên nhẹ hơn hẳn, nhưng bài lớn vẫn
+				// gọi Ollama ~47 lần nên vẫn cần timeout riêng.
+				{Name: "index-articles", Interval: constants.INDEX_INTERVAL, Timeout: constants.INDEX_JOB_TIMEOUT, Run: func(ctx context.Context) error {
+					_, err := index.IndexPending(ctx)
 					return err
 				}},
 			}).Attach(lc)

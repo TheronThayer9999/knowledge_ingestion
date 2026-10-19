@@ -7,7 +7,6 @@ package extractor
 import (
 	"archive/zip"
 	"bytes"
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -34,7 +33,7 @@ func buildDocx(t *testing.T, documentXML string) []byte {
 // extractOne là helper test chỉ lấy text khi chắc chắn 1 page (docx/txt).
 func extractOne(t *testing.T, key string, raw []byte) Page {
 	t.Helper()
-	pages, err := ExtractPages(context.Background(), key, bytes.NewReader(raw), OCRConfig{})
+	pages, err := collectPages(key, bytes.NewReader(raw), OCRConfig{})
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -94,10 +93,10 @@ func TestExtractDocxSkipsDeletedAndField(t *testing.T) {
 }
 
 func TestExtractUnsupported(t *testing.T) {
-	if _, err := ExtractPages(context.Background(), "uploads/a.png", strings.NewReader("x"), OCRConfig{}); err == nil {
+	if _, err := collectPages("uploads/a.png", strings.NewReader("x"), OCRConfig{}); err == nil {
 		t.Fatal("ảnh phải báo unsupported")
 	}
-	if _, err := ExtractPages(context.Background(), "uploads/a.zip", strings.NewReader("x"), OCRConfig{}); err == nil {
+	if _, err := collectPages("uploads/a.zip", strings.NewReader("x"), OCRConfig{}); err == nil {
 		t.Fatal("zip phải báo unsupported")
 	}
 }
@@ -125,16 +124,20 @@ func buildPDF(t *testing.T, pageTexts ...string) []byte {
 	for i := range pageTexts {
 		kids += fmt.Sprintf("%d 0 R ", 3+i)
 	}
+	// Số object tính theo số trang: font ngay sau các trang, content sau font.
+	// Cố định (font 7, content 10+i) thì PDF trên ~7 trang sẽ đè object.
+	fontObj := 3 + len(pageTexts)
+	contentBase := fontObj + 1
 	writeObj(1, "<< /Type /Catalog /Pages 2 0 R >>")
 	writeObj(2, fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", kids, len(pageTexts)))
 	for i := range pageTexts {
-		writeObj(3+i, fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents %d 0 R /Resources << /Font << /F1 7 0 R >> >> >>", 10+i))
+		writeObj(3+i, fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents %d 0 R /Resources << /Font << /F1 %d 0 R >> >> >>", contentBase+i, fontObj))
 	}
-	writeObj(7, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+	writeObj(fontObj, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
 	maxObj := 0
 	for i, text := range pageTexts {
 		content := fmt.Sprintf("BT /F1 12 Tf 72 720 Td (%s) Tj ET", text)
-		n := 10 + i
+		n := contentBase + i
 		offsets[n] = buf.Len()
 		fmt.Fprintf(&buf, "%d 0 obj\n<< /Length %d >>\nstream\n%s\nendstream\nendobj\n", n, len(content), content)
 		if n > maxObj {
@@ -158,7 +161,7 @@ func buildPDF(t *testing.T, pageTexts ...string) []byte {
 // PDF 2 trang → 2 Page đúng số thứ tự, text không tràn qua nhau.
 func TestExtractPDFPages(t *testing.T) {
 	raw := buildPDF(t, "Trang 1: Dieu 1", "Trang 2: Dieu 2")
-	pages, err := ExtractPages(context.Background(), "uploads/d.pdf", bytes.NewReader(raw), OCRConfig{})
+	pages, err := collectPages("uploads/d.pdf", bytes.NewReader(raw), OCRConfig{RenderBinary: popplerPdftoppm(t)})
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -178,7 +181,7 @@ func TestExtractPDFPages(t *testing.T) {
 
 // Bytes không phải PDF → lỗi để service skip, kỳ sau thử lại.
 func TestExtractPDFInvalid(t *testing.T) {
-	if _, err := ExtractPages(context.Background(), "uploads/e.pdf", strings.NewReader("khong phai pdf"), OCRConfig{}); err == nil {
+	if _, err := collectPages("uploads/e.pdf", strings.NewReader("khong phai pdf"), OCRConfig{RenderBinary: popplerPdftoppm(t)}); err == nil {
 		t.Fatal("pdf hỏng phải lỗi")
 	}
 }

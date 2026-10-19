@@ -1,0 +1,60 @@
+{
+ "summary": {
+  "run_id": "1a18dd",
+  "users": 1,
+  "files_per_user": 1,
+  "files_uploaded": 1,
+  "bytes_uploaded": 89769266,
+  "elapsed_s": 2.2,
+  "throughput_MBps": 38.8,
+  "errors": 0,
+  "latency_s": {
+   "presign": {
+    "n": 1,
+    "p50": 0.73,
+    "p95": 0.73,
+    "max": 0.73,
+    "mean": 0.73
+   },
+   "put": {
+    "n": 1,
+    "p50": 1.14,
+    "p95": 1.14,
+    "max": 1.14,
+    "mean": 1.14
+   },
+   "create_article": {
+    "n": 1,
+    "p50": 0.05,
+    "p95": 0.05,
+    "max": 0.05,
+    "mean": 0.05
+   }
+  }
+ },
+ "errors": [],
+ "users": [
+  {
+   "username": "up1a18ddu00",
+   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo4LCJ1c2VybmFtZSI6InVwMWExOGRkdTAwIiwicHdkX2NoYW5nZWRfYXQiOi02MjEzNTU5NjgwMCwiZXhwIjoxNzkyNDg2ODUxLCJpYXQiOjE3OTI0MDA0NTF9.0i6mcjhXJkdR2ccVMzW8ZrTsgs0QAs9DUZbYK-A3ABo",
+   "categories": [
+    15,
+    16
+   ],
+   "uploaded": [
+    {
+     "file": "dotnet-fundamentals.pdf",
+     "bytes": 89769266,
+     "key": "uploads/01a15364-6981-7b3c-8c98-21609a4ad125.pdf",
+     "seconds": 1.92
+    }
+   ],
+   "articles": [
+    {
+     "id": 18,
+     "name": "dotnet-fundamentals.pdf"
+    }
+   ]
+  }
+ ]
+}

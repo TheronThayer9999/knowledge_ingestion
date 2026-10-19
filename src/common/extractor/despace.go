@@ -57,19 +57,61 @@ func spacedScore(toks []string) float64 {
 
 // docSpaced báo cả file có phải chữ rải không: quá 15% số dòng đạt điểm rải
 // (≥0.3) thì là file rải. File sạch điểm này ≈0 nên không chạm.
+//
+// Chỉ là wrapper quanh docSpacedAcc cho test + chỗ gọi 1 lần; extractor
+// PDF dùng acc để cộng dần theo trang, không dựng bản sao toàn văn bản.
 func docSpaced(text string) bool {
-	qual, total := 0, 0
+	var acc docSpacedAcc
 	for _, l := range strings.Split(text, "\n") {
-		toks := strings.Fields(l)
-		if len(toks) < 4 {
-			continue
-		}
-		total++
-		if spacedScore(toks) >= 0.3 {
-			qual++
-		}
+		acc.addLine(l)
 	}
-	return total >= 4 && float64(qual)/float64(total) > 0.15
+	return acc.spaced()
+}
+
+// docSpacedAcc gom chấm điểm rải của CẢ file mà không cần giữ văn bản.
+//
+// Vì sao gom dần được: quyết định "file này rải hay không" chỉ là tỉ lệ
+// (số dòng đạt điểm / tổng số dòng ≥4 token), và mỗi dòng chấm độc lập —
+// không state nào mang qua dòng khác. Nên accumulator cho kết quả y hệt
+// docSpaced(text), chỉ khác là không phải dựng thêm một bản sao toàn file.
+//
+// Đổi lại: quyết định CHỈ CÓ ĐƯỢC sau khi đọc hết file. Đó là điểm chặn
+// việc stream trang ra ngoài — xem pdf.go.
+type docSpacedAcc struct{ qual, total int }
+
+// addLine cộng 1 dòng vào bộ đếm — bỏ qua dòng <4 token vì không chấm (tiêu
+// đề mục lục không được làm lệch tỉ lệ).
+func (a *docSpacedAcc) addLine(line string) {
+	toks := strings.Fields(line)
+	if len(toks) < 4 {
+		return
+	}
+	a.total++
+	if spacedScore(toks) >= 0.3 {
+		a.qual++
+	}
+}
+
+// DespacePages khử chữ rải cho CẢ file rồi áp lên từng trang — chỉ dùng ở
+// test/công cụ tay. Worker KHÔNG đi đường này vì phải giữ mọi trang trong
+// RAM; nó dùng Cleaner (xem clean.go): pass 1 Scan chỉ cộng số đếm, pass 2
+// Apply áp từng trang — cùng kết quả, RAM O(1 trang).
+func DespacePages(pages []Page) {
+	if len(pages) == 0 {
+		return
+	}
+	c := NewCleaner(len(pages), RepeatOptions{})
+	for _, pg := range pages {
+		c.Scan(pg.Text)
+	}
+	for i := range pages {
+		pages[i].Text = c.Apply(pages[i].Text)
+	}
+}
+
+// spaced trả kết luận sau khi đã addLine đủ các dòng của file.
+func (a *docSpacedAcc) spaced() bool {
+	return a.total >= 4 && float64(a.qual)/float64(a.total) > 0.15
 }
 
 // vowelStart là nguyên âm tiếng Việt (thường + hoa) — run 1-ký-tự mở đầu

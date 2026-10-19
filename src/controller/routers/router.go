@@ -70,16 +70,12 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		authed.DELETE("/articles/:id", articleAPI.Delete)
 		// Gate Role để sau — hiện sau auth thường như mọi route articles.
 		authed.POST("/admin/rebuild-vectors", adminAPI.Rebuild)
+		// Xoá trang đã trích → OCR lại (cải thiện chất lượng trích).
+		authed.POST("/admin/reset-extract", adminAPI.ResetExtract)
+		// Xem hàng đợi extract/index + bài chờ purge — read-only.
+		authed.GET("/admin/queue", adminAPI.Queue)
 		authed.POST("/search", searchAPI.Query)
 		authed.POST("/chat", chatAPI.Chat)
-
-		//chunksGroup := authed.Group("/chunks")
-		//{
-		//chunksGroup.GET("/", getChunksHandler)
-		//chunksGroup.POST("/", createChunkHandler)
-		// ... other routes
-		//}
-
 	}
 
 	return &Router{Engine: engine}

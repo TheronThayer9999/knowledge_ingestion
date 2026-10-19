@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"unicode/utf8"
 )
 
 // extractDocx trích text từ file Word (.docx) chỉ bằng stdlib — docx thực
@@ -55,7 +54,10 @@ func extractDocx(r io.Reader) (string, error) {
 		return "", fmt.Errorf("%w: mở word/document.xml: %v", ErrInvalid, err)
 	}
 	defer func() { _ = rc.Close() }()
-	xmlData, err := io.ReadAll(io.LimitReader(rc, maxPlainTextBytes*4+1))
+	// word/document.xml nén trong zip, tỉ lệ thường ~1:8 nên XML thô có thể
+	// lớn hơn text trích ra nhiều lần. Trần ở đây bảo vệ RAM, không phải cắt
+	// nội dung — text đã trích ra KHÔNG bị giới hạn (xem cuối hàm).
+	xmlData, err := io.ReadAll(io.LimitReader(rc, maxDocxArchiveBytes))
 	if err != nil {
 		return "", fmt.Errorf("đọc word/document.xml: %w", err)
 	}
@@ -183,12 +185,9 @@ func extractDocx(r io.Reader) (string, error) {
 	}
 
 	out := strings.TrimSpace(strings.Join(blocks, "\n\n"))
-	if len(out) > maxPlainTextBytes {
-		out = out[:maxPlainTextBytes]
-		// Cắt byte thô có thể chém đôi rune cuối — gọt dần tới biên hợp lệ.
-		for len(out) > 0 && !utf8.ValidString(out) {
-			out = out[:len(out)-1]
-		}
-	}
+	// KHÔNG cắt cụt ở đây nữa. Trước đây out bị chặn ở maxPlainTextBytes và
+	// phần còn lại biến mất im lặng — mất dữ liệu khách mà không ai biết.
+	// Việc giới hạn bộ nhớ nay do visitPieces đảm nhiệm (chia thành nhiều Page
+	// Num 0), nên docx lớn vẫn lấy ĐỦ mà RAM vẫn hằng số.
 	return out, nil
 }

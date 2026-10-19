@@ -30,52 +30,101 @@ const MAX_FILE_SIZE = 500 << 20
 // treo connection. 20 file + dư địa cho field phụ.
 const MAX_STREAM_PARTS = 64
 
-// Knob vận hành phase chunk của worker — service chỉ đọc, không định nghĩa.
+// EXTRACTED_PREFIX là "thư mục ảo" trong bucket cho artifact text đã trích
+// (phase extract) — tách khỏi UPLOAD_PREFIX để dọn/lifecycle nhìn 2 nhóm
+// riêng. Key artifact suy ra TẤT ĐỊNH từ storage key gốc nên chạy lại ghi
+// đè đúng object cũ, không bao giờ sinh mồ côi.
+const EXTRACTED_PREFIX = "extracted/"
 
-// CHUNK_INTERVAL là nhịp worker quét bài chưa chunk — main lấy làm chu kỳ ticker.
-const CHUNK_INTERVAL = 30 * time.Second
+// Knob vận hành phase extract của worker — service chỉ đọc, không định nghĩa.
+//
+// Extract là phase ĐẦU: bóc text từ blob (OCR nếu là PDF scan) rồi ghi thành
+// artifact trên S3. Tách riêng khỏi chunk để đổi cấu hình chunker/size chỉ
+// chạy lại phase chunk — không phải OCR lại cả file.
 
-// CHUNK_CLAIM_LIMIT số bài hốt mỗi kỳ — claim là rẻ (1 transaction), làm
+// EXTRACT_INTERVAL là nhịp worker quét bài chưa trích text.
+const EXTRACT_INTERVAL = 30 * time.Second
+
+// EXTRACT_CLAIM_LIMIT số bài hốt mỗi kỳ — claim là rẻ (1 transaction), làm
 // không hết thì lease giữ bài lại, kỳ sau hốt tiếp.
-const CHUNK_CLAIM_LIMIT = 6
+const EXTRACT_CLAIM_LIMIT = 6
 
-// CHUNK_POOL_SIZE số bài chunk song song — mỗi bài giữ đồng thời: blob raw
-// (trần 100MB) + text/XML giải nén (trần 80MB) + text rune khi split (text
-// 20MB ≈ 80MB rune) + ảnh render/OCR, nên worst-case ~300MB/bài → pool 3
-// ≈ 1GB nếu 3 file kịch trần cùng lúc. Container nhỏ thì giảm số này.
-const CHUNK_POOL_SIZE = 3
+// EXTRACT_POOL_SIZE số bài trích song song. Để 1: gopdf nạp cả PDF vào RAM
+// (đo: PDF 90MB đỉnh ~920MB), 3 job song song là ~3GB chỉ riêng extract.
+// Trích tuần tự thì nhanh đủ, vì bottleneck thật là index.
+const EXTRACT_POOL_SIZE = 1
 
-// CHUNK_LEASE thời gian giữ claim — file 500 trang chunk trong vài phút là
-// cùng; worker crash thì quá lease bài tự đủ điều kiện cho lần hốt sau.
-const CHUNK_LEASE = 15 * time.Minute
+// EXTRACT_PAGE_WORKERS số khoảng trang của MỘT PDF trích song song (mỗi khoảng
+// là 1 tiến trình pdftotext, trang scan thêm render + OCR). Tổng tiến trình
+// poppler/OCR đồng thời = EXTRACT_PAGE_WORKERS, vì EXTRACT_POOL_SIZE = 1.
+const EXTRACT_PAGE_WORKERS = 4
 
-// Knob vận hành phase embed của worker — service chỉ đọc, không định nghĩa.
+// EXTRACT_LEASE thời gian giữ claim — phải đủ cho file nặng nhất (PDF scan
+// 500 trang ≈ 17 phút).
+const EXTRACT_LEASE = 30 * time.Minute
 
-// EMBED_INTERVAL là nhịp worker quét bài chưa embed — main lấy làm chu kỳ
+// EXTRACT_FLUSH_PAGES số trang ghi 1 lô ra artifact DỞ. Job chết giữa file
+// 500 trang thì kỳ sau nhảy tiếp từ trang kế tiếp thay vì OCR lại từ đầu.
+// Đổi số này là đánh đổi giữa an toàn và round trip — 20 trang ≈ 40 giây OCR
+// bị làm lại, đợt 500 trang chỉ 25 lần PUT.
+const EXTRACT_FLUSH_PAGES = 20
+
+// EXTRACT_JOB_TIMEOUT trần thời gian 1 kỳ quét extract — lớn hơn
+// EXTRACT_LEASE một chút, xem INDEX_JOB_TIMEOUT để biết lý do chọn con số.
+const EXTRACT_JOB_TIMEOUT = 45 * time.Minute
+
+// Knob vận hành phase index của worker — service chỉ đọc, không định nghĩa.
+//
+// Index là phase CUỐI: cắt chunk từ toàn văn bản đã trích rồi embed + upsert
+// Qdrant, làm chung một lượt (xem IArticleIndexService để biết vì sao gộp).
+
+// INDEX_INTERVAL là nhịp worker quét bài chưa index — main lấy làm chu kỳ
 // ticker. 10s để dev thấy kết quả nhanh; production tải cao thì nâng lên 1
 // phút để đỡ quét DB trống.
-const EMBED_INTERVAL = 10 * time.Second
+const INDEX_INTERVAL = 10 * time.Second
 
-// EMBED_CLAIM_LIMIT số bài hốt mỗi kỳ — ollama remote chậm, bài 500 trang
+// INDEX_CLAIM_LIMIT số bài hốt mỗi kỳ — ollama remote chậm, bài 500 trang
 // (~1500 chunk ≈ 47 lần gọi) nuốt vài phút nên giữ ít.
-const EMBED_CLAIM_LIMIT = 3
+const INDEX_CLAIM_LIMIT = 3
 
-// EMBED_POOL_SIZE số bài embed song song — ollama remote là bottleneck nên
+// INDEX_POOL_SIZE số bài index song song — ollama remote là bottleneck nên
 // chỉ 2, tránh dội request làm nó nghẽn rồi timeout hàng loạt.
-const EMBED_POOL_SIZE = 2
+const INDEX_POOL_SIZE = 2
 
-// EMBED_LEASE thời gian giữ claim — đủ cho bài to nhất (500 trang) embed +
-// upsert xong trong pool; crash thì quá lease tự reclaim.
-const EMBED_LEASE = 30 * time.Minute
+// INDEX_LEASE thời gian giữ claim — đủ cho bài to nhất (500 trang) cắt +
+// embed + upsert xong trong pool; crash thì quá lease tự reclaim.
+const INDEX_LEASE = 30 * time.Minute
 
-// EMBED_BATCH_SIZE số text mỗi lần gọi ollama — khớp giới hạn input 1 lần
-// gọi của /api/embed, nhiều chunk thì chia nhiều đợt.
-const EMBED_BATCH_SIZE = 32
+// INDEX_BATCH_SIZE số text mỗi lần gọi ollama — khớp giới hạn input 1 lần
+// gọi của /api/embed. Đợt này VỪA là đơn vị upsert VỪA là mốc ghi checkpoint,
+// nên nó quyết định cả "mất bao nhiêu khi job chết" lẫn "ôm bao nhiêu RAM".
+const INDEX_BATCH_SIZE = 32
 
-// EMBED_CALL_ATTEMPTS số lần thử lại 1 lần gọi ollama/qdrant chập chờn, nghỉ
-// backoff nhân đôi từ EMBED_CALL_BASE_DELAY.
-const EMBED_CALL_ATTEMPTS = 3
-const EMBED_CALL_BASE_DELAY = 2 * time.Second
+// INDEX_PAGE_WINDOW số trang phase index nạp vào RAM mỗi lượt — đây là TRẦN
+// BỘ NHỚ của cả phase, không phụ thuộc kích thước file. 8 trang ≈ 40KB text,
+// đủ rộng để SplitBlocks thấy tiêu đề Điều/mục trong phạm vi vài trang và
+// đủ hẹp để file 5000 trang không làm ngốc RAM.
+//
+// Cửa sổ LUÔN kết thúc ở ranh giới trang, nên không có trang nào bị đọc 2 lần
+// và số trang của mỗi chunk vẫn chính xác tuyệt đối.
+const INDEX_PAGE_WINDOW = 8
+
+// INDEX_WINDOW_MAX_CHARS trần ký tự của 1 cửa sổ, chặn trường hợp loại file
+// 1 trang (txt/docx gom cả file thành 1 Page) — nếu chỉ đếm trang thì cửa sổ
+// đó có thể chứa cả 20MB. Quá ngưỡng thì cắt cửa sổ sớm.
+const INDEX_WINDOW_MAX_CHARS = 64 << 10
+
+// INDEX_CALL_ATTEMPTS số lần thử lại 1 lần gọi ollama/qdrant chập chờn,
+// nghỉ backoff nhân đôi từ INDEX_CALL_BASE_DELAY.
+const INDEX_CALL_ATTEMPTS = 3
+const INDEX_CALL_BASE_DELAY = 2 * time.Second
+
+// INDEX_JOB_TIMEOUT trần thời gian 1 kỳ quét index — PHẢI LỚN HƠN INDEX_LEASE
+// một chút. Timeout ở đây chỉ là chốt an toàn cuối: nhờ checkpoint ghi sau
+// mỗi INDEX_BATCH_SIZE nên hết giờ không còn là vòng lặp vô hạn, kỳ sau chỉ
+// làm nốt phần còn lại.
+const INDEX_JOB_TIMEOUT = 45 * time.Minute
+
 
 // Knob vận hành phase purge của worker — service chỉ đọc, không định nghĩa.
 
@@ -99,3 +148,38 @@ const SEARCH_DEFAULT_LIMIT = 5
 // SEARCH_MAX_LIMIT trần hit mỗi query search — chặn request vô hạn làm nặng
 // Qdrant + response phình.
 const SEARCH_MAX_LIMIT = 20
+
+const (
+	CONTENT_TYPE_PDF  = "application/pdf"
+	CONTENT_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	CONTENT_TYPE_TXT  = "text/plain"
+	CONTENT_TYPE_HTML = "text/html"
+	CONTENT_TYPE_XML  = "application/xml"
+	CONTENT_TYPE_JSON = "application/json"
+	CONTENT_TYPE_ZIP  = "application/zip"
+	CONTENT_TYPE_MD   = "text/markdown"
+	CONTENT_TYPE_CSV  = "text/csv"
+	CONTENT_TYPE_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+	// PowerPoint
+	CONTENT_TYPE_PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	CONTENT_TYPE_PPT  = "application/vnd.ms-powerpoint"
+
+	// Images
+	CONTENT_TYPE_PNG  = "image/png"
+	CONTENT_TYPE_JPEG = "image/jpeg"
+	CONTENT_TYPE_GIF  = "image/gif"
+	CONTENT_TYPE_WEBP = "image/webp"
+	CONTENT_TYPE_SVG  = "image/svg+xml"
+
+	// Archives
+	CONTENT_TYPE_TAR_GZ = "application/gzip"
+	CONTENT_TYPE_RAR    = "application/vnd.rar"
+	CONTENT_TYPE_7Z     = "application/x-7z-compressed"
+
+	//  BẮT BUỘC: Fallback an toàn cho file lạ hoặc download nhị phân
+	CONTENT_TYPE_OCTET_STREAM = "application/octet-stream"
+
+	//  NÊN CÓ: Để validate header request upload
+	CONTENT_TYPE_FORM_DATA = "multipart/form-data"
+)

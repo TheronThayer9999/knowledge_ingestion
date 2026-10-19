@@ -10,38 +10,34 @@ import (
 	"time"
 )
 
-// PurgeOptions nhịp janitor dọn chunk già — loader map từ config worker nên
-// đổi config + restart là ăn ngay, không build lại. Test truyền tay struct này.
+// PurgeOptions nhịp janitor dọn trang trung gian sót — loader map từ config
+// worker nên đổi config + restart là ăn ngay, không build lại. Test truyền tay
+// struct này.
 type PurgeOptions struct {
-	// ChunkRetention tuổi tối đa chunk già (embedded sót + mồ côi) trước khi
-	// dọn — row đang chờ retry không bao giờ bị đụng.
-	ChunkRetention time.Duration
-	// TrimInterval nhịp job quét dọn — rẻ (1 câu DELETE có index) nên hàng
-	// ngày là đủ.
+	// TrimInterval nhịp job quét dọn — rẻ nên hàng ngày là đủ.
 	TrimInterval time.Duration
 }
 
 // IArticlePurgeService janitor dọn bài đã xóa mềm — chỉ worker gọi, không
 // qua HTTP nên trả (int, error) thuần thay vì dtos.Result (envelope đó dành
 // cho handler Render). Mỗi kỳ quét: ListSoftDeleted → từng row xóa blob, xóa
-// vector Qdrant, xóa chunk rows rồi xóa hẳn article row.
+// vector Qdrant, xóa trang trung gian rồi xóa hẳn article row.
 type IArticlePurgeService interface {
 	PurgeDeleted(ctx context.Context) (int, error)
-	// TrimOldChunks dọn chunk già (embedded quá hạn + mồ côi quá hạn), trả số
-	// row đã xóa — janitor chạy hàng ngày, độc lập với purge bài xóa mềm.
-	TrimOldChunks(ctx context.Context) (int64, error)
+	// TrimOrphanPages dọn trang trung gian mồ côi — bài đã xóa hẳn mà job
+	// extract chết trước lúc dọn. Trả số row đã xóa.
+	TrimOrphanPages(ctx context.Context) (int64, error)
 }
 
 type articlePurgeService struct {
 	articleRepo domain.ArticleJanitor
-	chunkRepo   domain.IArticleChunkRepository
+	pageRepo    domain.IArticlePageRepository
 	vectors     domain.IVectorStore
 	storage     storage.IStorage
-	retention   time.Duration
 }
 
-func NewArticlePurgeService(articleRepo domain.ArticleJanitor, chunkRepo domain.IArticleChunkRepository, vectors domain.IVectorStore, storage storage.IStorage, opts PurgeOptions) IArticlePurgeService {
-	return &articlePurgeService{articleRepo: articleRepo, chunkRepo: chunkRepo, vectors: vectors, storage: storage, retention: opts.ChunkRetention}
+func NewArticlePurgeService(articleRepo domain.ArticleJanitor, pageRepo domain.IArticlePageRepository, vectors domain.IVectorStore, storage storage.IStorage, opts PurgeOptions) IArticlePurgeService {
+	return &articlePurgeService{articleRepo: articleRepo, pageRepo: pageRepo, vectors: vectors, storage: storage}
 }
 
 // PurgeDeleted dọn 1 đợt bài quá grace period, trả số row đã xóa hẳn.
@@ -56,11 +52,11 @@ func NewArticlePurgeService(articleRepo domain.ArticleJanitor, chunkRepo domain.
 //
 // Thứ tự blob-trước thì mọi điểm lỗi đều hội tụ khi chạy lại, ví dụ DB chết
 // đúng giữa chừng:
-//   - Kỳ N: S3.Delete(K) success → HardDelete(5) lỗi (DB chết) → log + bỏ
+//   - Kỳ N: S3.Delete(K) success → HardDeleteMany lỗi (DB chết) → log + bỏ
 //     qua. Row 5 còn nguyên trong DB (vẫn xóa mềm), blob đã mất.
 //   - Kỳ N+1: ListSoftDeleted quét lại thấy row 5 (vẫn khớp deleted_at cũ)
 //     → S3.Delete(K) lần 2 vẫn success vì S3 Delete idempotent (key không tồn
-//     tại cũng báo thành công) → HardDelete(5) lúc DB đã sống → row bay.
+//     tại cũng báo thành công) → HardDeleteMany lúc DB đã sống → row bay.
 //
 // Nguyên tắc để nhớ: row DB là con trỏ duy nhất tới blob — không bao giờ hủy
 // con trỏ trước khi thứ nó trỏ tới đã biến mất.
@@ -72,6 +68,11 @@ func NewArticlePurgeService(articleRepo domain.ArticleJanitor, chunkRepo domain.
 // đời 1 kỳ quét (bắt đầu → từng row lỗi → xong), kể cả khi 2 container cùng
 // chạy. Gọi trực tiếp không qua runner (test, tool tay) thì ctx trống, lúc
 // đó tự sinh fallback để log vẫn lần được.
+//
+// Chia 2 mốc rõ ràng để không lằng nhằng giữa "cô lập lỗi" và "ít round
+// trip": S3 + Qdrant là hệ thống ngoài nên giữ từng bài một (mất mạng, mất
+// binary, hỏng blob — 1 bài lỗi không được chặn bài khác); Postgres trong
+// cùng LAN nên gom theo đợt.
 func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 	traceID, err := worker.EnsureTraceID(ctx)
 	if err != nil {
@@ -85,61 +86,79 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	purged := 0
+
+	// Vòng này CHỈ làm phần hệ thống ngoài (blob S3, vector Qdrant) và giữ
+	// cô lập lỗi từng bài: 1 blob hỏng không được chặn 99 bài còn lại. 2 lệnh
+	// Postgres cuối kỳ (xóa chunk + xóa row) thì gom 1 câu mỗi lệnh — trước
+	// đây 2 DELETE mỗi bài là 200 round trip cho 1 đợt 100 bài, trong khi
+	// S3 + Qdrant vốn đã tốn hơn nhiều nên 2 câu kia không là gánh nặng.
+	done := make([]int64, 0, len(articles))
 	for _, article := range articles {
 		det := worker.Detach(ctx)
-		func(dbCtx context.Context) {
+		if ok := func(dbCtx context.Context) bool {
 			defer det.Close()
 			if article.StorageKey != "" {
 				if err := s.storage.Delete(dbCtx, article.StorageKey); err != nil {
 					logs.Warnw("purge: xóa blob thất bại, để kỳ sau thử lại",
 						"trace_id", traceID,
 						"article_id", article.ID, "storage_key", article.StorageKey, "error", err)
-					return
+					return false
 				}
 			}
-			// Thứ tự dọn sau blob: vector Qdrant → chunk rows → article row.
 			// Qdrant delete idempotent (filter khớp 0 point vẫn success) nên
 			// crash giữa chừng chạy lại chỉ ghi đè/bỏ qua, không mất dấu vết.
-			// Chunk rows xóa trước article row để không còn chunk mồ côi trỏ tới
-			// bài đã mất; bài nào lỗi ở bước nào cũng để kỳ sau thử lại từ đầu.
 			if err := s.vectors.DeleteByArticle(dbCtx, article.ID); err != nil {
 				logs.Warnw("purge: xóa vector thất bại, để kỳ sau thử lại",
 					"trace_id", traceID,
 					"article_id", article.ID, "error", err)
-				return
+				return false
 			}
-			if err := s.chunkRepo.DeleteByArticleID(dbCtx, article.ID); err != nil {
-				logs.Warnw("purge: xóa chunk thất bại, để kỳ sau thử lại",
-					"trace_id", traceID,
-					"article_id", article.ID, "error", err)
-				return
-			}
-			if err := s.articleRepo.HardDelete(dbCtx, article.ID); err != nil {
-				logs.Warnw("purge: xóa hẳn row thất bại, để kỳ sau thử lại",
-					"trace_id", traceID,
-					"article_id", article.ID, "error", err)
-				return
-			}
-			purged++
-		}(det.Ctx)
+			return true
+		}(det.Ctx); ok {
+			done = append(done, article.ID)
+		}
 	}
-	logs.Infow("purge: xong 1 kỳ quét", "trace_id", traceID, "found", len(articles), "purged", purged)
-	return purged, nil
+	if len(done) == 0 {
+		logs.Infow("purge: xong 1 kỳ quét", "trace_id", traceID, "found", len(articles), "purged", 0)
+		return 0, nil
+	}
+
+	// Chunk rows xóa TRƯỚC article row — không đảo, để không còn chunk mồ côi
+	// trỏ tới bài đã mất. Hết sạch rồi mới xóa row: lỗi ở 1 trong 2 lệnh thì
+	// cả đợt còn nguyên để kỳ sau quét lại (deleted_at cũ vẫn khớp, S3 delete
+	// idempotent) — hội tụ chứ không nửa vời.
+	det := worker.Detach(ctx)
+	defer det.Close()
+	if err := s.pageRepo.DeleteByArticles(det.Ctx, done); err != nil {
+		logs.Error(err, "purge: xóa trang hàng loạt thất bại, để kỳ sau thử lại",
+			"trace_id", traceID, "articles", len(done))
+		return 0, err
+	}
+	if err := s.articleRepo.HardDeleteMany(det.Ctx, done); err != nil {
+		logs.Error(err, "purge: xóa hàng loạt row thất bại, để kỳ sau thử lại",
+			"trace_id", traceID, "articles", len(done))
+		return 0, err
+	}
+	logs.Infow("purge: xong 1 kỳ quét", "trace_id", traceID, "found", len(articles), "purged", len(done))
+	return len(done), nil
 }
 
-// TrimOldChunks dọn chunk già quá retention: row đã embedded sót lại + row
-// mồ côi. Row đang chờ retry không bị đụng nên chạy lúc nào cũng an toàn;
-// DELETE có index nên kỳ không có gì dọn chỉ tốn 1 câu rẻ.
-func (s *articlePurgeService) TrimOldChunks(ctx context.Context) (int64, error) {
+// TrimOrphanPages dọn trang trung gian mồ côi: trang còn nằm trong
+// article_pages nhưng bài cha đã bị xoá hẳn (purge xoá row xong mới chết,
+// hoặc job extract chết giữa lúc ghi). Bảng này chỉ là bàn giao nên xoá
+// thoải mái, không cần tuổi quá hạn — chỉ cần bài cha không còn.
+//
+// Không chạm trang của bài còn sống kể cả bài đang extract dở: đó là
+// checkpoint đang được dùng, xoá đi là mất tiến trình OCR.
+func (s *articlePurgeService) TrimOrphanPages(ctx context.Context) (int64, error) {
 	traceID, err := worker.EnsureTraceID(ctx)
 	if err != nil {
 		return 0, err
 	}
-	n, err := s.chunkRepo.DeleteStaleChunks(ctx, time.Now().Add(-s.retention))
+	n, err := s.pageRepo.DeleteOrphan(ctx)
 	if err != nil {
 		return 0, err
 	}
-	logs.Infow("purge: dọn chunk già xong", "trace_id", traceID, "trimmed", n)
+	logs.Infow("purge: dọn trang mồ côi xong", "trace_id", traceID, "deleted", n)
 	return n, nil
 }

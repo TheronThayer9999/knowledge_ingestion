@@ -21,6 +21,9 @@ func (f *fakeNeighborVectors) UpsertPoints(_ context.Context, _ []*domain.Vector
 	return nil
 }
 func (f *fakeNeighborVectors) DeleteByArticle(_ context.Context, _ int64) error { return nil }
+func (f *fakeNeighborVectors) DeleteByArticles(_ context.Context, _ []int64) error {
+	return nil
+}
 func (f *fakeNeighborVectors) CountByArticle(_ context.Context, _ int64) (int64, error) {
 	return 0, nil
 }

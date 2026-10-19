@@ -71,7 +71,11 @@
     "enabled": true,
     "binary": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
     "lang": "vie",
-    "timeout_sec": 120
+    "timeout_sec": 120,
+    "min_text_chars": 0,
+    "psm": 6,
+    "render_binary": "D:\\code\\tools\\poppler\\poppler-24.08.0\\Library\\bin\\pdftoppm.exe",
+    "render_dpi": 300
   },
   "redis": {
     "host": "127.0.0.1",
@@ -98,7 +102,6 @@
     "allowed_origins": ["http://localhost:4200"]
   },
   "worker": {
-    "chunk_retention_hours": 168,
     "trim_interval_hours": 24,
     "chunker": "recursive"
   }

@@ -15,6 +15,51 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/admin/queue": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Read-only toàn cảnh hàng đợi: số bài theo trạng thái extract (phase 0, bóc text) và index (phase 1, cắt chunk + embed), bài đang processing kèm lease (lease_expired=true là worker rớt, không phải đang chạy), bài failed, bài pending, và bài đã xóa mềm chia theo cửa sổ undo. Không ghi gì — gọi lại thoải mái. Toàn hệ thống, không giới hạn theo user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Inspect extract/index queue and pending purges",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "số bài mỗi nhóm (default 20, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/rebuild-vectors": {
             "post": {
                 "security": [
@@ -22,7 +67,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Đưa bài về hàng đợi chunk→embed từ đầu (Qdrant mất collection, chuyển cụm mới). Scope bắt buộc đúng 1 trong article_ids hoặc category_id, chỉ tác động bài của chính mình. Worker hốt dần theo nhịp claim.",
+                "description": "Đưa bài về hàng đợi index từ đầu (Qdrant mất collection, chuyển cụm mới). Scope bắt buộc đúng 1 trong article_ids hoặc category_id, chỉ tác động bài của chính mình. Worker hốt dần theo nhịp claim.",
                 "consumes": [
                     "application/json"
                 ],
@@ -53,6 +98,69 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/reset-extract": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Xoá sạch trang đã trích rồi đưa bài về hàng đợi extract để worker OCR lại từ blob — dùng khi muốn cải thiện chất lượng trích (đổi renderer OCR, đổi chính sách OCR). KHÔNG đụng vector đã index, nên search vẫn chạy bình thường cho tới khi gọi rebuild-vectors. Scope bắt buộc đúng 1 trong article_ids hoặc category_id, chỉ tác động bài của chính mình. Cảnh báo: tốn OCR lại cho các bài này — file scan 500 trang là ~17 phút mỗi bài.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Re-extract text (re-run OCR) for articles",
+                "parameters": [
+                    {
+                        "description": "reset extract scope",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResetScopeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dtos.ResponseResource"
                         }
@@ -1189,6 +1297,21 @@ const docTemplate = `{
             }
         },
         "dtos.RebuildVectorsRequest": {
+            "type": "object",
+            "properties": {
+                "article_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "category_id": {
+                    "type": "integer",
+                    "example": 5
+                }
+            }
+        },
+        "dtos.ResetScopeRequest": {
             "type": "object",
             "properties": {
                 "article_ids": {

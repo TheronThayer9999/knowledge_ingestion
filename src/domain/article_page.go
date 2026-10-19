@@ -1,0 +1,94 @@
+package domain
+
+import (
+	"context"
+)
+
+// ArticlePage là TEXT THÔ của 1 trang — nguồn sự thật của nội dung bài sau
+// khi phase extract xong.
+//
+// VÌ SAO GIỮ LẠI THAY VÌ GỘP THÀNH 1 CỘT TEXT: phase index đọc theo CỬA SỔ
+// TRƯỢT vài trang một (xem IArticlePageRepository.ListPagesRange) nên RAM
+// không phụ thuộc kích thước file. Gộp cả file vào 1 cột articles thì mỗi
+// lần index phải kéo toàn bộ text lên RAM — file 500 trang scan là vài chục
+// MB rác phải sống suốt job.
+//
+// VÌ SAO CÓ BẢNG NÀY: OCR trang scan mất ~2s, file 500 trang là ~17 phút.
+// Worker extract ghi mỗi EXTRACT_FLUSH_PAGES trang 1 lô rồi mới đi tiếp, nên
+// job chết/hết giờ chỉ mất tối đa 1 lô chứ không mất trắng cả file.
+//
+// Text ở đây là BẢN THÔ (chưa khử chữ rải, chưa bỏ dòng lặp) vì quyết định
+// "cả file này thế nào" chỉ chốt được khi đã quét hết file — nó được tính ở
+// phase index bằng 1 lượt quét trước (extractor.Cleaner), nên giữ thô ở đây
+// vừa tiết kiệm ghi 2 lần vừa không sinh trạng thái nửa vời (một trang đã
+// sạch, một trang chưa).
+type ArticlePage struct {
+	BaseModel
+
+	// Seq là THỨ TỰ ĐỌC của mảnh trong bài, tăng liên tục từ 1. Cùng
+	// (article_id, seq) là khoá tự nhiên, và nó — KHÔNG phải PageNum — là
+	// con trỏ "đọc tới đâu" của phase index.
+	//
+	// VÌ SAO TÁCH KHỎI PageNum: file txt/md không có khái niệm trang nên mọi
+	// mảnh đều PageNum = 0. Trước đây unique (article_id, page_num) buộc
+	// cả file txt phải là 1 row — nên file 100MB hoặc phải cắt cụt mất
+	// dữ liệu, hoặc kéo cả 100MB lên RAM 1 lần. Nay extractor chia txt thành
+	// nhiều mảnh TextPieceBytes, mọi mảnh cùng PageNum 0 nhưng Seq khác nhau.
+	//
+	// PageNum vẫn giữ nguyên ý nghĩa cũ: số trang THẬT để trích dẫn (PDF),
+	// 0 cho loại file không có trang.
+	//
+	// default:0 là BẮT BUỘC: AutoMigrate chạy trước migrateQueueColumns,
+	// thêm cột NOT NULL vào bảng đã có dữ liệu sẽ fail với
+	// "column seq contains null values". Có DEFAULT thì Postgres gán 0 cho
+	// dòng cũ, migrate.go backfill lại giá trị thật sau.
+	Seq int `json:"seq" gorm:"not null;default:0"`
+	// ArticleID + Seq là khoá tự nhiên: 1 bài không có 2 mảnh cùng seq, và
+	// 2 worker claim trùng (lease race) insert cùng mảnh thì ON CONFLICT
+	// DO NOTHING giữ 1 bản — cùng pattern ON CONFLICT của các bảng khác.
+	ArticleID int64 `json:"article_id" gorm:"not null"`
+	PageNum   int   `json:"page_num" gorm:"not null"`
+	// Text là text thô của mảnh, có thể rỗng (trang trắng, trang lỗi, PDF
+	// không nhúng font) — vẫn giữ row để số trang khớp file gốc.
+	Text string `json:"text" gorm:"type:text;not null"`
+}
+
+func (ArticlePage) TableName() string {
+	return "article_pages"
+}
+
+// PageProgress là con trỏ tiến độ của phase extract — đọc 1 câu để biết
+// "đã trích tới mảnh nào" sau khi job chết giữa đường.
+type PageProgress struct {
+	// DoneSeq là seq lớn nhất đã lưu, -1 khi bài chưa có mảnh nào. Kỳ sau
+	// lấy seq kế tiếp làm fromPage để extractor bỏ qua hoàn toàn phần đã xong.
+	DoneSeq int
+}
+
+type IArticlePageRepository interface {
+	// CreateBatch lưu 1 lô mảnh trong transaction, ON CONFLICT DO NOTHING
+	// theo unique (article_id, seq) — lô ghi lại sau khi job chết là no-op
+	// chứ không nhân bản.
+	CreateBatch(ctx context.Context, pages []*ArticlePage) error
+	// Progress đọc seq lớn nhất đã lưu trong 1 câu — phase extract gọi
+	// 1 lần mỗi bài rồi bỏ qua phần đã xong.
+	Progress(ctx context.Context, articleID int64) (*PageProgress, error)
+	// ListByArticle trả mọi mảnh theo thứ tự đọc — dùng khi cần xử lý toàn
+	// bộ (hiếm; worker chủ yếu đọc theo cửa sổ).
+	ListByArticle(ctx context.Context, articleID int64) ([]*ArticlePage, error)
+	// ListPagesRange trả tối đa limit mảnh có seq >= fromSeq, theo thứ tự
+	// seq — CỬA SỔ TRƯỢT của phase index. Đây là hàm worker gọi nhiều nhất:
+	// đọc theo cửa sổ nên RAM độc lập kích thước file, thay vì kéo cả text
+	// của cả bài lên RAM bằng 1 câu.
+	ListPagesRange(ctx context.Context, articleID int64, fromSeq, limit int) ([]*ArticlePage, error)
+	// DeleteByArticleID dọn trang khi bài bị xoá giữa lúc đang trích. Sau khi
+	// trích xong thì GIỮ lại làm nguồn cho phase index — chỉ purge mới xoá.
+	DeleteByArticleID(ctx context.Context, articleID int64) error
+	// DeleteByArticles như DeleteByArticleID nhưng nhiều bài 1 câu — purge
+	// gom id trước khi xoá hẳn article row.
+	DeleteByArticles(ctx context.Context, articleIDs []int64) error
+	// DeleteOrphan xoá trang của bài KHÔNG còn tồn tại (đã xoá hẳn) — janitor
+	// bắt trường hợp job extract chết giữa lúc ghi. Trả số row đã xoá.
+	// Không đụng trang của bài còn sống kể cả bài đang extract dở.
+	DeleteOrphan(ctx context.Context) (int64, error)
+}

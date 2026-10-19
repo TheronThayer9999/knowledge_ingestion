@@ -12,7 +12,17 @@ import (
 // constructor chỉ lo mở kết nối, tune pool và ping. Mọi câu idempotent nên
 // boot lại an toàn.
 func migrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(domain.User{}, domain.Category{}, domain.Article{}, domain.ArticleChunk{}, domain.OutboxEvent{}); err != nil {
+	if err := db.AutoMigrate(domain.User{}, domain.Category{}, domain.Article{}, domain.ArticlePage{},
+		domain.EmbedCacheEntry{}, domain.OutboxEvent{}); err != nil {
+		return err
+	}
+	// Bảng article_chunks đã bị bỏ hoàn toàn (phase chunk + embed gộp làm 1,
+	// Qdrant giữ text + vector trong payload). DROP nếu còn — có thể dùng
+	// transaction + rollback vì đây là dữ liệu trung gian, mất là mất.
+	if err := dropTableIfExists(db, "article_chunks"); err != nil {
+		return err
+	}
+	if err := migrateQueueColumns(db); err != nil {
 		return err
 	}
 	// Index composite partial cho luồng list article (user_id + category_id
@@ -23,40 +33,141 @@ func migrate(db *gorm.DB) error {
 	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_owner_list ON articles (user_id, category_id, created_at DESC) WHERE deleted_at IS NULL`).Error; err != nil {
 		return fmt.Errorf("failed to create articles owner index: %w", err)
 	}
-	// Index cho luồng chunk worker (article_id + chunk_index + order đọc
-	// lại) và tra cứu "bài đã chunk chưa": WHERE deleted_at IS NULL vì mọi
-	// query gorm đều kèm điều kiện đó. Tag index trong model đã dựng 1
-	// index, đây là composite cover thêm thứ tự đọc — IF NOT EXISTS để boot
-	// lại idempotent.
-	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_chunks_article_read ON article_chunks (article_id, chunk_index) WHERE deleted_at IS NULL`).Error; err != nil {
-		return fmt.Errorf("failed to create article chunks index: %w", err)
+	// Seq: thứ tự đọc của mảnh, tách khỏi page_num (số trang thật để trích
+	// dẫn). Cần vì file txt bị chia thành nhiều mảnh cùng page_num = 0 —
+	// unique theo page_num buộc cả file txt phải là 1 row, tức là hoặc cắt
+	// cụt mất dữ liệu, hoặc kéo cả file lên RAM 1 lần.
+	if !hasColumn(db, "article_pages", "seq") {
+		if err := db.Exec(`ALTER TABLE article_pages ADD COLUMN seq integer`).Error; err != nil {
+			return fmt.Errorf("thêm cột article_pages.seq: %w", err)
+		}
 	}
-	// Unique (article_id, chunk_index) để 2 worker claim trùng không insert
-	// trùng chunk — CreateBatch ON CONFLICT DO NOTHING dựa vào index này.
-	// Partial (bỏ row đã xóa mềm) để re-chunk bài từng bị xóa không vướng.
-	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_article_unique ON article_chunks (article_id, chunk_index) WHERE deleted_at IS NULL`).Error; err != nil {
-		return fmt.Errorf("failed to create article chunks unique index: %w", err)
+	// Backfill CHẠY ĐỘC LẬP với điều kiện trên, vì AutoMigrate đã tạo cột
+	// (kèm DEFAULT 0) TRƯỚC hàm này — nếu gộp vào if thì hasColumn thấy cột
+	// đã có và bỏ qua luôn, mọi dòng cũ giữ seq = 0 và tạo unique index sau
+	// đó sẽ fail vì trùng. Idempotent: chỉ sửa dòng seq <= 0.
+	//
+	// Dữ liệu cũ chỉ có trang thật (PDF) nên seq = page_num là đúng thứ tự
+	// đọc. Dòng page_num = 0 (loại file không có trang) đánh số lại theo id,
+	// CỘNG thêm seq lớn nhất đã có của cùng bài để không đụng dòng kia.
+	if err := db.Exec(`UPDATE article_pages SET seq = page_num WHERE page_num > 0 AND seq <= 0`).Error; err != nil {
+		return fmt.Errorf("backfill seq từ page_num: %w", err)
 	}
-	// Index cho worker poll queue chunk/embed — WHERE deleted_at IS NULL vì
-	// mọi query gorm đều kèm điều kiện đó. Embed poll thêm chunk_status done
-	// để phase 2 chỉ hốt bài đã chunk xong.
-	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_chunk_poll ON articles (chunk_status, chunk_next_retry_at, id) WHERE deleted_at IS NULL`).Error; err != nil {
-		return fmt.Errorf("failed to create articles chunk poll index: %w", err)
+	if err := db.Exec(`UPDATE article_pages p SET seq = COALESCE(m.maxseq, 0) + s.n
+		FROM (
+			SELECT id, article_id,
+			       ROW_NUMBER() OVER (PARTITION BY article_id ORDER BY id) AS n
+			FROM article_pages WHERE page_num <= 0
+		) s
+		LEFT JOIN (
+			SELECT article_id, MAX(seq) AS maxseq
+			FROM article_pages WHERE page_num > 0 GROUP BY article_id
+		) m ON m.article_id = s.article_id
+		WHERE p.id = s.id AND p.seq <= 0`).Error; err != nil {
+		return fmt.Errorf("backfill seq cho dòng không có trang: %w", err)
 	}
-	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_embed_poll ON articles (embed_status, embed_next_retry_at, id) WHERE deleted_at IS NULL AND chunk_status = 'done'`).Error; err != nil {
-		return fmt.Errorf("failed to create articles embed poll index: %w", err)
+	// Unique (article_id, seq) — CreateBatch ON CONFLICT DO NOTHING dựa vào đây
+	// để 2 worker claim trùng (lease race) không insert trùng mảnh. Partial để
+	// bài từng bị xóa mềm rồi trích lại không vướng.
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_article_seq ON article_pages (article_id, seq) WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("failed to create article pages seq index: %w", err)
 	}
-	// Backfill queue: bài đã có chunk từ trước khi có cột status (cột mới
-	// default pending) thì đánh chunk done luôn để worker không chunk lại gây
-	// trùng. Embed để pending cho 1 lượt catch-up idempotent (upsert đúng
-	// PointID đã lưu nên không trùng point).
-	if err := db.Exec(`UPDATE articles SET chunk_status = 'done' WHERE chunk_status = 'pending' AND id IN (SELECT DISTINCT article_id FROM article_chunks WHERE deleted_at IS NULL)`).Error; err != nil {
-		return fmt.Errorf("failed to backfill chunk status: %w", err)
+	// Index cũ theo page_num không còn là khoá nữa nhưng vẫn hữu ích khi tra
+	// theo số trang. Giữ lại; tự xoá nếu muốn gọn.
+	_ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pages_article_page ON article_pages (article_id, page_num) WHERE deleted_at IS NULL`).Error
+
+	// embed_cache: cache vector theo sha256(text) + model. PK (text_hash, model,
+	// dim) vừa là khoá vừa là index lookup — Get() đánh theo đúng nó nên
+	// không cần index riêng. chunk_count phục vụ dọn LRU sau này, chưa dùng
+	// nên không index.
+	_ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_embed_cache_model ON embed_cache (model, dim)`).Error
+
+	// Index cho worker poll queue 2 phase. Index poll của phase index thêm
+	// điều kiện extract_status done để chỉ hốt bài đã qua phase trước.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_extract_poll ON articles (extract_status, extract_next_retry_at, id) WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("failed to create articles extract poll index: %w", err)
 	}
-	// Backfill embedded_at cho bài đã done từ trước khi có cột (lấy updated_at
-	// làm mốc gần đúng) — boot lại idempotent.
-	if err := db.Exec(`UPDATE articles SET embedded_at = updated_at WHERE embed_status = 'done' AND embedded_at IS NULL`).Error; err != nil {
-		return fmt.Errorf("failed to backfill embedded_at: %w", err)
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_index_poll ON articles (index_status, index_next_retry_at, id) WHERE deleted_at IS NULL AND extract_status = 'done'`).Error; err != nil {
+		return fmt.Errorf("failed to create articles index poll index: %w", err)
+	}
+	return nil
+}
+
+// dropTableIfExists xoá bảng nếu có — dùng cho bảng đã bỏ khỏi model.
+func dropTableIfExists(db *gorm.DB, table string) error {
+	var n int64
+	err := db.Raw(`SELECT count(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?`, table).Scan(&n).Error
+	if err != nil {
+		return fmt.Errorf("kiểm tra bảng %s: %w", table, err)
+	}
+	if n == 0 {
+		return nil
+	}
+	if err := db.Exec(`DROP TABLE IF EXISTS ` + table).Error; err != nil {
+		return fmt.Errorf("xoá bảng %s: %w", table, err)
+	}
+	return nil
+}
+
+// hasColumn báo cột có tồn tại trong bảng không.
+func hasColumn(db *gorm.DB, table, column string) bool {
+	var n int64
+	err := db.Raw(`SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`, table, column).Scan(&n).Error
+	return err == nil && n > 0
+}
+
+// dropColumnIfExists xoá cột nếu có.
+func dropColumnIfExists(db *gorm.DB, table, column string) error {
+	if !hasColumn(db, table, column) {
+		return nil
+	}
+	if err := db.Exec(fmt.Sprintf(`ALTER TABLE %s DROP COLUMN %s`, table, column)).Error; err != nil {
+		return fmt.Errorf("xoá cột %s.%s: %w", table, column, err)
+	}
+	return nil
+}
+
+// migrateQueueColumns chuyển cột queue cũ (chunk_*, embed_*) sang cột của
+// phase index mới rồi xoá cột cũ.
+//
+// AutoMigrate không đổi tên/xoá cột nên phải exec tay. Thứ tự BẮT BUỘC: copy
+// dữ liệu -> xoá cột cũ. Mỗi bước kiểm tra cột đã có chưa để boot lại không
+// lỗi (migrate chạy mỗi lần start).
+//
+// Hệ quả lần migrate đầu: mọi bài đang có sẽ đi qua phase extract đúng 1
+// lần (extract_status mặc định pending) để lấy nội dung vào article_pages —
+// đánh đổi OCR một lần lấy dữ liệu mà phase index cần. Bài đã embed xong thì
+// index_status kế thừa từ embed_status nên không index lại, vector cũ vẫn
+// dùng được.
+func migrateQueueColumns(db *gorm.DB) error {
+	if hasColumn(db, "articles", "embed_status") {
+		if err := db.Exec(`UPDATE articles SET
+			index_status = embed_status,
+			index_attempts = embed_attempts,
+			index_next_retry_at = embed_next_retry_at,
+			indexed_at = COALESCE(indexed_at, embedded_at)
+			WHERE embed_status <> 'pending'`).Error; err != nil {
+			return fmt.Errorf("copy embed sang index: %w", err)
+		}
+	}
+	// extracted_text bị bỏ: nội dung nay nằm ở article_pages theo từng trang
+	// để phase index đọc cửa sổ trượt (xem ListPagesRange).
+	for _, col := range []string{
+		"chunk_status", "chunk_attempts", "chunk_next_retry_at",
+		"embed_status", "embed_attempts", "embed_next_retry_at", "embedded_at",
+		"extracted_text",
+	} {
+		if err := dropColumnIfExists(db, "articles", col); err != nil {
+			return err
+		}
+	}
+	// Index cu gắn với cột đã xoá thì Postgres tự bỏ, nhưng tên index có thể
+	// còn nếu được tạo tay ở nơi khác — xoá cho sạch rồi migrate tạo lại bản
+	// đúng cột.
+	for _, idx := range []string{"idx_articles_chunk_poll", "idx_articles_embed_poll", "idx_pages_article_unique"} {
+		if err := db.Exec(`DROP INDEX IF EXISTS ` + idx).Error; err != nil {
+			return fmt.Errorf("xoá index cũ %s: %w", idx, err)
+		}
 	}
 	return nil
 }

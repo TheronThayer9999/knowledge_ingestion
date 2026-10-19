@@ -145,6 +145,17 @@ func articleFilter(articleID int64) *qdrantapi.Filter {
 	}
 }
 
+// articlesFilter lọc point của nhiều bài 1 lần — MatchInts gộp N match
+// thành 1 điều kiện nên 1 câu delete xoá được cả danh mục thay vì N round
+// trip.
+func articlesFilter(articleIDs []int64) *qdrantapi.Filter {
+	return &qdrantapi.Filter{
+		Must: []*qdrantapi.Condition{
+			qdrantapi.NewMatchInts("article_id", articleIDs...),
+		},
+	}
+}
+
 // UpsertPoints ghi đè point theo ID — idempotent nên embed chạy lại vẫn hội tụ.
 // Nhận slice con trỏ để khỏi copy struct (nhất là map Payload) mỗi lần upsert.
 func (c *connection) UpsertPoints(ctx context.Context, points []*domain.VectorPoint) error {
@@ -197,6 +208,32 @@ func (c *connection) DeleteByArticle(ctx context.Context, articleID int64) error
 		Points:         qdrantapi.NewPointsSelectorFilter(articleFilter(articleID)),
 	}); err != nil {
 		return fmt.Errorf("qdrant: delete points của article %d: %w", articleID, err)
+	}
+	return nil
+}
+
+// deleteBatchSize trần số article_id trong 1 filter — MatchInts nhận mảng
+// dài không giới hạn nhưng càng nhiều điều kiện Qdrant càng chậm khi quét
+// index; chia đợt giữ cây 1 lần gọi mạng, giống chunkInsertBatch bên Postgres.
+const deleteBatchSize = 500
+
+// DeleteByArticles xoá point của nhiều bài, chia đợt 500 id/lần gọi.
+// Không có transaction giữa các đợt: lỗi giữa chừng thì đợt trước đã mất
+// point — nhưng cả lệnh đều idempotent (lọc khớp 0 point vẫn thành công)
+// nên chạy lại là hội tụ, đúng nguyên tắc của purge.
+func (c *connection) DeleteByArticles(ctx context.Context, articleIDs []int64) error {
+	if len(articleIDs) == 0 {
+		return nil
+	}
+	for _, batch := range utils.Batch(articleIDs, deleteBatchSize) {
+		wait := true
+		if _, err := c.client.Delete(ctx, &qdrantapi.DeletePoints{
+			CollectionName: c.collection,
+			Wait:           &wait,
+			Points:         qdrantapi.NewPointsSelectorFilter(articlesFilter(batch)),
+		}); err != nil {
+			return fmt.Errorf("qdrant: delete points của %d article: %w", len(batch), err)
+		}
 	}
 	return nil
 }

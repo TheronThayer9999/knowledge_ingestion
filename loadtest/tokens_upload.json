@@ -1,0 +1,20 @@
+{
+ "base": "http://127.0.0.1:9001/api/v1",
+ "run_id": "1a18dd",
+ "users": [
+  {
+   "username": "up1a18ddu00",
+   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo4LCJ1c2VybmFtZSI6InVwMWExOGRkdTAwIiwicHdkX2NoYW5nZWRfYXQiOi02MjEzNTU5NjgwMCwiZXhwIjoxNzkyNDg2ODUxLCJpYXQiOjE3OTI0MDA0NTF9.0i6mcjhXJkdR2ccVMzW8ZrTsgs0QAs9DUZbYK-A3ABo",
+   "categories": [
+    15,
+    16
+   ],
+   "articles": [
+    {
+     "id": 18,
+     "name": "dotnet-fundamentals.pdf"
+    }
+   ]
+  }
+ ]
+}

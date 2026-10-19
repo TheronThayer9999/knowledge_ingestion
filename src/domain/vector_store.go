@@ -2,11 +2,15 @@ package domain
 
 import "context"
 
-// VectorPoint là 1 điểm worker embed upsert lên Qdrant — service dựng từ
-// ArticleChunk (+ owner từ join articles), infra/qdrant map thành payload.
+// VectorPoint là 1 điểm worker index upsert lên Qdrant — service dựng thẳng
+// từ chunk vừa cắt (+ owner lấy từ article), infra/qdrant map thành payload.
 type VectorPoint struct {
-	// ID là PointID đã lưu ở article_chunks — upsert cùng ID là ghi đè nên
-	// embed chạy lại không bao giờ trùng point.
+	// ID là PointID TẤT ĐỊNH theo (article_id, chunk_index) — utils.NewPointID
+	// (UUIDv5). Không lưu ở bảng nào: sinh lại được từ cùng text + cùng cấu
+	// hình chunker, nên chạy lại vẫn ra đúng ID và upsert là GHI ĐỀ, không
+	// bao giờ sinh point trùng. Đổi chunker sinh NÊN chunk khác thì phần dư
+	// của lần cũ thành mồ côi — đó là lý do index chạy lại từ checkpoint 0
+	// phải DeleteByArticle trước.
 	ID         string
 	Vector     []float32
 	ArticleID  int64
@@ -57,6 +61,10 @@ type IVectorStore interface {
 	// DeleteByArticle xóa toàn bộ point của 1 bài (filter article_id) — purge
 	// gọi khi dọn bài để vector không thành rác mồ côi.
 	DeleteByArticle(ctx context.Context, articleID int64) error
+	// DeleteByArticles như DeleteByArticle nhưng nhiều bài 1 lần gọi — API
+	// rebuild đưa cả danh mục về hàng đợi thì 1 filter MatchInts thay vì
+	// N round trip. Rỗng thì no-op (idempotent như bản 1 bài).
+	DeleteByArticles(ctx context.Context, articleIDs []int64) error
 	// CountByArticle đếm point của 1 bài — worker embed dùng để guard nhánh
 	// done-rỗng (chunk hết nhưng chưa chắc vector đã lên): count 0 thì không
 	// được done, phải retry thay vì done âm thầm với search trống.
@@ -92,7 +100,7 @@ type IVectorStore interface {
 	IsPermanentError(err error) bool
 }
 
-// Quy ước cho API search (khi xây): chỉ search bài embed_status=done, kèm
+// Quy ước cho API search: chỉ search bài index_status=done, kèm
 // score_threshold để không trả lời bừa khi không có đoạn nào gần — giữa lúc
-// embed đang chạy Qdrant phục vụ kết quả thiếu là trạng thái trung gian bình
+// index đang chạy Qdrant phục vụ kết quả thiếu là trạng thái trung gian bình
 // thường, không phải lỗi.

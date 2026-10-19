@@ -51,9 +51,16 @@ func loadAdapter() []fx.Option {
 		fx.Provide(repository.NewUserRepository),
 		fx.Provide(repository.NewCategoryRepository),
 		fx.Provide(repository.NewArticleRepository),
-		fx.Provide(repository.NewArticleChunkRepository),
+		// Bind vai ArticleAdminQueue → cùng 1 repo. fx chỉ tự bind khi kiểu
+		// consumer TRÙNG kiểu provider, nên đổi service sang vai hẹp hơn (ISP)
+		// bắt buộc phải có dòng này — thiếu thì app fail lúc boot với
+		// "missing type: domain.ArticleAdminQueue", và `go build` vẫn xanh.
+		fx.Provide(func(repo domain.IArticleRepository) domain.ArticleAdminQueue { return repo }),
+		// API cần pageRepo cho admin/reset-extract (xoá trang đã trích để
+		// OCR lại). Worker dĩng vậy cũng có repo riêng ở loader/worker.go.
+		fx.Provide(repository.NewArticlePageRepository),
 		fx.Provide(repository.NewUnitOfWork),
-		// qdrant cho API rebuild-vectors (xóa vector cũ) — NewConnection
+		// qdrant cho API rebuild-vectors (xoá vector cũ) — NewConnection
 		// ensureCollection lúc dựng nên API boot giờ fail-fast khi Qdrant
 		// chết, giống worker (đánh đổi để endpoint rebuild luôn sẵn sàng).
 		fx.Provide(qdrant.NewConnection),

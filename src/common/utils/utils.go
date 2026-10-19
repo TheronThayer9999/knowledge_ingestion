@@ -99,6 +99,22 @@ func NewUUIDv7() (string, error) {
 	return id.String(), nil
 }
 
+// NewPointID sinh PointID QDRANT TẤT ĐỊNH từ (articleID, chunkIndex).
+//
+// VÌ SAO PHẢI TẤT ĐỊNH: phase index cắt + embed trong một lần và lưu
+// checkpoint bằng 1 số (articles.index_done_chunks), nên job chết giữa chừng
+// sẽ chạy lại và cắt lại danh sách chunk. Nếu PointID ngẫu nhiên thì lần chạy
+// sau sinh ID khác cho CÙNG nội dung → Qdrant giữ cả hai → search trả trùng.
+// ID suy ra từ (bài, thứ tự chunk) thì embed lại ghi đè đúng point cũ.
+//
+// UUID v5 (SHA-1) chọn vì xác định theo chuẩn RFC 4122; không dùng v7 vì v7
+// luôn chứa timestamp nên không tái lập được. Hash vào namespace
+// NameSpaceOID để không đụng các UUID khác sinh trong hệ thống.
+func NewPointID(articleID int64, chunkIndex int) string {
+	key := fmt.Sprintf("article:%d:chunk:%d", articleID, chunkIndex)
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(key)).String()
+}
+
 // traceIDKey khóa ctx mang trace_id — runner (middleware) sinh 1 ID mỗi lượt
 // chạy job rồi nhét vào ctx, service tầng dưới chỉ đọc ra gắn vào log. Key
 // unexported để không ai ghi đè từ package khác.

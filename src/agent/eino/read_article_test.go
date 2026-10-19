@@ -21,7 +21,10 @@ type fakeArticleVectors struct {
 func (f *fakeArticleVectors) UpsertPoints(_ context.Context, _ []*domain.VectorPoint) error {
 	return nil
 }
-func (f *fakeArticleVectors) DeleteByArticle(_ context.Context, _ int64) error  { return nil }
+func (f *fakeArticleVectors) DeleteByArticle(_ context.Context, _ int64) error { return nil }
+func (f *fakeArticleVectors) DeleteByArticles(_ context.Context, _ []int64) error {
+	return nil
+}
 func (f *fakeArticleVectors) CountByArticle(_ context.Context, _ int64) (int64, error) {
 	return f.total, nil
 }

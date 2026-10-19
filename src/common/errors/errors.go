@@ -12,8 +12,10 @@ const (
 )
 
 type Error struct {
-	// Code là mã lỗi nghiệp vụ (0→OK, 400→bad request, còn lại→internal).
-	// Đừng nhét mã riêng cho từng transport vào đây.
+	// Code là mã nghiệp vụ đi kèm trong body (0→OK). Service dựng lỗi bằng
+	// NewCustomHttpError nên Code thường trùng HttpCode (400/401/403/404...);
+	// HttpCode mới là thứ status line dùng. Đừng nhét mã riêng cho từng
+	// transport vào đây.
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	// HttpCode chỉ HTTP dùng (status line) — không serialize ra body.

@@ -24,6 +24,19 @@
 - DB: `infrastructure/postgres.NewConnection` (wired in `loadAdapter`) uses gorm (`gorm.io/gorm` + `gorm.io/driver/postgres`) and returns `postgres.IDB` (`GetDB() *gorm.DB`); pool tuned 25 open/10 idle/5m lifetime, ping fail-fast 10s — but `loadAdapter` có `fx.Invoke(func(postgres.IDB){})` force kết nối + AutoMigrate lúc startup, nên app **fail-fast** nếu DB không reachable (trước đây fx lazy nên boot được khi Docker tắt); `connection_test.go` dials the config host, falls back to `127.0.0.1`, skips when unreachable
 - Former scaffold dirs (`common/utils`, `controller/middlewares`, `infrastructure/repository`) are now populated — follow the existing layer pattern when adding files
 
+### Ingestion pipeline (worker, 2 phase — both cùng chạy trong `cmd/worker`)
+
+| Phase | Cột queue | Service | Việc |
+|---|---|---|---|
+| **0 extract** | `extract_status/attempts/next_retry_at`, `extracted_at` | `services.article_extract_service.go` | tải blob SeaweedFS → OCR (nếu PDF scan) → ghi **TEXT THÔ từng trang** vào bảng `article_pages` |
+| **1 index** | `index_status/attempts/next_retry_at`, `index_done_chunks`, `indexed_at` | `services.article_index_service.go` | đọc `article_pages` theo cửa sổ trượt → `SplitBlocks` → cắt tại ranh giới trang → embed → upsert Qdrant + checkpoint |
+
+- **KHÔNG có cột text toàn file** (`articles.extracted_text` đã bị drop ở `migrateQueueColumns) — nội dung nằm ở `article_pages` theo từng trang. Lý do: phase index đọc `ListPagesRange(articleID, fromPage, INDEX_PAGE_WINDOW)` nên **RAM là hằng số, không phụ thuộc kích thước file** (file 500 trang không kéo hết lên RAM như cũ). `article_pages` được **giữ lại** sau extract (chỉ `purge` mới xoá) nên đổi config chunker không tốn OCR lần nào.
+- 2 việc phụ thuộc **CẢ file** (bỏ dòng lặp header/footer, khử chữ rải) chạy bằng `extractor.Cleaner`: pass 1 `Scan` chỉ **cộng số** (không giữ text), pass 2 `Apply` áp từng trang — cùng kết quả nhưng RAM O(1 trang). Vì vậy `article_pages` lưu **thô**, không sạch sẵn.
+- Checkpoint index = `articles.index_done_chunks` (1 số nguyên, không phải bảng row). Chunk sinh lại **tất định** từ cùng text + cùng config, PointID là UUIDv5 (`utils.NewPointID(articleID, chunkIndex)`) nên làm lại đợt đó ghi đè đúng point cũ, không nhân bản. `resumeFrom == 0` thì `DeleteByArticle` trước khi ghi (dọn đuôi thừa khi đổi chunker).
+- Cửa sổ luôn kết thúc ở **ranh giới trang** (`pageWindow.cuts`) → `PageNum` chính xác tuyệt đối cho trích dẫn, chunk không tràn 2 trang. `SplitBlocks` chạy TRONG cửa sổ nên vẫn thấy tiêu đề Điều ở tầm vài trang.
+- Điều kiện dừng vòng đọc là **`len(pages) == 0`**, TUYỆT ĐỐI không dùng "lượt đọc ngắn hơn window" — repo khác/`INDEX_WINDOW_MAX_CHARS` cắt cửa sổ sớm vẫn trả đủ trang, coi lượt ngắn là hết file là âm thầm bỏ sót nửa tài liệu (test `TestIndexOneReadsInWindows` khoá đúng cái này).
+
 ## Conventions
 
 - Interfaces prefixed `I` (IConfig, IPingPongService, IDB); constructors take interfaces, fx binds interface → concrete (SOLID/DIP)

@@ -146,6 +146,17 @@ type OCRConfig struct {
 	RenderBinary string `json:"render_binary"`
 	// RenderDPI độ phân giải render trang scan — 300 là điểm ngọt Tesseract.
 	RenderDPI int `json:"render_dpi"`
+	// MinTextChars ngưỡng "text layer mỏng" vẫn chạy OCR. MẶC ĐỊNH 0 (tắt):
+	// đa số PDF không phải ảnh, OCR mỗi trang tốn ~2s nên bật rộng sẽ tốn
+	// cả giờ máy cho vài trang có ích. Bật (vd 150) khi gặp file export từ
+	// Word có text layer mỏng lẫn ảnh scan — dạng đó text không rỗng nên
+	// chỉ-OCR-trang-rỗng sẽ bỏ sót phần ảnh.
+	MinTextChars int `json:"min_text_chars"`
+	// PSM là Page Segmentation Mode của Tesseract. 6 = giả định MỘT khối chữ
+	// đồng nhất, hợp thân bản nhiều dòng; trang có bảng/cột thì nội dung bị
+	// lẫn dòng. 3 (mặc định của Tesseract) tự dò bố cục nên chịu được bảng,
+	// đổi lại chậm hơn. <= 0 thì dùng 6.
+	PSM int `json:"psm"`
 }
 
 // redis cli
@@ -186,12 +197,11 @@ type CorsConfig struct {
 	AllowedOrigins []string `json:"allowed_origins"`
 }
 
-// WorkerConfig giữ nhịp janitor dọn chunk già — chunk đã embedded + chunk mồ
-// côi quá ChunkRetentionHours thì xóa, job quét mỗi TrimIntervalHours. Đổi
-// config + restart worker là ăn ngay, không cần build lại.
+// WorkerConfig giữ nhịp janitor + chiến lược cắt chunk. TrimIntervalHours là
+// nhịp quét dọn trang trung gian mồ côi (bài đã xoá hẳn mà job extract chết
+// giữa lúc ghi). Đổi config + restart worker là ăn ngay, không cần build lại.
 type WorkerConfig struct {
-	ChunkRetentionHours int `json:"chunk_retention_hours"`
-	TrimIntervalHours   int `json:"trim_interval_hours"`
+	TrimIntervalHours int `json:"trim_interval_hours"`
 	// Chunker chọn chiến lược cắt chunk phase 1: "recursive" (Eino splitter
 	// đệ quy, mặc định — rẻ, bulk), "semantic" (Eino splitter ngữ nghĩa qua
 	// Ollama embed, đắt — tài liệu ưu tiên/văn bản hành chính nhiều viết
@@ -337,6 +347,12 @@ func Load(path string) (IConfig, error) {
 	if cfg.OCR.RenderDPI <= 0 {
 		cfg.OCR.RenderDPI = 300
 	}
+	if cfg.OCR.MinTextChars < 0 {
+		cfg.OCR.MinTextChars = 0
+	}
+	if cfg.OCR.PSM <= 0 {
+		cfg.OCR.PSM = 6
+	}
 	if cfg.RedisCli.Host == "" {
 		return nil, fmt.Errorf("redis.host is required")
 	}
@@ -374,9 +390,6 @@ func Load(path string) (IConfig, error) {
 	}
 	if len(cfg.Cors.AllowedOrigins) == 0 {
 		cfg.Cors.AllowedOrigins = []string{"http://localhost:4200"} // mặc định Angular dev
-	}
-	if cfg.Worker.ChunkRetentionHours <= 0 {
-		cfg.Worker.ChunkRetentionHours = 168 // mặc định 7 ngày
 	}
 	if cfg.Worker.TrimIntervalHours <= 0 {
 		cfg.Worker.TrimIntervalHours = 24 // mặc định mỗi ngày

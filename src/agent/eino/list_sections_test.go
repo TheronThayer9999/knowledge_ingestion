@@ -21,6 +21,9 @@ func (f *fakeSectionVectors) UpsertPoints(_ context.Context, _ []*domain.VectorP
 	return nil
 }
 func (f *fakeSectionVectors) DeleteByArticle(_ context.Context, _ int64) error { return nil }
+func (f *fakeSectionVectors) DeleteByArticles(_ context.Context, _ []int64) error {
+	return nil
+}
 func (f *fakeSectionVectors) CountByArticle(_ context.Context, _ int64) (int64, error) {
 	return 0, nil
 }

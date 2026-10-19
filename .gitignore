@@ -6,3 +6,6 @@ data/
 __pycache__/
 # config local (chứa key thật) — chỉ máy dev dùng, đừng commit
 configs/config.local.json
+mem.out
+loadtest/fixtures_big/
+__pycache__/

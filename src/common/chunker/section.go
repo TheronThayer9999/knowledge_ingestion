@@ -144,9 +144,18 @@ func lastHeading(text string) string {
 // Block là 1 Điều/mục nguyên vẹn trong text — service cắt size bên trong
 // từng block, không gộp/cắt ngang ranh giới Điều (lỗi cũ: chunk trộn Điều
 // 1+2+3, LLM không biết quy tắc thuộc Điều nào).
+//
+// Start/End là byte offset của block trong text ĐÃ CHO SplitBlocks (Start
+// inclusive, End exclusive). Offset sinh ra để dùng, không phải để trang
+// trí: phase chunk chạy SplitBlocks trên TOÀN VĂN BẢN (thấy Điều nào nằm ở
+// đâu kể cả khi tiêu đề dính sát cuối trang), rồi dùng offset cắt block tại
+// ranh giới trang để từng chunk vẫn nằm gọn trong 1 trang — xem
+// extractor.Document.Cuts.
 type Block struct {
 	Heading string
 	Text    string
+	Start   int
+	End     int
 }
 
 // SplitBlocks chẻ text thành các block theo tiêu đề — không tiêu đề thì 1
@@ -159,18 +168,18 @@ type Block struct {
 func SplitBlocks(text string) []Block {
 	ms := findHeadings(text)
 	if len(ms) == 0 {
-		return []Block{{Text: text}}
+		return []Block{{Text: text, Start: 0, End: len(text)}}
 	}
 	var out []Block
 	if pre := text[:ms[0].Start]; strings.TrimSpace(pre) != "" {
-		out = append(out, Block{Text: pre})
+		out = append(out, Block{Text: pre, Start: 0, End: ms[0].Start})
 	}
 	for i, m := range ms {
 		end := len(text)
 		if i+1 < len(ms) {
 			end = ms[i+1].Start
 		}
-		out = append(out, Block{Heading: headingTitle(text, m, end), Text: text[m.Start:end]})
+		out = append(out, Block{Heading: headingTitle(text, m, end), Text: text[m.Start:end], Start: m.Start, End: end})
 	}
 	return out
 }
@@ -226,16 +235,19 @@ var versionRe = regexp.MustCompile(`(?i)phiên bản\s*[:\-]?\s*([A-Za-z0-9._]+(
 // không parse time để khỏi failed với định dạng lạ.
 var effectiveRe = regexp.MustCompile(`(?i)hiệu lực\s+(từ|kể từ)\s*:?\s*(\d{1,2}/\d{1,2}/\d{4})`)
 
-// maxMetaScanRunes chỉ quét đầu văn bản tìm metadata — phiên bản/hiệu lực
-// luôn nằm ở trang đầu, quét cả file chỉ tốn công.
-const maxMetaScanRunes = 3000
+// MaxMetaScanRunes chỉ quét đầu văn bản tìm metadata — phiên bản/hiệu lực
+// luôn nằm ở trang đầu, quét cả file chỉ tốn công. Phase extract gọi trực tiếp
+// vì đó là lúc duy nhất giữ trọn văn bản.
+const MaxMetaScanRunes = 3000
 
 // ExtractMeta trích phiên bản + ngày hiệu lực từ đầu văn bản — ("","") khi
-// không có, caller lưu rỗng thay vì đoán.
+// không có, caller lưu rỗng thay vì đoán. head nên là phần đầu văn bản (xem
+// headText trong services.article_extract_service), hàm tự cắt còn tối đa
+// MaxMetaScanRunes rune.
 func ExtractMeta(head string) (version, effective string) {
 	r := []rune(head)
-	if len(r) > maxMetaScanRunes {
-		head = string(r[:maxMetaScanRunes])
+	if len(r) > MaxMetaScanRunes {
+		head = string(r[:MaxMetaScanRunes])
 	}
 	if m := versionRe.FindStringSubmatch(head); len(m) > 1 {
 		version = strings.Trim(m[1], " \t.,;:")
