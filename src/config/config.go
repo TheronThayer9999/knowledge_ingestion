@@ -128,6 +128,33 @@ type QdrantConfig struct {
 	GrpcPort int    `json:"grpc_port"`
 	Token    string `json:"token"`
 	Scheme   string `json:"scheme"`
+
+	// Quantization nén vector để giảm RAM/đĩa khi số point lớn:
+	// "" (không nén), "scalar" (int8, giảm 4 lần — mặc định khuyến nghị),
+	// "binary" (giảm 32 lần, BẮT BUỘC bật rescore khi search).
+	//
+	// Collection mới nhận cấu hình này lúc tạo; collection đã tồn tại thì
+	// worker bật thêm bằng UpdateCollection (best-effort, lỗi chỉ log).
+	// Tắt nén trên collection đã nén phải làm tay — code không tự hạ cấu hình.
+	Quantization string `json:"quantization"`
+	// OnDiskVectors đặt vector gốc trên đĩa thay vì RAM. CHỈ áp lúc tạo
+	// collection — Qdrant không đổi được sau đó, nên collection cũ sẽ chỉ
+	// nhận cảnh báo trong log.
+	OnDiskVectors bool `json:"on_disk_vectors"`
+	// OnDiskPayload đặt payload trên đĩa. Payload ở đây chứa nguyên text
+	// chunk (~1-2 KB/point) nên với kho lớn nó tốn RAM hơn cả vector.
+	OnDiskPayload bool `json:"on_disk_payload"`
+	// Rescore chấm lại top-k bằng vector gốc sau khi tìm bằng vector nén.
+	// Bắt buộc với binary, khuyến nghị với scalar. Chỉ có tác dụng khi
+	// collection thật sự đang nén.
+	Rescore bool `json:"rescore"`
+	// Oversampling lấy dư bao nhiêu lần số hit trước khi rescore (mặc định
+	// 2.0) — cao hơn thì chính xác hơn, chậm hơn.
+	Oversampling float64 `json:"oversampling"`
+	// PrincipalIndex đặt payload index user_id thành "principal" (partition
+	// dữ liệu theo tenant) để filter user vẫn đi HNSW thay vì quét rộng.
+	// Chỉ áp được lúc index được tạo; index cũ giữ nguyên (xem log).
+	PrincipalIndex bool `json:"principal_index"`
 }
 
 // OCRConfig giữ công tắc + đường dẫn engine Tesseract — worker chunk gọi qua
@@ -313,6 +340,20 @@ func Load(path string) (IConfig, error) {
 	if cfg.Qdrant.Scheme != "http" && cfg.Qdrant.Scheme != "https" {
 		return nil, fmt.Errorf("qdrant.scheme phải là http hoặc https, got %q", cfg.Qdrant.Scheme)
 	}
+	// Quantization: fail-fast khi gõ sai để không âm thầm chạy không nén.
+	cfg.Qdrant.Quantization = strings.ToLower(strings.TrimSpace(cfg.Qdrant.Quantization))
+	switch cfg.Qdrant.Quantization {
+	case "", "none":
+		cfg.Qdrant.Quantization = ""
+	case "scalar", "binary":
+	default:
+		return nil, fmt.Errorf("qdrant.quantization phải là \"\", \"none\", \"scalar\" hoặc \"binary\", got %q", cfg.Qdrant.Quantization)
+	}
+	// Oversampling <= 0 là "không khai báo" — Qdrant mặc định 2.0, giữ cùng
+	// giá trị để log/config nhìn thấy số thật.
+	if cfg.Qdrant.Oversampling <= 0 {
+		cfg.Qdrant.Oversampling = 2.0
+	}
 	// Host dính scheme do copy URL (https://h:6333) thì tách ra để không dựng
 	// thành https://https://... — scheme trong host thắng khi config bỏ trống.
 	if i := strings.Index(cfg.Qdrant.Host, "://"); i >= 0 {
@@ -414,7 +455,7 @@ func (c *appConfig) GetApp() AppConfig             { return c.App }
 func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
 func (c *appConfig) GetStorage() S3Config          { return c.Storage }
 func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }
-func (c *appConfig) GetLLMs() LLMsConfig              { return c.LLMs }
+func (c *appConfig) GetLLMs() LLMsConfig           { return c.LLMs }
 func (c *appConfig) GetQdrant() QdrantConfig       { return c.Qdrant }
 func (c *appConfig) GetOCR() OCRConfig             { return c.OCR }
 func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }

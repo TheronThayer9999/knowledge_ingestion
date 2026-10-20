@@ -25,7 +25,13 @@
     "port": 6333,
     "grpc_port": 6334,
     "token": "theron_qdrant_token",
-    "scheme": "http"
+    "scheme": "http",
+    "quantization": "scalar",
+    "on_disk_vectors": true,
+    "on_disk_payload": true,
+    "rescore": true,
+    "oversampling": 2.0,
+    "principal_index": true
   },
   "embedding": {
     "provider": "ollama",

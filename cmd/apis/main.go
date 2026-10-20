@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	_ "knowledge_ingestion/docs"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/routers"
@@ -62,7 +63,9 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
-	if err := app.Stop(context.Background()); err != nil {
+	stopCtx, cancel := context.WithTimeout(context.Background(), constants.SHUTDOWN_TIMEOUT)
+	defer cancel()
+	if err := app.Stop(stopCtx); err != nil {
 		logs.Fatal(err, "Error stopping application")
 	}
 	logs.Info("application stopped")
@@ -74,6 +77,16 @@ func serverLifecycle(lc fx.Lifecycle, router *routers.Router, cfg config.IConfig
 		Addr:              fmt.Sprintf(":%d", cfg.GetApp().Port),
 		Handler:           router.Engine,
 		ReadHeaderTimeout: 5 * time.Second,
+		// Body của đa số route rất nhỏ (JSON); presign chỉ đọc header part +
+		// 512B đầu nên 2 phút là rộng rãi cho client mạng chậm.
+		ReadTimeout: 2 * time.Minute,
+		// WriteTimeout phải lớn hơn route chậm nhất (/chat gọi LLM) — nếu
+		// không, response bị cắt giữa chừng dù handler vẫn đang chạy.
+		WriteTimeout: 10 * time.Minute,
+		IdleTimeout:  90 * time.Second,
+		// Header hợp lệ của service này rất nhỏ; chặn header khổng lồ từ
+		// client lạ trước khi vào middleware.
+		MaxHeaderBytes: 1 << 20,
 	}
 
 	lc.Append(fx.Hook{

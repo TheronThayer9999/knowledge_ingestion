@@ -78,7 +78,9 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
-	if err := app.Stop(context.Background()); err != nil {
+	stopCtx, cancel := context.WithTimeout(context.Background(), constants.SHUTDOWN_TIMEOUT)
+	defer cancel()
+	if err := app.Stop(stopCtx); err != nil {
 		logs.Fatal(err, "Error stopping worker")
 	}
 	logs.Info("worker stopped")

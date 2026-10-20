@@ -22,12 +22,58 @@ import (
 // compile-time check: connection phải implement domain.IVectorStore
 var _ domain.IVectorStore = (*connection)(nil)
 
+// quantizationMode là cách nén vector — đọc từ config qdrant.quantization.
+// Đặt ở tầng infra (không phải config) để tên hằng dùng chung với builder
+// request, tránh chuỗi "scalar"/"binary" rải khắp nơi.
+type quantizationMode int
+
+const (
+	quantNone quantizationMode = iota
+	quantScalar
+	quantBinary
+)
+
+// parseQuantization đổi chuỗi config (đã validate ở config.Load) sang enum.
+// Giá trị lạ quy về none — đây chỉ là lưới an toàn, không phải nơi báo lỗi.
+func parseQuantization(s string) quantizationMode {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "scalar":
+		return quantScalar
+	case "binary":
+		return quantBinary
+	default:
+		return quantNone
+	}
+}
+
+func (q quantizationMode) String() string {
+	switch q {
+	case quantScalar:
+		return "scalar(int8)"
+	case quantBinary:
+		return "binary"
+	default:
+		return "none"
+	}
+}
+
 type connection struct {
 	client *qdrantapi.Client
 	dim    int
 	// collection cho phép test trỏ sang collection riêng — production luôn là
 	// constants.QDRANT_COLLECTION.
 	collection string
+
+	// Cấu hình nén + đĩa (xem config.QdrantConfig). quant là mong muốn,
+	// quantized là trạng thái THẬT của collection — chỉ bật rescore khi
+	// collection thật sự nén, tránh gửi tham số vô nghĩa.
+	quant          quantizationMode
+	quantized      bool
+	rescore        bool
+	oversampling   float64
+	principalIndex bool
+	onDiskVectors  bool
+	onDiskPayload  bool
 }
 
 func NewConnection(cfg config.IConfig) (domain.IVectorStore, error) {
@@ -55,7 +101,20 @@ func NewConnection(cfg config.IConfig) (domain.IVectorStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("qdrant: connect %s:%d: %w", q.Host, grpcPort, err)
 	}
-	c := &connection{client: client, dim: dim, collection: constants.QDRANT_COLLECTION}
+	c := &connection{
+		client:         client,
+		dim:            dim,
+		collection:     constants.QDRANT_COLLECTION,
+		quant:          parseQuantization(q.Quantization),
+		rescore:        q.Rescore,
+		oversampling:   q.Oversampling,
+		principalIndex: q.PrincipalIndex,
+		onDiskVectors:  q.OnDiskVectors,
+		onDiskPayload:  q.OnDiskPayload,
+	}
+	if c.oversampling <= 0 {
+		c.oversampling = 2.0
+	}
 
 	// Lifetime-init: collection phải tồn tại đúng dim trước khi worker chạy —
 	// fail-fast giống postgres/S3 để không boot trong trạng thái embed mù.
@@ -66,73 +125,248 @@ func NewConnection(cfg config.IConfig) (domain.IVectorStore, error) {
 		return nil, err
 	}
 
-	logs.Infow("qdrant ready", "collection", c.collection, "dim", dim)
+	logs.Infow("qdrant ready", "collection", c.collection, "dim", dim,
+		"quantization", c.quant.String(), "quantized", c.quantized,
+		"rescore", c.rescore, "on_disk_vectors", c.onDiskVectors)
 	return c, nil
 }
 
-// ensureCollection: chưa có thì tạo Cosine đúng dim, có rồi thì verify dim
-// (sai dim là config lệch với model embed — fail-fast thay vì upsert lỗi hàng
-// loạt), rồi tạo index cho 3 khóa phân quyền để search gắn filter đều ăn index.
+// ensureCollection: chưa có thì tạo với cấu hình cho kho lớn (dim đúng,
+// quantization, on_disk, HNSW payload-aware), có rồi thì verify dim + bật
+// quantization nếu config yêu cầu (best-effort), rồi tạo index cho các khóa
+// phân quyền để search gắn filter đều ăn index.
 func (c *connection) ensureCollection(ctx context.Context) error {
 	exists, err := c.client.CollectionExists(ctx, c.collection)
 	if err != nil {
 		return fmt.Errorf("qdrant: kiểm tra collection %s: %w", c.collection, err)
 	}
 	if !exists {
-		if err := c.client.CreateCollection(ctx, &qdrantapi.CreateCollection{
-			CollectionName: c.collection,
-			VectorsConfig: qdrantapi.NewVectorsConfig(&qdrantapi.VectorParams{
-				Size:     uint64(c.dim),
-				Distance: qdrantapi.Distance_Cosine,
-			}),
-		}); err != nil {
+		if err := c.createCollection(ctx); err != nil {
 			return fmt.Errorf("qdrant: create collection %s: %w", c.collection, err)
 		}
-		logs.Infow("qdrant collection created", "collection", c.collection)
-	} else {
-		info, err := c.client.GetCollectionInfo(ctx, c.collection)
-		if err != nil {
-			return fmt.Errorf("qdrant: đọc info collection %s: %w", c.collection, err)
-		}
-		// Getter protobuf nil-safe nên chain dài vẫn an toàn khi shape thiếu.
-		if got := int(info.GetConfig().GetParams().GetVectorsConfig().GetParams().GetSize()); got != c.dim {
-			return fmt.Errorf("qdrant: collection %s có dim %d, config expects %d",
-				c.collection, got, c.dim)
+		c.quantized = c.quant != quantNone
+		logs.Infow("qdrant collection created", "collection", c.collection,
+			"dim", c.dim, "quantization", c.quant.String(),
+			"on_disk_vectors", c.onDiskVectors, "on_disk_payload", c.onDiskPayload)
+		c.ensurePayloadIndexes(ctx, nil)
+		return nil
+	}
+
+	info, err := c.client.GetCollectionInfo(ctx, c.collection)
+	if err != nil {
+		return fmt.Errorf("qdrant: đọc info collection %s: %w", c.collection, err)
+	}
+	// Getter protobuf nil-safe nên chain dài vẫn an toàn khi shape thiếu.
+	if got := int(info.GetConfig().GetParams().GetVectorsConfig().GetParams().GetSize()); got != c.dim {
+		return fmt.Errorf("qdrant: collection %s có dim %d, config expects %d",
+			c.collection, got, c.dim)
+	}
+	c.quantized = info.GetConfig().GetQuantizationConfig() != nil
+	if !c.quantized {
+		c.enableQuantization(ctx)
+	}
+	// on_disk của vector là thuộc tính lúc tạo — nói rõ trong log thay vì
+	// im lặng để người vận hành biết vì sao RAM vẫn cao.
+	if c.onDiskVectors {
+		if mem := info.GetConfig().GetParams().GetVectorsConfig().GetParams().GetMemory(); mem != qdrantapi.Memory_Cold && mem != qdrantapi.Memory_Cached {
+			logs.Warnw("qdrant: on_disk_vectors chỉ áp được lúc tạo collection — collection hiện có vẫn giữ vector trong RAM",
+				"collection", c.collection)
 		}
 	}
-	// Index payload best-effort — có rồi hay lỗi cũng không chặn boot, chỉ
-	// khiến xóa/filter theo bài chậm hơn.
-	for _, field := range []string{"article_id", "user_id", "category_id", "chunk_index"} {
-		ft := qdrantapi.FieldType_FieldTypeInteger
-		if _, err := c.client.CreateFieldIndex(ctx, &qdrantapi.CreateFieldIndexCollection{
-			CollectionName: c.collection,
-			FieldName:      field,
-			FieldType:      &ft,
-		}); err != nil {
-			// Index đã tồn tại server trả AlreadyExists — cũng chỉ warn như
-			// mọi lỗi best-effort khác.
-			logs.Warnw("qdrant: tạo payload index thất bại (bỏ qua)", "trace_id", utils.TraceIDFromCtx(ctx), "field", field, "error", err)
-		}
+	c.ensurePayloadIndexes(ctx, info.GetPayloadSchema())
+	return nil
+}
+
+// createCollection dựng collection mới với cấu hình đủ cho kho lớn:
+//   - quantization (nếu config bật) — nén vector 4x/32x;
+//   - on_disk vector/payload (nếu config bật) — RAM không phụ thuộc số point;
+//   - HNSW payload_m > 0 — filter user_id vẫn đi HNSW thay vì full-scan;
+//   - optimizer ngưỡng cao hơn mặc định để ít segment, ít memmap hơn.
+func (c *connection) createCollection(ctx context.Context) error {
+	vectors := &qdrantapi.VectorParams{
+		Size:     uint64(c.dim),
+		Distance: qdrantapi.Distance_Cosine,
 	}
-	// Full-text index cho nửa keyword của hybrid search (SearchText MatchText
-	// field "text"). Tokenizer Word (tiếng Việt tách theo âm tiết — đủ cho
-	// keyword match) + AsciiFolding (query không dấu "kinh te" vẫn trúng
-	// "kinh tế") + lowercase mặc định. Best-effort như index số: collection cũ
-	// chưa có thì SearchText báo lỗi, service degraded dense-only.
-	ftText := qdrantapi.FieldType_FieldTypeText
-	asciiFold := true
-	if _, err := c.client.CreateFieldIndex(ctx, &qdrantapi.CreateFieldIndexCollection{
+	if c.onDiskVectors {
+		// Cold = không nạp sẵn vào RAM, đọc qua disk cache; Pinned không hỗ
+		// trợ cho dense vector.
+		vectors.Memory = ptrMemory(qdrantapi.Memory_Cold)
+	}
+	req := &qdrantapi.CreateCollection{
 		CollectionName: c.collection,
-		FieldName:      "text",
-		FieldType:      &ftText,
-		FieldIndexParams: qdrantapi.NewPayloadIndexParamsText(&qdrantapi.TextIndexParams{
+		VectorsConfig:  qdrantapi.NewVectorsConfig(vectors),
+		HnswConfig: &qdrantapi.HnswConfigDiff{
+			M:                 ptrUint64(16),
+			EfConstruct:       ptrUint64(100),
+			PayloadM:          ptrUint64(16),
+			FullScanThreshold: ptrUint64(20000),
+		},
+		OptimizersConfig: &qdrantapi.OptimizersConfigDiff{
+			DefaultSegmentNumber: ptrUint64(2),
+			MemmapThreshold:      ptrUint64(20000),
+			IndexingThreshold:    ptrUint64(20000),
+		},
+		QuantizationConfig: c.quantizationConfig(),
+	}
+	if c.onDiskPayload {
+		req.Payload = &qdrantapi.PayloadStorageParams{Memory: ptrMemory(qdrantapi.Memory_Cold)}
+	}
+	return c.client.CreateCollection(ctx, req)
+}
+
+// enableQuantization bật nén cho collection ĐÃ CÓ. Best-effort: đây là tối ưu
+// bộ nhớ, lỗi không được làm worker không boot. Có timeout riêng vì Qdrant có
+// thể chờ optimization hiện tại xong trước khi áp cấu hình mới.
+func (c *connection) enableQuantization(ctx context.Context) {
+	diff := c.quantizationDiff()
+	if diff == nil {
+		return
+	}
+	uctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := c.client.UpdateCollection(uctx, &qdrantapi.UpdateCollection{
+		CollectionName:     c.collection,
+		QuantizationConfig: diff,
+	}); err != nil {
+		logs.Warnw("qdrant: không bật được quantization cho collection có sẵn (bỏ qua)",
+			"collection", c.collection, "mode", c.quant.String(), "error", err)
+		return
+	}
+	c.quantized = true
+	logs.Infow("qdrant: đã bật quantization cho collection có sẵn",
+		"collection", c.collection, "mode", c.quant.String())
+}
+
+// quantizationConfig dùng lúc tạo collection.
+func (c *connection) quantizationConfig() *qdrantapi.QuantizationConfig {
+	switch c.quant {
+	case quantScalar:
+		return &qdrantapi.QuantizationConfig{
+			Quantization: &qdrantapi.QuantizationConfig_Scalar{Scalar: scalarQuantization()},
+		}
+	case quantBinary:
+		return &qdrantapi.QuantizationConfig{
+			Quantization: &qdrantapi.QuantizationConfig_Binary{Binary: binaryQuantization()},
+		}
+	default:
+		return nil
+	}
+}
+
+// quantizationDiff dùng lúc UpdateCollection (collection đã tồn tại).
+func (c *connection) quantizationDiff() *qdrantapi.QuantizationConfigDiff {
+	switch c.quant {
+	case quantScalar:
+		return &qdrantapi.QuantizationConfigDiff{
+			Quantization: &qdrantapi.QuantizationConfigDiff_Scalar{Scalar: scalarQuantization()},
+		}
+	case quantBinary:
+		return &qdrantapi.QuantizationConfigDiff{
+			Quantization: &qdrantapi.QuantizationConfigDiff_Binary{Binary: binaryQuantization()},
+		}
+	default:
+		return nil
+	}
+}
+
+// scalarQuantization: int8 + quantile 0.99 (bỏ 1% đuôi để không mất độ
+// chính xác vì outlier), giữ vector nén trong RAM (4x nhỏ hơn float32).
+func scalarQuantization() *qdrantapi.ScalarQuantization {
+	return &qdrantapi.ScalarQuantization{
+		Type:     qdrantapi.QuantizationType_Int8,
+		Quantile: ptrFloat32(0.99),
+		Memory:   ptrMemory(qdrantapi.Memory_Pinned),
+	}
+}
+
+// binaryQuantization: 1 bit/chiều (32x nhỏ hơn float32). Bắt buộc rescore
+// khi search, nếu không kết quả thô và lệch hẳn.
+func binaryQuantization() *qdrantapi.BinaryQuantization {
+	return &qdrantapi.BinaryQuantization{Memory: ptrMemory(qdrantapi.Memory_Pinned)}
+}
+
+// payloadIndexSpec mô tả 1 payload index cần có: field + kiểu + params đặc
+// biệt (principal cho user_id, text cho full-text).
+type payloadIndexSpec struct {
+	field  string
+	typ    qdrantapi.FieldType
+	params *qdrantapi.PayloadIndexParams
+}
+
+// ensurePayloadIndexes tạo các index còn THIẾU. existing lấy từ
+// CollectionInfo.PayloadSchema (nil khi vừa tạo collection) để không gọi
+// create lặp lại mỗi lần boot và không nuốt lỗi "đã tồn tại".
+//
+// Index tạo lỗi vẫn chỉ warn: thiếu index thì filter chậm hơn, không sai kết
+// quả — không đáng chặn boot.
+func (c *connection) ensurePayloadIndexes(ctx context.Context, existing map[string]*qdrantapi.PayloadSchemaInfo) {
+	for _, spec := range c.payloadIndexSpecs() {
+		if info, ok := existing[spec.field]; ok {
+			// is_principal chỉ đặt được lúc tạo index. Nói rõ để người vận
+			// hành biết muốn bật phải xoá index rồi restart.
+			if spec.field == "user_id" && c.principalIndex && !isPrincipalIndex(info) {
+				logs.Infow("qdrant: index user_id đã tồn tại nhưng chưa principal — xoá index rồi restart để bật partition theo tenant",
+					"collection", c.collection, "field", spec.field)
+			}
+			continue
+		}
+		ft := spec.typ
+		req := &qdrantapi.CreateFieldIndexCollection{
+			CollectionName: c.collection,
+			FieldName:      spec.field,
+			FieldType:      &ft,
+		}
+		if spec.params != nil {
+			req.FieldIndexParams = spec.params
+		}
+		if _, err := c.client.CreateFieldIndex(ctx, req); err != nil {
+			logs.Warnw("qdrant: tạo payload index thất bại (bỏ qua)",
+				"trace_id", utils.TraceIDFromCtx(ctx), "field", spec.field, "error", err)
+		}
+	}
+}
+
+// payloadIndexSpecs: 4 khóa phân quyền kiểu integer + 1 full-text cho nửa
+// keyword của hybrid search.
+func (c *connection) payloadIndexSpecs() []payloadIndexSpec {
+	specs := make([]payloadIndexSpec, 0, 5)
+	for _, field := range []string{"article_id", "category_id", "chunk_index"} {
+		specs = append(specs, payloadIndexSpec{field: field, typ: qdrantapi.FieldType_FieldTypeInteger})
+	}
+	specs = append(specs, payloadIndexSpec{
+		field:  "user_id",
+		typ:    qdrantapi.FieldType_FieldTypeInteger,
+		params: c.userIDIndexParams(),
+	})
+	asciiFold := true
+	specs = append(specs, payloadIndexSpec{
+		field: "text",
+		typ:   qdrantapi.FieldType_FieldTypeText,
+		params: qdrantapi.NewPayloadIndexParamsText(&qdrantapi.TextIndexParams{
 			Tokenizer:    qdrantapi.TokenizerType_Word,
 			AsciiFolding: &asciiFold,
 		}),
-	}); err != nil {
-		logs.Warnw("qdrant: tạo full-text index thất bại (bỏ qua)", "trace_id", utils.TraceIDFromCtx(ctx), "field", "text", "error", err)
+	})
+	return specs
+}
+
+// userIDIndexParams bật is_principal (partition theo tenant) — mọi query đều
+// lọc user_id nên Qdrant chỉ đọc phần dữ liệu của tenant thay vì quét cả
+// collection. Index cũ đã tạo không đổi được params, xem ensurePayloadIndexes.
+func (c *connection) userIDIndexParams() *qdrantapi.PayloadIndexParams {
+	if !c.principalIndex {
+		return nil
 	}
-	return nil
+	yes := true
+	return &qdrantapi.PayloadIndexParams{
+		IndexParams: &qdrantapi.PayloadIndexParams_IntegerIndexParams{
+			IntegerIndexParams: &qdrantapi.IntegerIndexParams{IsPrincipal: &yes},
+		},
+	}
+}
+
+func isPrincipalIndex(info *qdrantapi.PayloadSchemaInfo) bool {
+	return info.GetParams().GetIntegerIndexParams().GetIsPrincipal()
 }
 
 // articleFilter lọc point của đúng 1 bài — purge xóa, embed đếm guard, search
@@ -280,6 +514,10 @@ func (c *connection) Search(ctx context.Context, vector []float32, filter domain
 	if scoreThreshold > 0 {
 		req.ScoreThreshold = &scoreThreshold
 	}
+	// Rescore: tìm bằng vector nén rồi chấm lại top-k bằng vector gốc. Chỉ
+	// gửi khi collection THẬT SỰ đang nén (quantized) — với binary thì đây là
+	// bắt buộc, với scalar là để giữ recall sát float32.
+	req.Params = c.searchParams()
 	res, err := c.client.Query(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("qdrant: search: %w", err)
@@ -303,12 +541,36 @@ func (c *connection) Search(ctx context.Context, vector []float32, filter domain
 	return hits, nil
 }
 
+// searchParams trả tham số rescore cho QueryPoints, nil khi không cần.
+// Tách khỏi Search để test được (Search cần Qdrant thật).
+func (c *connection) searchParams() *qdrantapi.SearchParams {
+	if !c.rescore || !c.quantized {
+		return nil
+	}
+	return &qdrantapi.SearchParams{
+		Quantization: &qdrantapi.QuantizationSearchParams{
+			Rescore:      ptrBool(true),
+			Oversampling: ptrFloat64(c.oversampling),
+		},
+	}
+}
+
 // ptrUint64 bọc số thành con trỏ cho field oneof của proto — go-client không
 // có helper sẵn cho Limit nên viết tay 1 dòng.
 func ptrUint64(n uint64) *uint64 { return &n }
 
 // ptrUint32 như trên cho ScrollPoints.Limit.
 func ptrUint32(n uint32) *uint32 { return &n }
+
+func ptrBool(b bool) *bool { return &b }
+
+func ptrFloat32(f float32) *float32 { return &f }
+
+func ptrFloat64(f float64) *float64 { return &f }
+
+// ptrMemory chọn chỗ đặt dữ liệu (Cold = đĩa, Pinned = RAM) cho các field
+// proto dùng enum Memory thay cho cờ on_disk cũ.
+func ptrMemory(m qdrantapi.Memory) *qdrantapi.Memory { return &m }
 
 // SearchText tìm chunk khớp từ khóa trong payload text (full-text MatchText)
 // cùng phạm vi filter quyền — nửa keyword của hybrid search. Dùng Scroll

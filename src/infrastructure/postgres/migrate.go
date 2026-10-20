@@ -25,6 +25,16 @@ func migrate(db *gorm.DB) error {
 	if err := migrateQueueColumns(db); err != nil {
 		return err
 	}
+	// Worker cũ (pdf_process) ghi trạng thái 'waiting' vào cùng bảng, nhưng
+	// state machine của service này chỉ có pending/processing/done/failed —
+	// claim sẽ bỏ qua các dòng đó vĩnh viễn. Chuẩn hoá 1 lần, idempotent nên
+	// boot lại vô hại; chỉ quét đúng các dòng còn 'waiting'.
+	for _, col := range []string{"extract_status", "index_status"} {
+		if err := db.Exec(fmt.Sprintf(`UPDATE articles SET %s = ? WHERE %s = ?`, col, col),
+			domain.QueuePending, "waiting").Error; err != nil {
+			return fmt.Errorf("chuẩn hoá %s='waiting' sang pending: %w", col, err)
+		}
+	}
 	// Index composite partial cho luồng list article (user_id + category_id
 	// + order created_at): WHERE deleted_at IS NULL vì mọi query gorm đều
 	// kèm điều kiện đó nên index gọn và Sort biến mất khi bảng lớn.

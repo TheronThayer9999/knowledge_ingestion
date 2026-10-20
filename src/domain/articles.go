@@ -133,6 +133,10 @@ type IArticleRepository interface {
 	// MarkExtractError ghi lỗi trích 1 bài — cùng luật backoff/failed như
 	// MarkIndexError.
 	MarkExtractError(ctx context.Context, id int64, attempts int) error
+	// ReleaseExtractClaims trả các bài đang processing về pending ngay khi job
+	// bị hủy do shutdown (không tăng attempts) — 1 câu UPDATE cho cả lô, không
+	// phải N query. Giữ article_pages để kỳ sau resume.
+	ReleaseExtractClaims(ctx context.Context, ids []int64) error
 
 	// ClaimIndexPending hốt batch bài tới hạn đánh chỉ mục cho worker trong
 	// đúng 1 transaction (FOR UPDATE SKIP LOCKED, cùng pattern outbox
@@ -152,6 +156,10 @@ type IArticleRepository interface {
 	// lại pending + lùi giờ thử theo utils.QueueBackoff. attempts là số lần
 	// đã thử (gồm lần vừa lỗi) — repo tự quyết, service chỉ truyền số.
 	MarkIndexError(ctx context.Context, id int64, attempts int) error
+	// ReleaseIndexClaims trả các bài đang processing về pending ngay khi job
+	// bị hủy do shutdown (không tăng attempts) — 1 câu UPDATE cho cả lô, giữ
+	// index_done_chunks để kỳ sau resume.
+	ReleaseIndexClaims(ctx context.Context, ids []int64) error
 
 	// HardDeleteMany xóa hẳn nhiều row 1 câu — janitor purge gom các bài đã
 	// dọn xong blob + vector trong kỳ, thay vì 1 DELETE mỗi bài. Không lọc
@@ -227,6 +235,10 @@ type ArticleIndexQueue interface {
 	MarkIndexProgress(ctx context.Context, id int64, done int) error
 	MarkIndexDone(ctx context.Context, id int64) error
 	MarkIndexError(ctx context.Context, id int64, attempts int) error
+	// ReleaseIndexClaims trả cả lô bài đang processing về pending khi job bị
+	// hủy (shutdown), KHÔNG tăng attempts — lỗi không thuộc về bài. Giữ nguyên
+	// index_done_chunks để kỳ sau resume, không embed lại từ đầu.
+	ReleaseIndexClaims(ctx context.Context, ids []int64) error
 	IsAlive(ctx context.Context, id int64) (bool, error)
 }
 
@@ -235,6 +247,10 @@ type ArticleExtractQueue interface {
 	ClaimExtractPending(ctx context.Context, limit int, lease time.Duration) ([]*Article, error)
 	MarkExtractDone(ctx context.Context, id int64) error
 	MarkExtractError(ctx context.Context, id int64, attempts int) error
+	// ReleaseExtractClaims trả cả lô bài đang processing về pending khi job bị
+	// hủy (shutdown), KHÔNG tăng attempts — lỗi không thuộc về bài. Giữ nguyên
+	// article_pages đã ghi để kỳ sau trích tiếp.
+	ReleaseExtractClaims(ctx context.Context, ids []int64) error
 	IsAlive(ctx context.Context, id int64) (bool, error)
 	// UpdateMetadata ghi 3 cột metadata bài (số trang, phiên bản, hiệu lực).
 	// Đặt ở phase extract vì đây là lúc duy nhất các trang vừa trích còn nằm

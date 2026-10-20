@@ -45,23 +45,27 @@ const EXTRACTED_PREFIX = "extracted/"
 // EXTRACT_INTERVAL là nhịp worker quét bài chưa trích text.
 const EXTRACT_INTERVAL = 30 * time.Second
 
-// EXTRACT_CLAIM_LIMIT số bài hốt mỗi kỳ — claim là rẻ (1 transaction), làm
-// không hết thì lease giữ bài lại, kỳ sau hốt tiếp.
-const EXTRACT_CLAIM_LIMIT = 6
-
 // EXTRACT_POOL_SIZE số bài trích song song. Để 1: gopdf nạp cả PDF vào RAM
 // (đo: PDF 90MB đỉnh ~920MB), 3 job song song là ~3GB chỉ riêng extract.
 // Trích tuần tự thì nhanh đủ, vì bottleneck thật là index.
 const EXTRACT_POOL_SIZE = 1
+
+// EXTRACT_CLAIM_LIMIT số bài hốt mỗi kỳ — BẰNG pool size. Claim là đánh dấu
+// processing + đặt lease, nên hốt dư nghĩa là bài chưa chạy đã bị đốt lease:
+// chờ lâu quá lease thì worker khác claim lại và xử lý trùng. Hốt đúng số
+// slot chạy được thì không bài nào ngồi chờ vô ích.
+const EXTRACT_CLAIM_LIMIT = EXTRACT_POOL_SIZE
 
 // EXTRACT_PAGE_WORKERS số khoảng trang của MỘT PDF trích song song (mỗi khoảng
 // là 1 tiến trình pdftotext, trang scan thêm render + OCR). Tổng tiến trình
 // poppler/OCR đồng thời = EXTRACT_PAGE_WORKERS, vì EXTRACT_POOL_SIZE = 1.
 const EXTRACT_PAGE_WORKERS = 4
 
-// EXTRACT_LEASE thời gian giữ claim — phải đủ cho file nặng nhất (PDF scan
-// 500 trang ≈ 17 phút).
-const EXTRACT_LEASE = 30 * time.Minute
+// EXTRACT_LEASE thời gian giữ claim — PHẢI LỚN HƠN EXTRACT_JOB_TIMEOUT.
+// Claim query reclaim cả row processing khi next_retry_at <= now, nên lease
+// ngắn hơn thời gian job chạy = worker khác hốt lại bài đang chạy (xử lý
+// trùng). 60 phút > trần 45 phút; crash thì chờ hết lease mới reclaim.
+const EXTRACT_LEASE = 60 * time.Minute
 
 // EXTRACT_FLUSH_PAGES số trang ghi 1 lô ra artifact DỞ. Job chết giữa file
 // 500 trang thì kỳ sau nhảy tiếp từ trang kế tiếp thay vì OCR lại từ đầu.
@@ -69,8 +73,8 @@ const EXTRACT_LEASE = 30 * time.Minute
 // bị làm lại, đợt 500 trang chỉ 25 lần PUT.
 const EXTRACT_FLUSH_PAGES = 20
 
-// EXTRACT_JOB_TIMEOUT trần thời gian 1 kỳ quét extract — lớn hơn
-// EXTRACT_LEASE một chút, xem INDEX_JOB_TIMEOUT để biết lý do chọn con số.
+// EXTRACT_JOB_TIMEOUT trần thời gian 1 kỳ quét extract — PHẢI NHỎ HƠN
+// EXTRACT_LEASE (xem comment lease).
 const EXTRACT_JOB_TIMEOUT = 45 * time.Minute
 
 // Knob vận hành phase index của worker — service chỉ đọc, không định nghĩa.
@@ -83,17 +87,18 @@ const EXTRACT_JOB_TIMEOUT = 45 * time.Minute
 // phút để đỡ quét DB trống.
 const INDEX_INTERVAL = 10 * time.Second
 
-// INDEX_CLAIM_LIMIT số bài hốt mỗi kỳ — ollama remote chậm, bài 500 trang
-// (~1500 chunk ≈ 47 lần gọi) nuốt vài phút nên giữ ít.
-const INDEX_CLAIM_LIMIT = 3
-
 // INDEX_POOL_SIZE số bài index song song — ollama remote là bottleneck nên
 // chỉ 2, tránh dội request làm nó nghẽn rồi timeout hàng loạt.
 const INDEX_POOL_SIZE = 2
 
-// INDEX_LEASE thời gian giữ claim — đủ cho bài to nhất (500 trang) cắt +
-// embed + upsert xong trong pool; crash thì quá lease tự reclaim.
-const INDEX_LEASE = 30 * time.Minute
+// INDEX_CLAIM_LIMIT số bài hốt mỗi kỳ — BẰNG pool size, cùng lý do với
+// EXTRACT_CLAIM_LIMIT: hốt dư là đốt lease của bài còn đang chờ slot.
+const INDEX_CLAIM_LIMIT = INDEX_POOL_SIZE
+
+// INDEX_LEASE thời gian giữ claim — PHẢI LỚN HƠN INDEX_JOB_TIMEOUT, cùng lý
+// do với EXTRACT_LEASE: lease ngắn hơn job khiến worker khác reclaim bài đang
+// chạy. Crash thì quá lease tự reclaim.
+const INDEX_LEASE = 60 * time.Minute
 
 // INDEX_BATCH_SIZE số text mỗi lần gọi ollama — khớp giới hạn input 1 lần
 // gọi của /api/embed. Đợt này VỪA là đơn vị upsert VỪA là mốc ghi checkpoint,
@@ -119,12 +124,22 @@ const INDEX_WINDOW_MAX_CHARS = 64 << 10
 const INDEX_CALL_ATTEMPTS = 3
 const INDEX_CALL_BASE_DELAY = 2 * time.Second
 
-// INDEX_JOB_TIMEOUT trần thời gian 1 kỳ quét index — PHẢI LỚN HƠN INDEX_LEASE
-// một chút. Timeout ở đây chỉ là chốt an toàn cuối: nhờ checkpoint ghi sau
-// mỗi INDEX_BATCH_SIZE nên hết giờ không còn là vòng lặp vô hạn, kỳ sau chỉ
-// làm nốt phần còn lại.
+// INDEX_JOB_TIMEOUT trần thời gian 1 kỳ quét index — PHẢI NHỎ HƠN INDEX_LEASE
+// (xem comment lease). Timeout ở đây chỉ là chốt an toàn cuối: nhờ checkpoint
+// ghi sau mỗi INDEX_BATCH_SIZE nên hết giờ không còn là vòng lặp vô hạn, kỳ
+// sau chỉ làm nốt phần còn lại.
 const INDEX_JOB_TIMEOUT = 45 * time.Minute
 
+// SHUTDOWN_GRACE thời gian worker chờ job đang chạy thoát sau khi cancel —
+// đủ để service thấy ctx.Done giữa 2 batch/page và ghi nốt trạng thái bằng
+// detached ctx. Quá hạn thì vẫn đóng DB/Qdrant để không treo process.
+const SHUTDOWN_GRACE = 30 * time.Second
+
+// SHUTDOWN_TIMEOUT trần thời gian cho toàn bộ app.Stop (fx chạy các hook
+// ngược thứ tự: worker chờ job tối đa SHUTDOWN_GRACE, rồi HTTP server
+// Shutdown nốt request đang chạy). Phải lớn hơn SHUTDOWN_GRACE để server còn
+// thời gian drain; không có trần thì 1 request treo giữ process mãi.
+const SHUTDOWN_TIMEOUT = 60 * time.Second
 
 // Knob vận hành phase purge của worker — service chỉ đọc, không định nghĩa.
 

@@ -350,11 +350,11 @@ func (a *ArticleRepository) ResetExtract(ctx context.Context, ids []int64, userI
 	res := dbConn(ctx, a.db).Model(&domain.Article{}).
 		Where("id IN ? AND user_id = ?", ids, userID).
 		Updates(map[string]any{
-			"extract_status":      domain.QueuePending,
-			"extract_attempts":    0,
+			"extract_status":        domain.QueuePending,
+			"extract_attempts":      0,
 			"extract_next_retry_at": now,
-			"extracted_at":        nil,
-			"updated_at":          now,
+			"extracted_at":          nil,
+			"updated_at":            now,
 		})
 	if res.Error != nil {
 		return 0, res.Error
@@ -368,6 +368,7 @@ func (a *ArticleRepository) ResetExtract(ctx context.Context, ids []int64, userI
 //	ClaimChunkPending hốt batch bài tới hạn trong đúng 1 transaction: SELECT
 //	... FOR UPDATE SKIP LOCKED rồi đánh processing + hẹn lease ngay (cùng
 //	pattern outbox ClaimPending).
+//
 // ClaimExtractPending hốt batch bài tới hạn trích text, đúng 1 transaction
 // (FOR UPDATE SKIP LOCKED) — cùng pattern chunk/embed, xem ClaimChunkPending.
 // Chỉ lấy bài loại StorageKey (URL chưa xử lý phase này).
@@ -425,6 +426,23 @@ func (a *ArticleRepository) MarkExtractDone(ctx context.Context, id int64) error
 // MarkExtractError ghi lỗi trích 1 bài.
 func (a *ArticleRepository) MarkExtractError(ctx context.Context, id int64, attempts int) error {
 	return a.markError(ctx, id, attempts, phaseExtract)
+}
+
+// ReleaseExtractClaims trả NHIỀU bài về pending trong 1 câu UPDATE khi job bị
+// hủy do shutdown — không tăng attempts (bài không có lỗi), không đụng
+// article_pages (kỳ sau resume). WHERE ... processing bảo vệ bài đã kịp done.
+func (a *ArticleRepository) ReleaseExtractClaims(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	now := time.Now()
+	return dbConn(ctx, a.db).Model(&domain.Article{}).
+		Where("id IN ? AND extract_status = ?", ids, domain.QueueProcessing).
+		Updates(map[string]any{
+			"extract_status":        domain.QueuePending,
+			"extract_next_retry_at": now,
+			"updated_at":            now,
+		}).Error
 }
 
 // phải do service tự nhớ.
@@ -487,6 +505,23 @@ func (a *ArticleRepository) MarkIndexDone(ctx context.Context, id int64) error {
 // MarkIndexError ghi lỗi index 1 bài.
 func (a *ArticleRepository) MarkIndexError(ctx context.Context, id int64, attempts int) error {
 	return a.markError(ctx, id, attempts, phaseIndex)
+}
+
+// ReleaseIndexClaims cùng ý nghĩa ReleaseExtractClaims cho phase index: trả
+// cả lô bài processing về pending ngay khi job bị hủy do shutdown, giữ
+// index_done_chunks để kỳ sau chỉ làm nốt phần còn lại.
+func (a *ArticleRepository) ReleaseIndexClaims(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	now := time.Now()
+	return dbConn(ctx, a.db).Model(&domain.Article{}).
+		Where("id IN ? AND index_status = ?", ids, domain.QueueProcessing).
+		Updates(map[string]any{
+			"index_status":        domain.QueuePending,
+			"index_next_retry_at": now,
+			"updated_at":          now,
+		}).Error
 }
 
 // phase là cột queue nào của articles — markError dùng để ghi đúng cột thay

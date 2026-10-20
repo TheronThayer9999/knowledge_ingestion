@@ -4,6 +4,9 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"maps"
+	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -75,12 +78,25 @@ func (s *articleExtractService) ExtractPending(ctx context.Context) (int, error)
 	var extracted atomic.Int64
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, constants.EXTRACT_POOL_SIZE)
+	// pending giữ bài đã claim nhưng CHƯA vào goroutine; xóa khi đã start.
+	// Dùng map thay vì quét lại slice: vừa tự dedupe id, vừa lấy phần còn
+	// lại bằng range keys — Go không có LINQ nên map là cách gọn nhất.
+	pending := make(map[int64]struct{}, len(articles))
+	for _, article := range articles {
+		pending[article.ID] = struct{}{}
+	}
+loop:
 	for _, article := range articles {
 		if ctx.Err() != nil {
 			break
 		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			break loop
+		}
+		delete(pending, article.ID)
 		wg.Add(1)
-		sem <- struct{}{}
 		go func(a *domain.Article) {
 			defer wg.Done()
 			defer func() { <-sem }()
@@ -88,6 +104,12 @@ func (s *articleExtractService) ExtractPending(ctx context.Context) (int, error)
 		}(article)
 	}
 	wg.Wait()
+	if ctx.Err() != nil && len(pending) > 0 {
+		// maps.Keys + slices.Collect thay cho vòng for thủ công; DB chỉ nhận
+		// ĐÚNG 1 UPDATE ... WHERE id IN (...) — không N+1.
+		ids := slices.Collect(maps.Keys(pending))
+		s.releaseClaims(ctx, traceID, ids)
+	}
 	n := int(extracted.Load())
 	logs.Infow("extract: xong 1 kỳ quét", "trace_id", traceID, "found", len(articles), "extracted", n)
 	return n, nil
@@ -100,10 +122,19 @@ func (s *articleExtractService) ExtractPending(ctx context.Context) (int, error)
 func (s *articleExtractService) extractClaimed(ctx context.Context, traceID string, article *domain.Article, done *atomic.Int64) {
 	// KHÔNG tạo dbCtx dùng chung ở đây: OCR 1 file scan 500 trang tốn hàng
 	// chục phút, ctx 30s tạo sớm chết trước khi tới lượt ghi done/error.
-	if err := s.extractOne(ctx, traceID, article); err != nil {
+	if err := s.extractOneSafe(ctx, traceID, article); err != nil {
 		if ctx.Err() != nil {
-			logs.Infow("extract: job hết timeout, bỏ qua không đánh lỗi",
-				"trace_id", traceID, "article_id", article.ID)
+			// Phân biệt 2 nguyên nhân hủy:
+			//   - Canceled: runner dừng (shutdown) → trả bài về pending NGAY,
+			//     không tăng attempts; restart là làm tiếp.
+			//   - DeadlineExceeded: job vượt trần 45 phút → để lease hết hạn
+			//     rồi reclaim, tránh vòng lặp timeout liên tục không backoff.
+			if stderrors.Is(ctx.Err(), context.Canceled) {
+				s.releaseClaims(ctx, traceID, []int64{article.ID})
+			} else {
+				logs.Infow("extract: job hết giờ, để lease trả bài",
+					"trace_id", traceID, "article_id", article.ID)
+			}
 			return
 		}
 		attempts := article.ExtractAttempts + 1
@@ -144,6 +175,38 @@ func (s *articleExtractService) extractClaimed(ctx context.Context, traceID stri
 // phase index chạy theo cửa sổ trượt (extractor.Cleaner — pass 1 chỉ cộng số,
 // pass 2 áp từng trang). Bù lại article_pages giữ TEXT THÔ và được GIỮ LẠI
 // sau khi trích xong, nên đổi cấu hình chunker không phải OCR lần nào.
+// releaseClaims trả 1 lô bài về pending khi job bị hủy do shutdown — 1 câu
+// UPDATE, không N+1. Dùng detached ctx vì ctx gốc đã cancel; WHERE ...
+// processing trong repo bảo vệ trường hợp job kịp done trước khi hủy.
+func (s *articleExtractService) releaseClaims(ctx context.Context, traceID string, ids []int64) {
+	if len(ids) == 0 {
+		return
+	}
+	det := worker.Detach(ctx)
+	defer det.Close()
+	if err := s.articleRepo.ReleaseExtractClaims(det.Ctx, ids); err != nil {
+		logs.Error(err, "extract: không trả claim được, bài chờ hết lease",
+			"trace_id", traceID, "articles", len(ids))
+		return
+	}
+	logs.Infow("extract: job bị hủy (shutdown), trả bài về pending",
+		"trace_id", traceID, "articles", len(ids), "article_ids", ids)
+}
+
+// extractOneSafe bọc extractOne để panic trong goroutine con (không có
+// gin.Recovery) không giết process: biến panic thành error để đường xử lý lỗi
+// hiện có đánh dấu bài + backoff, thay vì kẹt processing đến hết lease.
+func (s *articleExtractService) extractOneSafe(ctx context.Context, traceID string, article *domain.Article) (err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			logs.Error(fmt.Errorf("panic: %v", rec), "extract: panic khi xử lý bài",
+				"trace_id", traceID, "article_id", article.ID, "stack", string(debug.Stack()))
+			err = fmt.Errorf("panic khi extract bài %d: %v", article.ID, rec)
+		}
+	}()
+	return s.extractOne(ctx, traceID, article)
+}
+
 func (s *articleExtractService) extractOne(ctx context.Context, traceID string, article *domain.Article) error {
 	start := time.Now()
 	// Trang đã lưu ở lần chạy trước — dùng lại thay vì OCR lại.
@@ -169,6 +232,13 @@ func (s *articleExtractService) extractOne(ctx context.Context, traceID string, 
 	if err != nil {
 		return fmt.Errorf("tải blob: %w", err)
 	}
+	// Lưới an toàn: nếu panic giữa chừng, recover ở extractOneSafe vẫn không
+	// để rò connection S3. Close sớm bên dưới sẽ set rc = nil để defer bỏ qua.
+	defer func() {
+		if rc != nil {
+			_ = rc.Close()
+		}
+	}()
 	// fresh là các trang mới của lần này; sinceFlush đánh dấu đuôi chưa ghi để
 	// flush chỉ đúng phần mới — nếu gộp cả danh sách thì mỗi lô lại insert
 	// lại các trang đã có (ON CONFLICT giữ nguyên nhưng tốn I/O vô ích).
@@ -214,6 +284,7 @@ func (s *articleExtractService) extractOne(ctx context.Context, traceID string, 
 	// Close NGAY sau khi trích xong chứ không cuối hàm: OCR 1 trang scan có thể
 	// chạy hàng chục giây, giữ rc mở suốt là giữ connection S3 bị giữ vô ích.
 	_ = rc.Close()
+	rc = nil
 	if err != nil {
 		if stderrors.Is(err, extractor.ErrUnsupported) {
 			return fmt.Errorf("loại file chưa xử lý: %w", err)

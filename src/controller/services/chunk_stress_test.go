@@ -152,8 +152,9 @@ func (a *stressArticles) MarkExtractDone(context.Context, int64) error {
 	a.done.Add(1)
 	return nil
 }
-func (a *stressArticles) MarkExtractError(context.Context, int64, int) error { return nil }
-func (a *stressArticles) IsAlive(context.Context, int64) (bool, error)       { return true, nil }
+func (a *stressArticles) MarkExtractError(context.Context, int64, int) error  { return nil }
+func (a *stressArticles) ReleaseExtractClaims(context.Context, []int64) error { return nil }
+func (a *stressArticles) IsAlive(context.Context, int64) (bool, error)        { return true, nil }
 func (a *stressArticles) UpdateMetadata(context.Context, int64, int, string, string) error {
 	return nil
 }

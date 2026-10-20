@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	stderrors "errors"
 	"fmt"
+	"maps"
+	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -87,12 +90,25 @@ func (s *articleIndexService) IndexPending(ctx context.Context) (int, error) {
 	var indexed atomic.Int64
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, constants.INDEX_POOL_SIZE)
+	// pending giữ bài đã claim nhưng CHƯA vào goroutine; xóa khi đã start.
+	// Dùng map thay vì quét lại slice: vừa tự dedupe id, vừa lấy phần còn
+	// lại bằng range keys — Go không có LINQ nên map là cách gọn nhất.
+	pending := make(map[int64]struct{}, len(articles))
+	for _, article := range articles {
+		pending[article.ID] = struct{}{}
+	}
+loop:
 	for _, article := range articles {
 		if ctx.Err() != nil {
 			break
 		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			break loop
+		}
+		delete(pending, article.ID)
 		wg.Add(1)
-		sem <- struct{}{}
 		go func(a *domain.Article) {
 			defer wg.Done()
 			defer func() { <-sem }()
@@ -100,6 +116,12 @@ func (s *articleIndexService) IndexPending(ctx context.Context) (int, error) {
 		}(article)
 	}
 	wg.Wait()
+	if ctx.Err() != nil && len(pending) > 0 {
+		// maps.Keys + slices.Collect thay cho vòng for thủ công; DB chỉ nhận
+		// ĐÚNG 1 UPDATE ... WHERE id IN (...) — không N+1.
+		ids := slices.Collect(maps.Keys(pending))
+		s.releaseClaims(ctx, traceID, ids)
+	}
 	n := int(indexed.Load())
 	logs.Infow("index: xong 1 kỳ quét", "trace_id", traceID, "found", len(articles), "indexed", n)
 	return n, nil
@@ -111,10 +133,17 @@ func (s *articleIndexService) IndexPending(ctx context.Context) (int, error) {
 func (s *articleIndexService) indexClaimed(ctx context.Context, traceID string, article *domain.Article, done *atomic.Int64) {
 	// KHÔNG tạo dbCtx dùng chung ở đây: 1 bài 500 trang (~1500 chunk) gọi
 	// Ollama hàng chục phút, ctx 30s tạo sớm chết trước khi tới lượt ghi.
-	if err := s.indexOne(ctx, traceID, article); err != nil {
+	if err := s.indexOneSafe(ctx, traceID, article); err != nil {
 		if ctx.Err() != nil {
-			logs.Infow("index: job hết timeout, bỏ qua không đánh lỗi",
-				"trace_id", traceID, "article_id", article.ID)
+			// Canceled = runner dừng (shutdown) → trả bài về pending ngay để
+			// restart làm tiếp, không đốt attempts. DeadlineExceeded = job vượt
+			// trần 45 phút → để lease reclaim, tránh retry nóng vô hạn.
+			if stderrors.Is(ctx.Err(), context.Canceled) {
+				s.releaseClaims(ctx, traceID, []int64{article.ID})
+			} else {
+				logs.Infow("index: job hết giờ, để lease trả bài",
+					"trace_id", traceID, "article_id", article.ID)
+			}
 			return
 		}
 		attempts := article.IndexAttempts + 1
@@ -159,6 +188,38 @@ func (s *articleIndexService) indexClaimed(ctx context.Context, traceID string, 
 //
 // Chunk đủ INDEX_BATCH_SIZE thì embed + upsert + ghi checkpoint rồi đi tiếp,
 // nên bộ nhớ chỉ ôm 1 cửa sổ + 1 đợt, KHÔNG phụ thuộc kích thước file.
+// releaseClaims trả 1 lô bài về pending khi job bị hủy do shutdown — 1 câu
+// UPDATE, không N+1. Detached ctx vì ctx gốc đã cancel; WHERE ... processing
+// trong repo bảo vệ bài đã kịp done.
+func (s *articleIndexService) releaseClaims(ctx context.Context, traceID string, ids []int64) {
+	if len(ids) == 0 {
+		return
+	}
+	det := worker.Detach(ctx)
+	defer det.Close()
+	if err := s.articleRepo.ReleaseIndexClaims(det.Ctx, ids); err != nil {
+		logs.Error(err, "index: không trả claim được, bài chờ hết lease",
+			"trace_id", traceID, "articles", len(ids))
+		return
+	}
+	logs.Infow("index: job bị hủy (shutdown), trả bài về pending",
+		"trace_id", traceID, "articles", len(ids), "article_ids", ids)
+}
+
+// indexOneSafe bọc indexOne để panic trong goroutine con (không có
+// gin.Recovery) không giết process: biến panic thành error để đường xử lý lỗi
+// hiện có đánh dấu bài + backoff, thay vì kẹt processing đến hết lease.
+func (s *articleIndexService) indexOneSafe(ctx context.Context, traceID string, article *domain.Article) (err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			logs.Error(fmt.Errorf("panic: %v", rec), "index: panic khi xử lý bài",
+				"trace_id", traceID, "article_id", article.ID, "stack", string(debug.Stack()))
+			err = fmt.Errorf("panic khi index bài %d: %v", article.ID, rec)
+		}
+	}()
+	return s.indexOne(ctx, traceID, article)
+}
+
 func (s *articleIndexService) indexOne(ctx context.Context, traceID string, article *domain.Article) error {
 	start := time.Now()
 	// Pass 1: chốt quyết định toàn file.
@@ -210,6 +271,11 @@ func (s *articleIndexService) indexOne(ctx context.Context, traceID string, arti
 	// trong Qdrant. Delete theo filter là idempotent, bài chưa có point nào
 	// thì khớp 0 vẫn success.
 	if resumeFrom == 0 {
+		// Đừng bắt đầu xóa toàn bộ vector của bài nếu job đã bị hủy — thao
+		// tác này dùng detached ctx nên sẽ chạy tiếp bất chấp shutdown.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		det := worker.Detach(ctx)
 		if err := s.vectors.DeleteByArticle(det.Ctx, article.ID); err != nil {
 			det.Close()
@@ -221,6 +287,9 @@ func (s *articleIndexService) indexOne(ctx context.Context, traceID string, arti
 	afterSeq := 0
 	piecesSeen := 0
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		pages, err := s.pageRepo.ListPagesRange(ctx, article.ID, afterSeq, constants.INDEX_PAGE_WINDOW)
 		if err != nil {
 			return fmt.Errorf("đọc trang: %w", err)
@@ -294,7 +363,11 @@ func (s *articleIndexService) indexOne(ctx context.Context, traceID string, arti
 						// không thấy. Check mỗi đợt vì 1 bài 500 trang chạy
 						// hàng chục phút — 1 SELECT rẻ hơn nhiều so với gọi
 						// Ollama thừa.
-						if !s.ensureAlive(ctx, traceID, article) {
+						alive, aerr := s.ensureAlive(ctx, traceID, article)
+						if aerr != nil {
+							return aerr
+						}
+						if !alive {
 							return nil
 						}
 					}
@@ -322,6 +395,9 @@ func (s *articleIndexService) buildCleaner(ctx context.Context, article *domain.
 	cleaner := extractor.NewCleaner(article.PageCount, extractor.RepeatOptions{})
 	afterSeq := 0
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		pages, err := s.pageRepo.ListPagesRange(ctx, article.ID, afterSeq, constants.INDEX_PAGE_WINDOW)
 		if err != nil {
 			return nil, fmt.Errorf("quét trang: %w", err)
@@ -493,12 +569,15 @@ func chunkHash(text string) string {
 }
 
 // ensureAlive kiểm tra bài còn sống — bài chết thì dọn vector vừa làm rồi trả
-// false để caller dừng. Gom 1 chỗ để không copy khối check ở giữa vòng lặp.
-func (s *articleIndexService) ensureAlive(ctx context.Context, traceID string, article *domain.Article) bool {
+// (false, nil) để caller dừng mà không mark done. Lỗi DB (kể cả ctx hủy giữa
+// chừng) trả về error để indexClaimed xử lý đúng: cancellation → release
+// claim, lỗi thật → MarkIndexError. Trước đây hàm trả bool nên lỗi IsAlive
+// (nhất là ctx.Canceled lúc shutdown) bị biến thành "false" rồi indexOne trả
+// nil → bài bị mark done dù chưa index xong.
+func (s *articleIndexService) ensureAlive(ctx context.Context, traceID string, article *domain.Article) (bool, error) {
 	alive, err := s.articleRepo.IsAlive(ctx, article.ID)
 	if err != nil {
-		s.markIndexError(ctx, traceID, article, fmt.Errorf("kiểm tra bài còn sống: %w", err))
-		return false
+		return false, fmt.Errorf("kiểm tra bài còn sống: %w", err)
 	}
 	if !alive {
 		det := worker.Detach(ctx)
@@ -508,31 +587,9 @@ func (s *articleIndexService) ensureAlive(ctx context.Context, traceID string, a
 		if derr := s.vectors.DeleteByArticle(det.Ctx, article.ID); derr != nil {
 			logs.Error(derr, "index: không dọn được vector bài đã xoá", "trace_id", traceID, "article_id", article.ID)
 		}
-		return false
+		return false, nil
 	}
-	return true
-}
-
-// markIndexError đánh lỗi 1 bài — tách riêng cho ensureAlive dùng.
-func (s *articleIndexService) markIndexError(ctx context.Context, traceID string, article *domain.Article, err error) {
-	// Job hết timeout (ctx hủy) không phải lỗi của bài — bỏ qua không đánh
-	// lỗi, lease hết hạn bài tự được hốt lại. Đánh lỗi bừa sẽ đốt attempts.
-	if ctx.Err() != nil {
-		logs.Infow("index: job hết timeout, bỏ qua không đánh lỗi",
-			"trace_id", traceID, "article_id", article.ID)
-		return
-	}
-	attempts := article.IndexAttempts + 1
-	if stderrors.Is(err, errIndexContract) || s.embedder.IsPermanentError(err) || s.vectors.IsPermanentError(err) {
-		attempts = utils.MaxQueueAttempts
-	}
-	// Detach tươi tại điểm ghi — hàm này có thể chạy sau hàng chục phút gọi
-	// Ollama nên ctx gốc đã chết từ lâu.
-	det := worker.Detach(ctx)
-	defer det.Close()
-	if merr := s.articleRepo.MarkIndexError(det.Ctx, article.ID, attempts); merr != nil {
-		logs.Error(merr, "index: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID)
-	}
+	return true, nil
 }
 
 // errIndexContract báo embedder trả thiếu vector (sai contract do service tự

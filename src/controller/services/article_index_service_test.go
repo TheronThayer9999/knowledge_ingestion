@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,10 +23,12 @@ type indexStubArticles struct {
 	progressAt  []int
 	alive       bool
 	markedError int
+	claim       []*domain.Article
+	released    [][]int64
 }
 
 func (a *indexStubArticles) ClaimIndexPending(context.Context, int, time.Duration) ([]*domain.Article, error) {
-	return nil, nil
+	return a.claim, nil
 }
 func (a *indexStubArticles) MarkIndexProgress(_ context.Context, _ int64, done int) error {
 	a.progressAt = append(a.progressAt, done)
@@ -39,8 +42,61 @@ func (a *indexStubArticles) MarkIndexError(context.Context, int64, int) error {
 	a.markedError++
 	return nil
 }
-func (a *indexStubArticles) IsAlive(context.Context, int64) (bool, error) {
+func (a *indexStubArticles) ReleaseIndexClaims(_ context.Context, ids []int64) error {
+	a.released = append(a.released, append([]int64(nil), ids...))
+	return nil
+}
+func (a *indexStubArticles) IsAlive(ctx context.Context, _ int64) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	return a.alive, nil
+}
+
+// TestEnsureAlivePropagatesContextError khoá lỗi cũ: IsAlive lỗi (nhất là
+// ctx.Canceled lúc shutdown) bị đổi thành false, indexOne trả nil và bài bị
+// MarkIndexDone dù chưa index xong. Giờ lỗi phải nổi lên để indexClaimed
+// release claim hoặc đánh lỗi đúng đường.
+func TestEnsureAlivePropagatesContextError(t *testing.T) {
+	svc := &articleIndexService{articleRepo: &indexStubArticles{}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	alive, err := svc.ensureAlive(ctx, "trace", &domain.Article{BaseModel: domain.BaseModel{ID: 1}})
+	if err == nil {
+		t.Fatal("muốn lỗi ctx.Canceled, nhận nil")
+	}
+	if alive {
+		t.Fatal("muốn alive=false khi IsAlive lỗi")
+	}
+}
+
+// TestIndexPendingReleasesUnstartedInOneBatch khoá 2 thứ:
+//   - bài claim được nhưng ctx hủy trước khi vào goroutine phải được trả về
+//     pending (không nằm processing tới hết lease);
+//   - trả cả lô bằng ĐÚNG 1 lời gọi repo, không N+1.
+func TestIndexPendingReleasesUnstartedInOneBatch(t *testing.T) {
+	stub := &indexStubArticles{claim: []*domain.Article{
+		{BaseModel: domain.BaseModel{ID: 1}},
+		{BaseModel: domain.BaseModel{ID: 2}},
+		{BaseModel: domain.BaseModel{ID: 3}},
+	}}
+	svc := &articleIndexService{articleRepo: stub}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // giả lập runner cancel trước khi kịp chạy bài nào
+
+	if _, err := svc.IndexPending(ctx); err != nil {
+		t.Fatalf("IndexPending: %v", err)
+	}
+	if len(stub.released) != 1 {
+		t.Fatalf("muốn 1 lời gọi release theo lô, nhận %d", len(stub.released))
+	}
+	ids := stub.released[0]
+	slices.Sort(ids)
+	if !slices.Equal(ids, []int64{1, 2, 3}) {
+		t.Fatalf("ids release = %v, muốn [1 2 3]", ids)
+	}
 }
 
 // indexStubPages là nguồn nội dung của phase index — mô phỏng bảng
@@ -79,7 +135,7 @@ func (p *indexStubPages) Progress(context.Context, int64) (*domain.PageProgress,
 }
 func (p *indexStubPages) DeleteByArticleID(context.Context, int64) error  { return nil }
 func (p *indexStubPages) DeleteByArticles(context.Context, []int64) error { return nil }
-func (p *indexStubPages) DeleteOrphan(context.Context) (int64, error)      { return 0, nil }
+func (p *indexStubPages) DeleteOrphan(context.Context) (int64, error)     { return 0, nil }
 
 // indexStubEmbedder trả vector giả — chỉ cần đúng SỐ LƯỢNG, giá trị không ai
 // assert.
@@ -109,7 +165,7 @@ func (v *indexStubVectors) UpsertPoints(_ context.Context, points []*domain.Vect
 	v.points = append(v.points, points...)
 	return nil
 }
-func (v *indexStubVectors) DeleteByArticle(context.Context, int64) error  { v.deleted++; return nil }
+func (v *indexStubVectors) DeleteByArticle(context.Context, int64) error    { v.deleted++; return nil }
 func (v *indexStubVectors) DeleteByArticles(context.Context, []int64) error { return nil }
 func (v *indexStubVectors) CountByArticle(context.Context, int64) (int64, error) {
 	return int64(len(v.points)), nil
@@ -309,7 +365,10 @@ func TestPageWindowCuts(t *testing.T) {
 	if len(all) != 3 {
 		t.Fatalf("cuts toàn cửa sổ ra %d mảnh, want 3", len(all))
 	}
-	for i, want := range []struct{ page int; text string }{{1, "AAAA"}, {2, "BBBB"}, {3, "CCCC"}} {
+	for i, want := range []struct {
+		page int
+		text string
+	}{{1, "AAAA"}, {2, "BBBB"}, {3, "CCCC"}} {
 		if all[i].page != want.page || all[i].text != want.text {
 			t.Errorf("mảnh %d = {page %d, %q}, want {page %d, %q}",
 				i, all[i].page, all[i].text, want.page, want.text)
@@ -326,7 +385,7 @@ func TestPageWindowCuts(t *testing.T) {
 }
 
 var (
-	_ domain.ArticleIndexQueue     = (*indexStubArticles)(nil)
+	_ domain.ArticleIndexQueue      = (*indexStubArticles)(nil)
 	_ domain.IArticlePageRepository = (*indexStubPages)(nil)
 	_ domain.Embedder               = indexStubEmbedder{}
 	_ domain.IVectorStore           = (*indexStubVectors)(nil)

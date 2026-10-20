@@ -62,6 +62,7 @@ func IsPermanent(err error) bool {
 //   - File txt 100MB bị chia thành ~400 mảnh cùng Num = 0, nên Num không còn
 //     làm được con trỏ vị trí.
 //   - phase index cần con trỏ "đọc tới đâu" để quét cửa sổ trượt và để resume.
+//
 // Seq tăng liên tục từ 1 trong suốt bài, bất kể loại file.
 type Page struct {
 	Num  int
@@ -96,10 +97,28 @@ func NeedsDespace(key string) bool {
 // trang với PDF (dùng Seq để sắp). visit trả lỗi thì dừng và trả luôn lỗi đó
 // (ctx hủy, DB chết...). ctx chỉ để tôn trọng hủy — quá trình to CPU/RAM cục
 // bộ, không I/O mạng (trừ OCR gọi binary local).
+// ctxReader kiểm tra ctx trước mỗi lần đọc — io.ReadAll/io.Copy trên blob lớn
+// dừng ngay khi job bị hủy thay vì đọc hết file rồi mới thấy lỗi. Cần cho
+// docx (đọc cả archive vào RAM) và cho phần spool PDF từ S3.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c *ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
 func ExtractRawPages(ctx context.Context, key string, r io.Reader, ocr OCRConfig, have map[int]bool, visit func(Page) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// Bọc reader để mọi đường đọc (text stream, docx, spool PDF) đều tôn
+	// trọng hủy giữa chừng, không chỉ các lệnh exec bên dưới.
+	r = &ctxReader{ctx: ctx, r: r}
 	switch strings.ToLower(utils.FileExt(key)) {
 	case ".txt", ".md", ".csv", ".json":
 		// Loại này đọc được TUẦN TỰ nên stream thẳng ra các mảnh, không

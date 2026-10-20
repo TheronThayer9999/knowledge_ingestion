@@ -94,6 +94,14 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 	// S3 + Qdrant vốn đã tốn hơn nhiều nên 2 câu kia không là gánh nặng.
 	done := make([]int64, 0, len(articles))
 	for _, article := range articles {
+		// Job bị hủy (shutdown/hết giờ) thì dừng giữa đợt: S3/Qdrant đã xóa
+		// idempotent nên kỳ sau quét lại đúng các row còn deleted_at là làm
+		// tiếp, không cần cố chạy hết 100 bài sau khi ctx đã chết.
+		if ctx.Err() != nil {
+			logs.Infow("purge: job bị hủy, dừng phần còn lại cho kỳ sau",
+				"trace_id", traceID, "remaining", len(articles)-len(done))
+			break
+		}
 		det := worker.Detach(ctx)
 		if ok := func(dbCtx context.Context) bool {
 			defer det.Close()

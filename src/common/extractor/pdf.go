@@ -170,7 +170,19 @@ func runPDFRanges(ctx context.Context, ranges []pdfRange, workers int, fn func(p
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// Goroutine con không có gin.Recovery: panic ở đây sẽ giết cả
+			// process. Biến thành lỗi để cả lô dừng và trả lỗi cho caller.
+			defer func() {
+				if rec := recover(); rec != nil {
+					fail(fmt.Errorf("panic khi trích PDF: %v", rec))
+				}
+			}()
 			for rg := range jobs {
+				// ctx hủy (range khác lỗi hoặc job timeout): bỏ các range còn
+				// trong queue, không khởi động thêm pdftotext/OCR vô ích.
+				if ctx.Err() != nil {
+					return
+				}
 				if err := fn(rg); err != nil {
 					fail(err)
 				}
