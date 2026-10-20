@@ -97,7 +97,9 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 
 	res, err := agent.Run(ctx, model, dto.History, dto.Message)
 	if err != nil {
-		return dtos.Fail[*dtos.ChatResponse](err)
+		// Lỗi HTTP của provider (model sai, hết quota...) trả mã đọc được
+		// thay vì 500 chung chung — xem providerError.
+		return dtos.Fail[*dtos.ChatResponse](providerError(err, model))
 	}
 	// Chốt chặn lượt retry: câu nối tiếp 0 hit thì ép search; agent trả
 	// answer rỗng (model free thỉnh thoảng trả content rỗng) thì chạy lại với
