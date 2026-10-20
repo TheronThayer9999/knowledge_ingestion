@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -165,13 +167,24 @@ func TestExtractPDFNeedsPopplerConfig(t *testing.T) {
 }
 
 func TestPopplerToolPath(t *testing.T) {
-	cases := []struct{ in, name, want string }{
-		{`D:\tools\bin\pdftoppm.exe`, "pdftotext", `D:\tools\bin\pdftotext.exe`},
-		{"pdftoppm", "pdfinfo", "pdfinfo"},
+	// Tên trần (tool nằm trên PATH) thì giữ nguyên, không thêm thư mục/đuôi.
+	if got := popplerTool("pdftoppm", "pdfinfo"); got != "pdfinfo" {
+		t.Errorf("popplerTool(%q,%q) = %q, muốn %q", "pdftoppm", "pdfinfo", got, "pdfinfo")
 	}
-	for _, c := range cases {
-		if got := popplerTool(c.in, c.name); got != c.want {
-			t.Errorf("popplerTool(%q,%q) = %q, muốn %q", c.in, c.name, got, c.want)
+	// Có thư mục thì suy ra tool cùng thư mục — dựng bằng filepath.Join để
+	// đúng cả Windows lẫn Unix (trên CI Linux, `D:\...` không phải path:
+	// backslash không phải separator nên filepath.Dir trả về ".").
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "pdftoppm")
+	want := filepath.Join(dir, "pdftotext")
+	if got := popplerTool(bin, "pdftotext"); got != want {
+		t.Errorf("popplerTool(%q,%q) = %q, muốn %q", bin, "pdftotext", got, want)
+	}
+	if runtime.GOOS == "windows" {
+		// Đuôi .exe phải giữ nguyên khi suy ra tool cùng thư mục.
+		const in, wantExe = `D:\tools\bin\pdftoppm.exe`, `D:\tools\bin\pdftotext.exe`
+		if got := popplerTool(in, "pdftotext"); got != wantExe {
+			t.Errorf("popplerTool(%q,%q) = %q, muốn %q", in, "pdftotext", got, wantExe)
 		}
 	}
 }
