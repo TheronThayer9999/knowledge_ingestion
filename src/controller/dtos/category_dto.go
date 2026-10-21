@@ -51,7 +51,6 @@ func ToCategoryResponse(c *domain.Category) *CategoryResponse {
 		UserID:      c.UserID,
 		Name:        c.Name,
 		Description: c.Description,
-		ParentID:    c.ParentID,
 		CreatedAt:   c.CreatedAt,
 		UpdatedAt:   c.UpdatedAt,
 	}

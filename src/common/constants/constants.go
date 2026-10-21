@@ -198,3 +198,7 @@ const (
 	//  NÊN CÓ: Để validate header request upload
 	CONTENT_TYPE_FORM_DATA = "multipart/form-data"
 )
+const (
+	CATEGORY_TYPE_PRODUCT = "product"
+	CATEGORY_TYPE_ARTICLE = "article"
+)

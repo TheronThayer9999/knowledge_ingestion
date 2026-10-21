@@ -9,8 +9,16 @@ type Category struct {
 	UserID      int64  `json:"user_id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	ParentID    *int64 `json:"parent_id,omitempty"`
+
+	ImageURL string       `json:"image_url,omitempty"`
+	Type     CategoryType `json:"type" gorm:"type:varchar(20);index" default:"product"` // Phân loại cây
 }
+type CategoryType string
+
+const (
+	CategoryTypeProduct CategoryType = "product" //category cho sản phẩm
+	CategoryTypeArticle CategoryType = "article" //file article
+)
 
 func (Category) TableName() string {
 	return "categories"

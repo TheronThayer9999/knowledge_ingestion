@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	stderrors "errors"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
@@ -19,12 +20,19 @@ type ICategoryService interface {
 }
 
 type categoryService struct {
-	categoryRepo domain.ICategoryRepositoryImpl
+	categoryRepo        domain.ICategoryRepositoryImpl
+	unitOfWork          domain.IUnitOfWork
+	categoryClosureRepo domain.ICategoryClosureRepositoryImpl
 }
 
-func NewCategoryService(categoryRepo domain.ICategoryRepositoryImpl) ICategoryService {
+func NewCategoryService(
+	categoryRepo domain.ICategoryRepositoryImpl,
+	unitOfWork domain.IUnitOfWork,
+	categoryClosureRepo domain.ICategoryClosureRepositoryImpl) ICategoryService {
 	return &categoryService{
-		categoryRepo: categoryRepo,
+		categoryRepo:        categoryRepo,
+		unitOfWork:          unitOfWork,
+		categoryClosureRepo: categoryClosureRepo,
 	}
 }
 
@@ -43,9 +51,27 @@ func (c *categoryService) Create(ctx context.Context, userId int64, dto *dtos.Cr
 		UserID:      userId,
 		Name:        dto.Name,
 		Description: dto.Description,
-		ParentID:    dto.ParentID,
+		Type:        constants.CATEGORY_TYPE_PRODUCT,
 	}
-	if err := c.categoryRepo.Create(ctx, category); err != nil {
+	// Tạo closure record cho chính nó (depth = 0) laf root
+	categoryClosure := &domain.CategoryClosure{
+		AncestorID:   1,
+		DescendantID: 1,
+		Depth:        0,
+	}
+	err := c.unitOfWork.InTx(ctx, func(txCtx context.Context) error {
+		err := c.categoryClosureRepo.Create(txCtx, categoryClosure)
+		if err != nil {
+			return err
+		}
+		err = c.categoryRepo.Create(txCtx, category)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
 		return dtos.Fail[*dtos.CategoryResponse](err)
 	}
 	return dtos.Ok(dtos.ToCategoryResponse(category))
@@ -111,7 +137,6 @@ func (c *categoryService) Update(ctx context.Context, id int64, userId int64, dt
 			}
 			return dtos.Fail[*dtos.CategoryResponse](err)
 		}
-		category.ParentID = dto.ParentID
 	}
 	if err := c.categoryRepo.Update(ctx, category); err != nil {
 		return dtos.Fail[*dtos.CategoryResponse](err)

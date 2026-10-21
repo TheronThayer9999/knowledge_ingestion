@@ -64,6 +64,8 @@ func loadAdapter() []fx.Option {
 		// ensureCollection lúc dựng nên API boot giờ fail-fast khi Qdrant
 		// chết, giống worker (đánh đổi để endpoint rebuild luôn sẵn sàng).
 		fx.Provide(qdrant.NewConnection),
+		//
+		fx.Provide(repository.NewCategoryClosureRepository),
 	}
 }
 
