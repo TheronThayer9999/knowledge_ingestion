@@ -10,15 +10,8 @@ type Category struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 
-	ImageURL string       `json:"image_url,omitempty"`
-	Type     CategoryType `json:"type" gorm:"type:varchar(20);index" default:"product"` // Phân loại cây
+	ImageURL string `json:"image_url,omitempty"`
 }
-type CategoryType string
-
-const (
-	CategoryTypeProduct CategoryType = "product" //category cho sản phẩm
-	CategoryTypeArticle CategoryType = "article" //file article
-)
 
 func (Category) TableName() string {
 	return "categories"

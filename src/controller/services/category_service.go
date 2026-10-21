@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	stderrors "errors"
-	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
@@ -37,7 +36,7 @@ func NewCategoryService(
 }
 
 // Create tạo danh mục cho đúng owner — ParentID khác nil thì cha phải tồn
-// tại VÀ cùng owner. ParentID nil nghĩa là tạo root (mỗi user 1 root).
+// tại VÀ cùng owner. ParentID nil nghĩa là tạo root (user được nhiều root).
 func (c *categoryService) Create(ctx context.Context, userId int64, dto *dtos.CreateCategoryRequest) dtos.Result[*dtos.CategoryResponse] {
 	if dto.ParentID != nil {
 		if _, err := c.categoryRepo.GetById(ctx, *dto.ParentID, userId); err != nil {
@@ -51,24 +50,14 @@ func (c *categoryService) Create(ctx context.Context, userId int64, dto *dtos.Cr
 		UserID:      userId,
 		Name:        dto.Name,
 		Description: dto.Description,
-		Type:        constants.CATEGORY_TYPE_PRODUCT,
-	}
-	// Tạo closure record cho chính nó (depth = 0) laf root
-	categoryClosure := &domain.CategoryClosure{
-		AncestorID:   1,
-		DescendantID: 1,
-		Depth:        0,
 	}
 	err := c.unitOfWork.InTx(ctx, func(txCtx context.Context) error {
-		err := c.categoryClosureRepo.Create(txCtx, categoryClosure)
-		if err != nil {
+		// Insert category TRƯỚC để gorm nhận ID từ RETURNING — closure cần
+		// ID thật, không được ghi trước rồi tự đặt ID như bản cũ.
+		if err := c.categoryRepo.Create(txCtx, category); err != nil {
 			return err
 		}
-		err = c.categoryRepo.Create(txCtx, category)
-		if err != nil {
-			return err
-		}
-		return nil
+		return c.categoryClosureRepo.AddToTree(txCtx, category.ID, dto.ParentID)
 	})
 
 	if err != nil {

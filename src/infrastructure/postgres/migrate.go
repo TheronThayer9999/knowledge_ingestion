@@ -25,6 +25,11 @@ func migrate(db *gorm.DB) error {
 	if err := migrateQueueColumns(db); err != nil {
 		return err
 	}
+	// Closure table thay cho categories.parent_id: PK phải là cặp
+	// (ancestor_id, descendant_id), có FK về categories và parent_id bị xoá.
+	if err := migrateCategoryClosure(db); err != nil {
+		return err
+	}
 	// Worker cũ (pdf_process) ghi trạng thái 'waiting' vào cùng bảng, nhưng
 	// state machine của service này chỉ có pending/processing/done/failed —
 	// claim sẽ bỏ qua các dòng đó vĩnh viễn. Chuẩn hoá 1 lần, idempotent nên
@@ -135,6 +140,83 @@ func dropColumnIfExists(db *gorm.DB, table, column string) error {
 		return fmt.Errorf("xoá cột %s.%s: %w", table, column, err)
 	}
 	return nil
+}
+
+// migrateCategoryClosure dựng bảng trung gian folder ↔ folder đúng chuẩn
+// closure table rồi bỏ categories.parent_id.
+//
+// Bảng chưa có dữ liệu thật, nên nếu shape sai (bản cũ để depth nằm trong
+// PK, hoặc chưa có PK) thì DROP dựng lại — đây là điểm mất dữ liệu duy nhất
+// của migration này. Idempotent: lần sau PK đúng thì không đụng vào bảng.
+func migrateCategoryClosure(db *gorm.DB) error {
+	var wrongShape int64
+	err := db.Raw(`SELECT CASE WHEN count(*) = 2
+			AND count(*) FILTER (WHERE column_name IN ('ancestor_id', 'descendant_id')) = 2
+		THEN 0 ELSE 1 END
+		FROM information_schema.key_column_usage
+		WHERE table_schema = current_schema()
+		  AND table_name = 'category_closure'
+		  AND constraint_name = 'category_closure_pkey'`).Scan(&wrongShape).Error
+	if err != nil {
+		return fmt.Errorf("kiểm tra PK category_closure: %w", err)
+	}
+	if wrongShape > 0 {
+		if err := db.Exec(`DROP TABLE IF EXISTS category_closure`).Error; err != nil {
+			return fmt.Errorf("xoá category_closure sai shape: %w", err)
+		}
+		if err := db.Exec(`CREATE TABLE category_closure (
+			ancestor_id   BIGINT NOT NULL,
+			descendant_id BIGINT NOT NULL,
+			depth         INTEGER NOT NULL,
+			CONSTRAINT category_closure_pkey PRIMARY KEY (ancestor_id, descendant_id)
+		)`).Error; err != nil {
+			return fmt.Errorf("tạo category_closure: %w", err)
+		}
+	}
+	// Index cho chiều tra ngược (cha của X, subtree của X) — AutoMigrate đã
+	// tạo theo tag `index` nhưng IF NOT EXISTS để chạy tay vẫn an toàn.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_category_closure_descendant_id ON category_closure (descendant_id)`).Error; err != nil {
+		return fmt.Errorf("tạo index descendant_id: %w", err)
+	}
+	// FK về categories: purge cứng một category thì closure tự sạch, không
+	// để lại dòng mồ côi. Kiểm theo tên constraint vì Postgres không có
+	// ADD CONSTRAINT IF NOT EXISTS.
+	for _, fk := range []struct{ name, sql string }{
+		{"fk_closure_ancestor", `ALTER TABLE category_closure ADD CONSTRAINT fk_closure_ancestor FOREIGN KEY (ancestor_id) REFERENCES categories (id) ON DELETE CASCADE`},
+		{"fk_closure_descendant", `ALTER TABLE category_closure ADD CONSTRAINT fk_closure_descendant FOREIGN KEY (descendant_id) REFERENCES categories (id) ON DELETE CASCADE`},
+	} {
+		if hasConstraint(db, "category_closure", fk.name) {
+			continue
+		}
+		if err := db.Exec(fk.sql).Error; err != nil {
+			return fmt.Errorf("thêm %s: %w", fk.name, err)
+		}
+	}
+	// Mọi category còn sống phải có self row, nếu không GetDescendants trả
+	// rỗng và Move/Remove tính sai. Dữ liệu tạo trước khi có closure chưa có
+	// dòng nào nên bù một lần; ON CONFLICT để boot lại vô hại. Quan hệ cha–con
+	// cũ trong parent_id không dựng lại — chưa có ai dùng, mọi category cũ
+	// thành root độc lập.
+	if err := db.Exec(`INSERT INTO category_closure (ancestor_id, descendant_id, depth)
+		SELECT id, id, ? FROM categories WHERE deleted_at IS NULL
+		ON CONFLICT DO NOTHING`, domain.SelfDepth).Error; err != nil {
+		return fmt.Errorf("bù self row cho categories cũ: %w", err)
+	}
+	// parent_id bị bỏ hoàn toàn: quan hệ cha–con nay là depth = 1 trong
+	// closure. DROP COLUMN tự bỏ theo fk_categories_parent,
+	// idx_categories_parent_id và idx_categories_single_root_per_user
+	// (index partial có parent_id trong predicate) — nên không còn ràng buộc
+	// "mỗi user 1 root", đúng với forest nhiều root.
+	return dropColumnIfExists(db, "categories", "parent_id")
+}
+
+// hasConstraint báo constraint có tồn tại trong bảng không.
+func hasConstraint(db *gorm.DB, table, name string) bool {
+	var n int64
+	err := db.Raw(`SELECT count(*) FROM information_schema.table_constraints
+		WHERE table_schema = current_schema() AND table_name = ? AND constraint_name = ?`,
+		table, name).Scan(&n).Error
+	return err == nil && n > 0
 }
 
 // migrateQueueColumns chuyển cột queue cũ (chunk_*, embed_*) sang cột của

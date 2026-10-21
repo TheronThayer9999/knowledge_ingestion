@@ -17,7 +17,7 @@ func NewCategoryRepository(db *gorm.DB) domain.ICategoryRepositoryImpl {
 }
 
 func (t *CategoryRepository) Create(ctx context.Context, topic *domain.Category) error {
-	err := t.db.WithContext(ctx).Create(topic).Error
+	err := dbConn(ctx, t.db).Create(topic).Error
 	if err != nil {
 		return err
 	}
@@ -25,14 +25,16 @@ func (t *CategoryRepository) Create(ctx context.Context, topic *domain.Category)
 }
 
 func (t *CategoryRepository) Update(ctx context.Context, topic *domain.Category) error {
-	if err := t.db.WithContext(ctx).Model(topic).Updates(topic).Error; err != nil {
+	// Save thay vì Model(topic).Updates(topic): Updates bỏ qua zero value nên
+	// không thể xoá description. Service luôn load đủ row rồi mới sửa.
+	if err := dbConn(ctx, t.db).Save(topic).Error; err != nil {
 		return err
 	}
 	return nil
 }
 
 func (t *CategoryRepository) Delete(ctx context.Context, topic *domain.Category) error {
-	if err := t.db.WithContext(ctx).Delete(topic).Error; err != nil {
+	if err := dbConn(ctx, t.db).Delete(topic).Error; err != nil {
 		return err
 	}
 	return nil
@@ -40,7 +42,7 @@ func (t *CategoryRepository) Delete(ctx context.Context, topic *domain.Category)
 
 func (t *CategoryRepository) GetById(ctx context.Context, id int64, userId int64) (*domain.Category, error) {
 	var topic domain.Category
-	err := t.db.WithContext(ctx).First(&topic, "id = ? AND user_id = ?", id, userId).Error
+	err := dbConn(ctx, t.db).First(&topic, "id = ? AND user_id = ?", id, userId).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, domain.ErrNotFound
@@ -52,7 +54,7 @@ func (t *CategoryRepository) GetById(ctx context.Context, id int64, userId int64
 
 func (t *CategoryRepository) GetByName(ctx context.Context, name string, userId int64) (*domain.Category, error) {
 	var topic domain.Category
-	err := t.db.WithContext(ctx).First(&topic, "name = ? AND user_id = ?", name, userId).Error
+	err := dbConn(ctx, t.db).First(&topic, "name = ? AND user_id = ?", name, userId).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, domain.ErrNotFound
@@ -64,7 +66,7 @@ func (t *CategoryRepository) GetByName(ctx context.Context, name string, userId 
 
 func (t *CategoryRepository) GetAll(ctx context.Context, userId int64) ([]*domain.Category, error) {
 	var topics = make([]*domain.Category, 0)
-	err := t.db.WithContext(ctx).Where("user_id = ?", userId).Order("id ASC").Find(&topics).Error
+	err := dbConn(ctx, t.db).Where("user_id = ?", userId).Order("id ASC").Find(&topics).Error
 	if err != nil {
 		return nil, err
 	}

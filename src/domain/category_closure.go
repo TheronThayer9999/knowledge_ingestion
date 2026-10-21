@@ -2,33 +2,74 @@ package domain
 
 import "context"
 
+// CategoryClosure là một dòng quan hệ tổ tiên → con cháu giữa hai folder.
+// Khoá là cặp (ancestor_id, descendant_id); depth là thuộc tính của cặp nên
+// KHÔNG nằm trong khoá — đưa depth vào khoá sẽ cho phép ghi trùng cặp với
+// depth khác nhau và làm ON CONFLICT mất tác dụng.
 type CategoryClosure struct {
-	AncestorID   int64 `json:"ancestor_id"`
-	DescendantID int64 `json:"descendant_id"`
-
-	Depth int `json:"depth"`
+	AncestorID   int64 `json:"ancestor_id" gorm:"primaryKey"`         // ID của category tổ tiên
+	DescendantID int64 `json:"descendant_id" gorm:"primaryKey;index"` // ID của category con cháu
+	Depth        int   `json:"depth" gorm:"not null"`                 // 0 = chính nó, 1 = con, 2 = cháu…
 }
 
 func (CategoryClosure) TableName() string {
 	return "category_closure"
 }
 
-// 3. Struct phụ để trả về dữ liệu có kèm độ sâu (rất hữu ích cho UI render cây)
+// SelfDepth là depth của dòng (X, X, …) — khoảng cách từ một node tới chính
+// nó luôn bằng 0 theo định nghĩa closure table, không phụ thuộc loại cây,
+// owner hay node đó có phải root không. Mọi depth khác đều do SQL suy ra
+// (depth + 1 khi gắn con, sup.depth + sub.depth + 1 khi move).
+const SelfDepth = 0
+
+// DirectChildDepth là depth của con trực tiếp so với cha — đúng một cạnh,
+// nên luôn bằng 1. Repo dùng hằng số này thay vì viết số trần trong câu
+// "depth = 1" khi đếm con.
+const DirectChildDepth = 1
+
+// CategoryWithDepth là category kèm depth tương đối so với node gốc của
+// truy vấn (0 = chính nó, 1 = con, …) — dùng để render cây.
 type CategoryWithDepth struct {
 	Category
 	Depth int `json:"depth"`
 }
+
+// ICategoryClosureRepositoryImpl là cửa duy nhất để ghi/đọc bảng trung gian
+// folder ↔ folder. Bảng này không có user_id: quyền được kiểm ở categories
+// trước khi gọi, nên mọi categoryID truyền vào đây phải là ID đã được service
+// xác thực owner (categoryRepo.GetById(id, userID)).
 type ICategoryClosureRepositoryImpl interface {
-	Create(ctx context.Context, topic *CategoryClosure) error
-	GetByOwner(ctx context.Context, userId int64) ([]*CategoryClosure, error)
-	// GetDescendants trả mọi con cháu của ancestorID (bao gồm cả ancestorID) —
-	// depth = 0 là ancestorID, depth = 1 là con, depth = 2 là cháu, ...
-	GetDescendants(ctx context.Context, ancestorID int64) ([]*CategoryWithDepth, error)
-	// GetAncestors trả mọi tổ tiên của descendantID (bao gồm cả descendantID) —
-	// depth = 0 là descendantID, depth = 1 là cha, depth = 2 là ông, ...
-	GetAncestors(ctx context.Context, descendantID int64) ([]*CategoryWithDepth, error)
-	// CheckOrphaned kiểm tra xem user có category hay file nào bất thường không
-	CheckOrphaned(ctx context.Context, userId int64) (bool, error)
-	//check xem catetory đã tồn tại trong closure chưa
-	CheckExist(ctx context.Context, ancestorID int64, descendantID int64) (bool, error)
+	// AddToTree gắn category vào cây: ghi self row (categoryID, categoryID,
+	// SelfDepth) rồi copy toàn bộ tổ tiên của cha với depth + 1.
+	// parentID nil nghĩa là root — chỉ ghi self row.
+	// categoryID phải là ID thật do DB sinh (gọi SAU categoryRepo.Create).
+	AddToTree(ctx context.Context, categoryID int64, parentID *int64) error
+
+	// Move chuyển categoryID và toàn bộ subtree của nó sang làm con của
+	// newParentID. Service phải chặn cycle và khác owner trước khi gọi.
+	Move(ctx context.Context, categoryID, newParentID int64) error
+
+	// Remove xoá mọi dòng chạm categoryID (cả ancestor_id lẫn descendant_id)
+	// — gọi trong cùng transaction với categoryRepo.Delete.
+	Remove(ctx context.Context, categoryID int64) error
+
+	// CountChildren đếm con trực tiếp (depth = DirectChildDepth) — điều kiện
+	// chặn xoá.
+	CountChildren(ctx context.Context, categoryID int64) (int64, error)
+
+	// IsAncestor báo ancestorID có phải tổ tiên của descendantID không
+	// (hai id trùng nhau trả true). Dùng để chặn cycle khi Move.
+	IsAncestor(ctx context.Context, ancestorID, descendantID int64) (bool, error)
+
+	// GetByOwner trả mọi dòng closure của các category thuộc userID — dựng
+	// cây phía client bằng 1 query, không N+1.
+	GetByOwner(ctx context.Context, userID int64) ([]*CategoryClosure, error)
+
+	// GetDescendants trả mọi con cháu của categoryID (gồm chính nó) kèm
+	// depth tương đối: 0 = chính nó, 1 = con, 2 = cháu…
+	GetDescendants(ctx context.Context, categoryID int64) ([]*CategoryWithDepth, error)
+
+	// GetAncestors trả mọi tổ tiên của categoryID (gồm chính nó) kèm depth
+	// tương đối: 0 = chính nó, 1 = cha, 2 = ông…
+	GetAncestors(ctx context.Context, categoryID int64) ([]*CategoryWithDepth, error)
 }
