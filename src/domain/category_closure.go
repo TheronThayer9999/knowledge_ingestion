@@ -46,8 +46,10 @@ type ICategoryClosureRepositoryImpl interface {
 	AddToTree(ctx context.Context, categoryID int64, parentID *int64) error
 
 	// Move chuyển categoryID và toàn bộ subtree của nó sang làm con của
-	// newParentID. Service phải chặn cycle và khác owner trước khi gọi.
-	Move(ctx context.Context, categoryID, newParentID int64) error
+	// newParentID; newParentID nil nghĩa là đưa về root (chỉ cắt khỏi tổ
+	// tiên cũ, không nối thêm). Service phải chặn cycle, khác owner và khác
+	// loại cây trước khi gọi.
+	Move(ctx context.Context, categoryID int64, newParentID *int64) error
 
 	// Remove xoá mọi dòng chạm categoryID (cả ancestor_id lẫn descendant_id)
 	// — gọi trong cùng transaction với categoryRepo.Delete.

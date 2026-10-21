@@ -1413,6 +1413,10 @@ const docTemplate = `{
                     "maxLength": 500,
                     "example": "Tài liệu khoa học"
                 },
+                "move_to_root": {
+                    "type": "boolean",
+                    "example": false
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 100,

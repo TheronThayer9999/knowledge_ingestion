@@ -231,6 +231,9 @@ definitions:
         example: Tài liệu khoa học
         maxLength: 500
         type: string
+      move_to_root:
+        example: false
+        type: boolean
       name:
         example: Khoa học
         maxLength: 100

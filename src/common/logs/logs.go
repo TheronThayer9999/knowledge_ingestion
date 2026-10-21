@@ -7,9 +7,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// callerSkip bù đúng 1 frame của wrapper trong package này. zap ghi caller
+// tại hàm gọi trực tiếp `logger.Xxx`; không skip thì mọi dòng log đều trỏ
+// về logs.go thay vì file thật sự gọi logs.Infow. Mỗi wrapper dưới đây gọi
+// thẳng logger đúng 1 lần nên hằng số 1 là đủ — wrapper lồng nhau phải tăng.
+const callerSkip = 1
+
 var (
 	once   sync.Once
 	logger = zap.NewNop().Sugar()
+	// callLogger = logger đã bù frame wrapper, dùng cho MỌI hàm export.
+	callLogger = logger.WithOptions(zap.AddCallerSkip(callerSkip))
 )
 
 func LoadLogger() {
@@ -20,52 +28,53 @@ func LoadLogger() {
 		}
 		if l, err := cfg.Build(); err == nil {
 			logger = l.Sugar()
+			callLogger = logger.WithOptions(zap.AddCallerSkip(callerSkip))
 		}
 	})
 }
 
 func Debug(args ...interface{}) {
-	logger.Debug(args...)
+	callLogger.Debug(args...)
 }
 
 func Info(args ...interface{}) {
-	logger.Info(args...)
+	callLogger.Info(args...)
 }
 
 func Infof(template string, args ...interface{}) {
-	logger.Infof(template, args...)
+	callLogger.Infof(template, args...)
 }
 
 func Infow(msg string, kv ...interface{}) {
-	logger.Infow(msg, kv...)
+	callLogger.Infow(msg, kv...)
 }
 
 func Warn(args ...interface{}) {
-	logger.Warn(args...)
+	callLogger.Warn(args...)
 }
 
 func Warnf(template string, args ...interface{}) {
-	logger.Warnf(template, args...)
+	callLogger.Warnf(template, args...)
 }
 
 func Warnw(msg string, kv ...interface{}) {
-	logger.Warnw(msg, kv...)
+	callLogger.Warnw(msg, kv...)
 }
 
 func Error(err error, msg string, kv ...interface{}) {
-	logger.Errorw(msg, append([]interface{}{"error", err}, kv...)...)
+	callLogger.Errorw(msg, append([]interface{}{"error", err}, kv...)...)
 }
 
 func Errorf(template string, args ...interface{}) {
-	logger.Errorf(template, args...)
+	callLogger.Errorf(template, args...)
 }
 
 func Fatal(args ...interface{}) {
-	logger.Fatal(args...)
+	callLogger.Fatal(args...)
 }
 
 func Fatalf(template string, args ...interface{}) {
-	logger.Fatalf(template, args...)
+	callLogger.Fatalf(template, args...)
 }
 
 func Sync() {

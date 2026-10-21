@@ -66,7 +66,7 @@ func (t *CategoryRepository) GetByName(ctx context.Context, name string, userId 
 
 func (t *CategoryRepository) GetAll(ctx context.Context, userId int64) ([]*domain.Category, error) {
 	var topics = make([]*domain.Category, 0)
-	err := dbConn(ctx, t.db).Where("user_id = ?", userId).Order("id ASC").Find(&topics).Error
+	err := dbConn(ctx, t.db).Where("user_id = ?", userId).Order("created_at ASC").Find(&topics).Error
 	if err != nil {
 		return nil, err
 	}

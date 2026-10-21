@@ -32,8 +32,12 @@ func NewUnitOfWork(db *gorm.DB) domain.IUnitOfWork {
 // InTx mở 1 transaction, nhét vào ctx rồi chạy fn — lỗi bất kỳ đâu là
 // rollback toàn bộ, nil thì commit. Gorm tự đóng tx cả 2 đường nên caller
 // không bao giờ leak.
+//
+// Dùng dbConn chứ không phải u.db: khi đã ở trong một InTx khác, gorm sẽ tạo
+// SAVEPOINT thay vì mở transaction mới trên connection khác (mở mới dễ tự
+// deadlock vì tx ngoài đang giữ lock).
 func (u *unitOfWork) InTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	return u.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return dbConn(ctx, u.db).Transaction(func(tx *gorm.DB) error {
 		return fn(context.WithValue(ctx, txKey{}, tx))
 	})
 }

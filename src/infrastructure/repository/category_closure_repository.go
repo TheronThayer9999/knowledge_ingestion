@@ -42,8 +42,9 @@ func (c *CategoryClosureRepository) AddToTree(ctx context.Context, categoryID in
 }
 
 // Move cắt subtree của categoryID khỏi tổ tiên cũ rồi nối vào tổ tiên của
-// newParentID. Cycle phải bị service chặn trước — ở đây không tự kiểm.
-func (c *CategoryClosureRepository) Move(ctx context.Context, categoryID, newParentID int64) error {
+// newParentID. newParentID nil = đưa về root: chỉ cắt, không nối. Cycle phải
+// bị service chặn trước — ở đây không tự kiểm.
+func (c *CategoryClosureRepository) Move(ctx context.Context, categoryID int64, newParentID *int64) error {
 	// Bước 1: xoá các dòng bắc cầu (ancestor ngoài subtree → descendant trong
 	// subtree). Dòng nội bộ subtree (ancestor cũng trong subtree) được giữ.
 	if err := dbConn(ctx, c.db).Exec(
@@ -53,6 +54,9 @@ func (c *CategoryClosureRepository) Move(ctx context.Context, categoryID, newPar
 		categoryID, categoryID).Error; err != nil {
 		return err
 	}
+	if newParentID == nil {
+		return nil
+	}
 	// Bước 2: nhân chéo tổ tiên của cha mới với subtree, +1 cho cạnh mới.
 	return dbConn(ctx, c.db).Exec(
 		`INSERT INTO category_closure (ancestor_id, descendant_id, depth)
@@ -61,7 +65,7 @@ func (c *CategoryClosureRepository) Move(ctx context.Context, categoryID, newPar
 		 JOIN category_closure sub ON sub.ancestor_id = ?
 		 WHERE sup.descendant_id = ?
 		 ON CONFLICT DO NOTHING`,
-		categoryID, newParentID).Error
+		categoryID, *newParentID).Error
 }
 
 // Remove xoá mọi dòng chạm categoryID — cả hai chiều, không để dòng mồ côi.
