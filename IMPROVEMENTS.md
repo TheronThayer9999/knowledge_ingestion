@@ -14,9 +14,9 @@ Mỗi mục có mức ưu tiên: **P0** (làm ngay), **P1** (trung hạn), **P2*
 - Redundancy: vector đã lưu trong Qdrant; `embed_cache` là bản copy thứ 2.
 
 ### Giải pháp đề xuất
-- **P0.1** Thêm janitor eviction: xóa entry `chunk_count = 1` và `created_at > 30 ngày`; hoặc cap top-N theo `chunk_count`.
-- **P0.2** Đo hit rate trước khi quyết: `SELECT count(*) filter (where chunk_count=1), count(*) FROM embed_cache`. Nếu > 80% count=1 → cache gần như vô dụng.
-- **P0.3** Admin endpoint `Stats`/`Purge` cho embed_cache (đã có method `Stats`, cần expose HTTP).
+- **P0.1** ✅ Janitor eviction (PurgeUnused) đã thêm.
+- **P0.2** ✅ Hit rate đo: 99.99% count=1 → cache vô dụng.
+- **P0.3** ✅ Admin endpoint `Stats`/`Purge` exposed.
 - **P1.1** Template-based chunking theo loại tài liệu → ít chunk hơn → cache nhỏ hơn.
 - **P2.1** Cân nhắc bỏ `embed_cache` entirely, dựa vào Qdrant + checkpoint `index_done_chunks` để resume. Ragflow chọn hướng này (không cache vector global).
 
@@ -61,9 +61,9 @@ Mỗi mục có mức ưu tiên: **P0** (làm ngay), **P1** (trung hạn), **P2*
 - Không có rate limit.
 
 ### Giải pháp
-- **P1.5** Thêm middleware `RequireRole(role)` cho admin group.
-- **P1.6** Set `JWT_SECRET` env (hiện dùng secret dev mặc định).
-- **P1.7** Rate limit cho login.
+- **P1.5** ✅ Thêm middleware `RequireRole(role)` cho admin group (role >= 1).
+- **P1.6** ✅ `JWT_SECRET` env override (đã có).
+- **P1.7** ✅ Rate limit cho login (5 req/phút/IP).
 
 ---
 
@@ -98,7 +98,7 @@ Mỗi mục có mức ưu tiên: **P0** (làm ngay), **P1** (trung hạn), **P2*
 - Đã verify bằng SQL thủ công.
 
 ### Giải pháp
-- **P1.8** Thêm admin endpoint kiểm tra consistency (orphan, cycle, missing self-row) tự động.
+- **P1.8** ✅ Admin endpoint `/admin/consistency` kiểm tra orphan/cycle/missing self-row.
 - **P1.9** Thêm health check cho data integrity.
 
 ---
