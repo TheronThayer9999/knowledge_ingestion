@@ -437,6 +437,14 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 	for _, p := range batch {
 		texts = append(texts, p.Text)
 	}
+	// Dual embedding: title vector = embed tên bài (1 lần/đợt, tái dùng cho
+	// mọi chunk trong đợt). Lỗi embed title không fail job — degrade về
+	// content-only (title vector = content vector).
+	titleVec, terr := s.embedder.Embed(ctx, article.Name)
+	if terr != nil {
+		logs.Error(terr, "index: embed title lỗi, dùng content vector thay thế", "article_id", article.ID)
+		titleVec = nil
+	}
 	// Embed toàn bộ đợt (cache đã bỏ — hit rate 99.99% count=1 → vô dụng).
 	// Vector lưu trong Qdrant; rebuild dùng checkpoint index_done_chunks.
 	logs.Infow("ollama: gọi embed", "trace_id", traceID, "article_id", article.ID,
@@ -464,6 +472,11 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 			return fmt.Errorf("%w: vector chunk %d sai dim", errIndexContract, i)
 		}
 		p.Vector = vectors[i]
+		if titleVec != nil {
+			p.TitleVector = titleVec
+		} else {
+			p.TitleVector = vectors[i]
+		}
 	}
 	if err := worker.WithRetry(ctx, constants.INDEX_CALL_ATTEMPTS, constants.INDEX_CALL_BASE_DELAY,
 		func(ctx context.Context) error {

@@ -156,8 +156,35 @@ func (c *connection) ensureCollection(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("qdrant: đọc info collection %s: %w", c.collection, err)
 	}
+	// Collection cũ (single unnamed vector) không tương thích named vectors —
+	// drop & recreate để chuyển sang dual embedding. Mất data cũ nhưng rebuild
+	// vectors qua admin endpoint sẽ khôi phục.
+	vc := info.GetConfig().GetParams().GetVectorsConfig()
+	if vc == nil {
+		logs.Warnw("qdrant: không đọc được vectors config, recreate", "collection", c.collection)
+		if err := c.client.DeleteCollection(ctx, c.collection); err != nil {
+			return fmt.Errorf("qdrant: xóa collection %s: %w", c.collection, err)
+		}
+		return c.createCollection(ctx)
+	}
+	// unnamed vector (cũ) → Params != nil
+	if vc.GetParams() != nil {
+		logs.Warnw("qdrant: collection cũ (unnamed vector), recreate cho dual embedding", "collection", c.collection)
+		if err := c.client.DeleteCollection(ctx, c.collection); err != nil {
+			return fmt.Errorf("qdrant: xóa collection cũ %s: %w", c.collection, err)
+		}
+		return c.createCollection(ctx)
+	}
+	named := vc.GetParamsMap()
+	if named == nil || named.Map == nil || named.Map["content"] == nil {
+		logs.Warnw("qdrant: collection thiếu named vector content, recreate", "collection", c.collection)
+		if err := c.client.DeleteCollection(ctx, c.collection); err != nil {
+			return fmt.Errorf("qdrant: xóa collection %s: %w", c.collection, err)
+		}
+		return c.createCollection(ctx)
+	}
 	// Getter protobuf nil-safe nên chain dài vẫn an toàn khi shape thiếu.
-	if got := int(info.GetConfig().GetParams().GetVectorsConfig().GetParams().GetSize()); got != c.dim {
+	if got := int(named.Map["content"].Size); got != c.dim {
 		return fmt.Errorf("qdrant: collection %s có dim %d, config expects %d",
 			c.collection, got, c.dim)
 	}
@@ -194,7 +221,10 @@ func (c *connection) createCollection(ctx context.Context) error {
 	}
 	req := &qdrantapi.CreateCollection{
 		CollectionName: c.collection,
-		VectorsConfig:  qdrantapi.NewVectorsConfig(vectors),
+		VectorsConfig:  qdrantapi.NewVectorsConfigMap(map[string]*qdrantapi.VectorParams{
+			"content": vectors,
+			"title":   {Size: uint64(c.dim), Distance: qdrantapi.Distance_Cosine},
+		}),
 		HnswConfig: &qdrantapi.HnswConfigDiff{
 			M:                 ptrUint64(16),
 			EfConstruct:       ptrUint64(100),
@@ -408,9 +438,19 @@ func (c *connection) UpsertPoints(ctx context.Context, points []*domain.VectorPo
 		if len(p.Vector) != c.dim {
 			return fmt.Errorf("%w: point %s có dim %d, collection expects %d", ErrBadRequest, p.ID, len(p.Vector), c.dim)
 		}
+		titleVec := p.TitleVector
+		if len(titleVec) == 0 {
+			titleVec = p.Vector
+		}
+		if len(titleVec) != c.dim {
+			return fmt.Errorf("%w: title vector point %s có dim %d, collection expects %d", ErrBadRequest, p.ID, len(titleVec), c.dim)
+		}
 		structs = append(structs, &qdrantapi.PointStruct{
-			Id:      qdrantapi.NewIDUUID(p.ID),
-			Vectors: qdrantapi.NewVectors(p.Vector...),
+			Id: qdrantapi.NewIDUUID(p.ID),
+			Vectors: qdrantapi.NewVectorsMap(map[string]*qdrantapi.Vector{
+				"content": qdrantapi.NewVectorDense(p.Vector),
+				"title":   qdrantapi.NewVectorDense(titleVec),
+			}),
 			Payload: qdrantapi.NewValueMap(map[string]any{
 				"article_id":  p.ArticleID,
 				"user_id":     p.UserID,
@@ -497,30 +537,23 @@ func permissionMusts(f domain.SearchFilter) []*qdrantapi.Condition {
 // Search trả top chunk gần vector nhất trong phạm vi filter — agent RAG gọi
 // qua service search. Sai dim là lỗi client (permanent); threshold/limit chỉ
 // là tham số query nên server lỗi gì cũng trả về để caller quyết.
-func (c *connection) Search(ctx context.Context, vector []float32, filter domain.SearchFilter, limit int, scoreThreshold float32) ([]*domain.ScoredChunk, error) {
-	if len(vector) != c.dim {
-		return nil, fmt.Errorf("%w: vector query có dim %d, collection expects %d", ErrBadRequest, len(vector), c.dim)
-	}
-	if limit <= 0 {
-		limit = constants.SEARCH_DEFAULT_LIMIT
-	}
+// queryNamed chạy 1 search trên named vector (content/title) và trả hits.
+func (c *connection) queryNamed(ctx context.Context, named string, vector []float32, filter domain.SearchFilter, limit int, scoreThreshold float32) ([]*domain.ScoredChunk, error) {
 	req := &qdrantapi.QueryPoints{
 		CollectionName: c.collection,
-		Query:          qdrantapi.NewQuery(vector...),
-		Filter:         searchFilter(filter),
-		Limit:          ptrUint64(uint64(limit)),
-		WithPayload:    qdrantapi.NewWithPayload(true),
+		Using:         &named,
+		Query:         qdrantapi.NewQuery(vector...),
+		Filter:        searchFilter(filter),
+		Limit:         ptrUint64(uint64(limit)),
+		WithPayload:   qdrantapi.NewWithPayload(true),
 	}
 	if scoreThreshold > 0 {
 		req.ScoreThreshold = &scoreThreshold
 	}
-	// Rescore: tìm bằng vector nén rồi chấm lại top-k bằng vector gốc. Chỉ
-	// gửi khi collection THẬT SỰ đang nén (quantized) — với binary thì đây là
-	// bắt buộc, với scalar là để giữ recall sát float32.
 	req.Params = c.searchParams()
 	res, err := c.client.Query(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("qdrant: search: %w", err)
+		return nil, fmt.Errorf("qdrant: search %s: %w", named, err)
 	}
 	hits := make([]*domain.ScoredChunk, 0, len(res))
 	for _, p := range res {
@@ -539,6 +572,70 @@ func (c *connection) Search(ctx context.Context, vector []float32, filter domain
 		})
 	}
 	return hits, nil
+}
+
+// Search chạy dual embedding: search cả "content" và "title" named vector với
+// cùng query vector, rồi fuse bằng RRF (k=60) để chunk khớp cả nội dung lẫn
+// tiêu đề bài được ưu tiên. Score trả về là RRF score (không phải cosine).
+func (c *connection) Search(ctx context.Context, vector []float32, filter domain.SearchFilter, limit int, scoreThreshold float32) ([]*domain.ScoredChunk, error) {
+	if len(vector) != c.dim {
+		return nil, fmt.Errorf("%w: vector query có dim %d, collection expects %d", ErrBadRequest, len(vector), c.dim)
+	}
+	if limit <= 0 {
+		limit = constants.SEARCH_DEFAULT_LIMIT
+	}
+	contentHits, err := c.queryNamed(ctx, "content", vector, filter, limit, scoreThreshold)
+	if err != nil {
+		return nil, err
+	}
+	titleHits, err := c.queryNamed(ctx, "title", vector, filter, limit, 0)
+	if err != nil {
+		// Title search lỗi không nên làm fail cả query — degrade về content-only.
+		logs.Warnw("qdrant: title search lỗi, fallback content-only", "error", err)
+		titleHits = nil
+	}
+	// Title score thô (cosine) để gate: chunk chỉ xuất hiện qua title phải có
+	// title score >= threshold mới được thêm (tránh title-only yếu lọt qua).
+	titleScore := make(map[string]float32, len(titleHits))
+	for _, h := range titleHits {
+		titleScore[h.PointID] = h.Score
+	}
+
+	// RRF fusion: score = sum 1/(k+rank) cho mỗi nửa. k=60 là hằng số chuẩn.
+	const rrfK = 60.0
+	type acc struct {
+		hit   *domain.ScoredChunk
+		score float64
+	}
+	byID := make(map[string]*acc)
+	add := func(hits []*domain.ScoredChunk, gate bool) {
+		for rank, h := range hits {
+			if gate && scoreThreshold > 0 && titleScore[h.PointID] < scoreThreshold {
+				continue
+			}
+			a, ok := byID[h.PointID]
+			if !ok {
+				hc := *h
+				a = &acc{hit: &hc}
+				byID[h.PointID] = a
+			}
+			a.score += 1.0 / (rrfK + float64(rank+1))
+		}
+	}
+	add(contentHits, false)
+	add(titleHits, true)
+
+	out := make([]*domain.ScoredChunk, 0, len(byID))
+	for _, a := range byID {
+		a.hit.Score = float32(a.score)
+		out = append(out, a.hit)
+	}
+	// Sort by RRF score desc.
+	sort.Slice(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 // searchParams trả tham số rescore cho QueryPoints, nil khi không cần.

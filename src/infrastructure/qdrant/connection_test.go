@@ -224,8 +224,11 @@ func TestSearch_Integration(t *testing.T) {
 			t.Fatalf("hit sai payload: %+v", h)
 		}
 	}
-	if hits[0].Score < 0.99 {
-		t.Fatalf("hit khớp vector phải score ~1, got %v", hits[0].Score)
+	if hits[0].ArticleID != 50 {
+		t.Fatalf("hit đầu phải là bài 50, got article %d", hits[0].ArticleID)
+	}
+	if hits[0].Score <= hits[1].Score {
+		t.Fatalf("hit đầu phải có score cao hơn, got %v vs %v", hits[0].Score, hits[1].Score)
 	}
 	// Threshold 0.5 loại hit trực giao (score 0), chỉ còn 1.
 	hits, err = c.Search(ctx, query, domain.SearchFilter{UserID: 7, ArticleID: 50}, 10, 0.5)

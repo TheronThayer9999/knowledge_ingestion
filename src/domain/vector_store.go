@@ -11,9 +11,10 @@ type VectorPoint struct {
 	// bao giờ sinh point trùng. Đổi chunker sinh NÊN chunk khác thì phần dư
 	// của lần cũ thành mồ côi — đó là lý do index chạy lại từ checkpoint 0
 	// phải DeleteByArticle trước.
-	ID         string
-	Vector     []float32
-	ArticleID  int64
+	ID          string
+	Vector      []float32 // content vector (primary)
+	TitleVector []float32 // title vector (article name) — dual embedding
+	ArticleID   int64
 	UserID     int64
 	CategoryID int64
 	ChunkIndex int
