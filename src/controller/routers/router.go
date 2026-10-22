@@ -19,6 +19,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	userAPI *apis.UserAPI, fileAPI *apis.FileAPI,
 	categoryAPI *apis.CategoryAPI, articleAPI *apis.ArticleAPI,
 	adminAPI *apis.ArticleAdminAPI, embedCacheAPI *apis.EmbedCacheAdminAPI,
+	consistencyAPI *apis.ConsistencyAPI,
 	searchAPI *apis.SearchAPI, chatAPI *apis.ChatAPI,
 	cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
 	trace middlewares.ITraceMiddleware, rl middlewares.IRateLimiter) *Router {
@@ -81,6 +82,8 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 			// Embed cache: monitor + janitor giữ bảng không phình.
 			admin.GET("/admin/embed-cache/stats", embedCacheAPI.Stats)
 			admin.POST("/admin/embed-cache/purge", embedCacheAPI.Purge)
+			// Kiểm tra tính toàn vẹn dữ liệu (orphan/cycle/missing self-row).
+			admin.GET("/admin/consistency", consistencyAPI.Check)
 		}
 		authed.POST("/search", searchAPI.Query)
 		authed.POST("/chat", chatAPI.Chat)
