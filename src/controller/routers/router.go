@@ -69,6 +69,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		authed.POST("/articles", articleAPI.Create)
 		authed.GET("/articles", articleAPI.List)
 		authed.GET("/articles/:id", articleAPI.GetByID)
+		authed.GET("/articles/:id/sections", articleAPI.ListSections)
 		authed.PUT("/articles/:id", articleAPI.Update)
 		authed.DELETE("/articles/:id", articleAPI.Delete)
 		// Admin endpoints — yêu cầu role admin (role >= 1). Gate Role đã bật.

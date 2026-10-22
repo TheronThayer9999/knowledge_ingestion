@@ -332,12 +332,16 @@ func (a *ArticleRepository) ResetQueue(ctx context.Context, ids []int64, userID 
 	res := dbConn(ctx, a.db).Model(&domain.Article{}).
 		Where("id IN ? AND user_id = ?", ids, userID).
 		Updates(map[string]any{
-			"index_status":        domain.QueuePending,
-			"index_attempts":      0,
-			"index_next_retry_at": now,
-			"index_done_chunks":   0,
-			"indexed_at":          nil,
-			"updated_at":          now,
+			"index_status":          domain.QueuePending,
+			"index_attempts":        0,
+			"index_next_retry_at":   now,
+			"index_done_chunks":     0,
+			"indexed_at":            nil,
+			"compile_status":        domain.QueuePending,
+			"compile_attempts":      0,
+			"compile_next_retry_at": now,
+			"compiled_at":           nil,
+			"updated_at":            now,
 		})
 	if res.Error != nil {
 		return 0, res.Error
@@ -536,6 +540,77 @@ func (a *ArticleRepository) ReleaseIndexClaims(ctx context.Context, ids []int64)
 		}).Error
 }
 
+// ClaimCompilePending hốt batch bài tới hạn compile, đúng 1 transaction
+// (FOR UPDATE SKIP LOCKED) — cùng pattern extract/index, xem
+// ClaimChunkPending vì sao không tăng attempts ở claim. Chỉ lấy bài đã index
+// done (mục + text chunk trên Qdrant đã đủ để tóm tắt).
+func (a *ArticleRepository) ClaimCompilePending(ctx context.Context, limit int, lease time.Duration) ([]*domain.Article, error) {
+	// Guard limit để hằng số claim nào bị set 0 nhầm cũng không hốt toàn bảng
+	// (gorm Limit(0) nghĩa là bỏ limit).
+	if limit <= 0 {
+		limit = 10
+	}
+	articles := make([]*domain.Article, 0, limit)
+	now := time.Now()
+	err := dbConn(ctx, a.db).Transaction(func(tx *gorm.DB) error {
+		tx = tx.WithContext(ctx)
+		q := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+			Where("compile_status IN ? AND compile_next_retry_at <= ?",
+				[]string{domain.QueuePending, domain.QueueProcessing}, now).
+			Where("index_status = ?", domain.QueueDone).
+			Order("id ASC").
+			Limit(limit)
+		if err := q.Find(&articles).Error; err != nil {
+			return err
+		}
+		if len(articles) == 0 {
+			return nil
+		}
+		ids := make([]int64, 0, len(articles))
+		for _, ar := range articles {
+			ids = append(ids, ar.ID)
+		}
+		updates := map[string]any{"updated_at": now, "compile_next_retry_at": now.Add(lease), "compile_status": domain.QueueProcessing}
+		return tx.Model(&domain.Article{}).Where("id IN ?", ids).Updates(updates).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return articles, nil
+}
+
+// MarkCompileDone đánh dấu compile xong 1 bài (kèm mốc compiled_at để audit).
+func (a *ArticleRepository) MarkCompileDone(ctx context.Context, id int64) error {
+	now := time.Now()
+	return dbConn(ctx, a.db).Model(&domain.Article{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"compile_status": domain.QueueDone,
+			"compiled_at":    now,
+			"updated_at":     now,
+		}).Error
+}
+
+// MarkCompileError ghi lỗi compile 1 bài.
+func (a *ArticleRepository) MarkCompileError(ctx context.Context, id int64, attempts int) error {
+	return a.markError(ctx, id, attempts, phaseCompile)
+}
+
+// ReleaseCompileClaims cùng ý nghĩa ReleaseIndexClaims cho phase compile.
+func (a *ArticleRepository) ReleaseCompileClaims(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	now := time.Now()
+	return dbConn(ctx, a.db).Model(&domain.Article{}).
+		Where("id IN ? AND compile_status = ?", ids, domain.QueueProcessing).
+		Updates(map[string]any{
+			"compile_status":        domain.QueuePending,
+			"compile_next_retry_at": now,
+			"updated_at":            now,
+		}).Error
+}
+
 // phase là cột queue nào của articles — markError dùng để ghi đúng cột thay
 // vì bool mơ hồ (đọc code không biết true là phase nào).
 type phase int
@@ -543,10 +618,11 @@ type phase int
 const (
 	phaseExtract phase = iota
 	phaseIndex
+	phaseCompile
 )
 
-// markError dùng chung cho extract/index: quá MaxQueueAttempts thì failed để
-// người xử lý, còn lại pending + lùi giờ thử theo utils.QueueBackoff.
+// markError dùng chung cho extract/index/compile: quá MaxQueueAttempts thì
+// failed để người xử lý, còn lại pending + lùi giờ thử theo utils.QueueBackoff.
 // attempts là số lần lỗi tính tới hiện tại — ghi luôn vào cột để lần sau
 // cộng tiếp (claim không tăng, chỉ lỗi mới tăng).
 func (a *ArticleRepository) markError(ctx context.Context, id int64, attempts int, p phase) error {
@@ -556,8 +632,11 @@ func (a *ArticleRepository) markError(ctx context.Context, id int64, attempts in
 		status = domain.QueueFailed
 	}
 	prefix := "extract_"
-	if p == phaseIndex {
+	switch p {
+	case phaseIndex:
 		prefix = "index_"
+	case phaseCompile:
+		prefix = "compile_"
 	}
 	return dbConn(ctx, a.db).Model(&domain.Article{}).Where("id = ?", id).
 		Updates(map[string]any{

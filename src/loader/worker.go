@@ -1,8 +1,12 @@
 package loader
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
+	"knowledge_ingestion/src/agent/eino"
+	"knowledge_ingestion/src/agent/prompts"
 	"knowledge_ingestion/src/common/chunker"
 	"knowledge_ingestion/src/common/enhancement"
 	"knowledge_ingestion/src/common/extractor"
@@ -36,6 +40,7 @@ func LoadWorkerInfra() []fx.Option {
 		fx.Provide(qdrant.NewConnection),
 		fx.Provide(repository.NewArticleRepository),
 		fx.Provide(repository.NewArticlePageRepository),
+		fx.Provide(repository.NewArticleSectionRepository),
 		// Cache embed — tránh gọi lại model cho chunk đã tính. Ý tưởng lấy từ
 		// AnythingLLM (cachedVectorInformation) nhưng khoá theo NỘI DUNG chunk
 		// thay vì cả file, nên trùng lặp giữa các bài cũng ăn.
@@ -95,5 +100,34 @@ func LoadWorkerInfra() []fx.Option {
 		fx.Provide(func(r domain.IArticleRepository) domain.ArticleExtractQueue { return r }),
 		fx.Provide(func(r domain.IArticleRepository) domain.ArticleIndexQueue { return r }),
 		fx.Provide(func(r domain.IArticleRepository) domain.ArticleJanitor { return r }),
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleCompileQueue { return r }),
+		// ISummarizer cho compile phase 2 (P2.4 phase 1b) — dựng chat model từ
+		// provider mặc định (llms.default_provider) + system prompt load từ
+		// prompts/compile_section.md lúc startup (fail-fast nếu thiếu file).
+		// Tool-calling model thỏa BaseChatModel nên đưa thẳng vào summarizer.
+		fx.Provide(func(cfg config.IConfig) (domain.ISummarizer, error) {
+			llms := cfg.GetLLMs()
+			slug := strings.ToLower(strings.TrimSpace(llms.DefaultProvider))
+			var pcfg config.LLMProviderConfig
+			var found string
+			for name, p := range llms.Providers {
+				if strings.ToLower(strings.TrimSpace(name)) == slug {
+					found, pcfg = name, p
+					break
+				}
+			}
+			if found == "" {
+				return nil, fmt.Errorf("worker compile: không thấy llms.providers[%q] cho default_provider", slug)
+			}
+			model, err := eino.NewConfigProvider(found, pcfg).NewModel()
+			if err != nil {
+				return nil, fmt.Errorf("worker compile: dựng model %q lỗi: %w", slug, err)
+			}
+			system, err := prompts.Load(cfg.GetAgent().PromptDir, "compile_section.md")
+			if err != nil {
+				return nil, err
+			}
+			return eino.NewSectionSummarizer(model, pcfg.Model, system), nil
+		}),
 	}
 }

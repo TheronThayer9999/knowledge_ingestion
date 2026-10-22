@@ -54,6 +54,17 @@ func (r *purgeStubPageRepo) ListPagesRange(context.Context, int64, int, int) ([]
 	return nil, nil
 }
 
+// purgeStubSections đếm lần xóa article_sections theo lô (phase 1b).
+type purgeStubSections struct {
+	domain.IArticleSectionRepository
+	deleteManyCalls [][]int64
+}
+
+func (r *purgeStubSections) DeleteByArticles(_ context.Context, ids []int64) error {
+	r.deleteManyCalls = append(r.deleteManyCalls, append([]int64(nil), ids...))
+	return nil
+}
+
 // purgeStubVectors ghi lại bài nào đã xoá vector, và fail đúng 1 id.
 type purgeStubVectors struct {
 	deleted []int64
@@ -154,10 +165,11 @@ func TestPurgeDeleted(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			artRepo := &purgeStubArticleRepo{articles: tc.articles}
 			pageRepo := &purgeStubPageRepo{}
+			sectionRepo := &purgeStubSections{}
 			vectors := &purgeStubVectors{failFor: tc.failVectorID}
 			st := &purgeStubStorage{failFor: tc.failBlobKey}
 
-			svc := NewArticlePurgeService(artRepo, pageRepo, vectors, st, PurgeOptions{})
+			svc := NewArticlePurgeService(artRepo, pageRepo, sectionRepo, vectors, st, PurgeOptions{})
 			n, err := svc.PurgeDeleted(context.Background())
 			if err != nil {
 				t.Fatalf("PurgeDeleted lỗi: %v", err)
@@ -186,12 +198,18 @@ func TestPurgeDeleted(t *testing.T) {
 				t.Errorf("DeleteByArticles nhận %d id, want %d",
 					len(pageRepo.deleteManyCalls[0]), tc.wantPurged)
 			}
+			// Summary đã compile cũng phải được dọn cùng nhịp (phase 1b).
+			if len(sectionRepo.deleteManyCalls) != wantPageCalls {
+				t.Errorf("section DeleteByArticles gọi %d lần, want %d",
+					len(sectionRepo.deleteManyCalls), wantPageCalls)
+			}
 		})
 	}
 }
 
 var (
-	_ domain.ArticleJanitor         = (*purgeStubArticleRepo)(nil)
-	_ domain.IArticlePageRepository = (*purgeStubPageRepo)(nil)
-	_ domain.IVectorStore           = (*purgeStubVectors)(nil)
+	_ domain.ArticleJanitor            = (*purgeStubArticleRepo)(nil)
+	_ domain.IArticlePageRepository    = (*purgeStubPageRepo)(nil)
+	_ domain.IArticleSectionRepository = (*purgeStubSections)(nil)
+	_ domain.IVectorStore              = (*purgeStubVectors)(nil)
 )

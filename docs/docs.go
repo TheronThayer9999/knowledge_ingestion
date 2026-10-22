@@ -15,6 +15,94 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/admin/consistency": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Kiểm tra orphan/cycle/missing self-row trong category closure, articles, article_pages. Tất cả 0 = lành mạnh.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Data consistency check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/embed-cache/purge": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Xóa các entry ít dùng (chunk_count \u003c= 1) cũ hơn older_than_days (mặc định 30) để giữ bảng không phình.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Purge unused embed cache entries",
+                "parameters": [
+                    {
+                        "description": "purge options",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.EmbedCachePurgeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/embed-cache/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Báo số entry + tổng dung lượng cache embed để monitor hit rate.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Embed cache stats",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/queue": {
             "get": {
                 "security": [
@@ -401,6 +489,52 @@ const docTemplate = `{
                     "articles"
                 ],
                 "summary": "Delete an article",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "article id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/articles/{id}/sections": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the PageIndex of one of my articles: sections (Dieu/chapter/phan) in reading order with the chunk index each starts at. Empty sections with index_status != done means the article is not indexed yet",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "articles"
+                ],
+                "summary": "List article sections (PageIndex)",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1100,6 +1234,32 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/health": {
+            "get": {
+                "description": "Kiểm tra postgres, qdrant, seaweedfs, rabbitmq. Trả 200 nếu tất cả OK, 503 nếu có thành phần chết.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1205,6 +1365,19 @@ const docTemplate = `{
                     "maxLength": 1000,
                     "example": "Tài liệu về dependency injection trong Go"
                 },
+                "doc_type": {
+                    "type": "string",
+                    "enum": [
+                        "general",
+                        "laws",
+                        "table",
+                        "paper",
+                        "book",
+                        "qa",
+                        "manual"
+                    ],
+                    "example": "laws"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 255,
@@ -1276,6 +1449,16 @@ const docTemplate = `{
                     "maxLength": 50,
                     "minLength": 3,
                     "example": "johndoe"
+                }
+            }
+        },
+        "dtos.EmbedCachePurgeRequest": {
+            "type": "object",
+            "properties": {
+                "older_than_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 30
                 }
             }
         },
@@ -1396,6 +1579,19 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 1000,
                     "example": "Tài liệu về dependency injection trong Go"
+                },
+                "doc_type": {
+                    "type": "string",
+                    "enum": [
+                        "general",
+                        "laws",
+                        "table",
+                        "paper",
+                        "book",
+                        "qa",
+                        "manual"
+                    ],
+                    "example": "laws"
                 },
                 "name": {
                     "type": "string",

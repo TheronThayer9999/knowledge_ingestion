@@ -13,7 +13,7 @@ import (
 // boot lại an toàn.
 func migrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(domain.User{}, domain.Category{}, domain.Article{}, domain.ArticlePage{},
-		domain.EmbedCacheEntry{}, domain.OutboxEvent{}, domain.CategoryClosure{}); err != nil {
+		domain.EmbedCacheEntry{}, domain.OutboxEvent{}, domain.CategoryClosure{}, domain.ArticleSection{}); err != nil {
 		return err
 	}
 	// Bảng article_chunks đã bị bỏ hoàn toàn (phase chunk + embed gộp làm 1,
@@ -34,7 +34,7 @@ func migrate(db *gorm.DB) error {
 	// state machine của service này chỉ có pending/processing/done/failed —
 	// claim sẽ bỏ qua các dòng đó vĩnh viễn. Chuẩn hoá 1 lần, idempotent nên
 	// boot lại vô hại; chỉ quét đúng các dòng còn 'waiting'.
-	for _, col := range []string{"extract_status", "index_status"} {
+	for _, col := range []string{"extract_status", "index_status", "compile_status"} {
 		if err := db.Exec(fmt.Sprintf(`UPDATE articles SET %s = ? WHERE %s = ?`, col, col),
 			domain.QueuePending, "waiting").Error; err != nil {
 			return fmt.Errorf("chuẩn hoá %s='waiting' sang pending: %w", col, err)

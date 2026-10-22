@@ -18,7 +18,7 @@ type Article struct {
 	// DocType là loại tài liệu để chọn chiến lược chunking: general, laws,
 	// table, paper, book, qa, manual. Rỗng → worker tự detect từ content_type
 	// + tên file. Đổi doc_type thì phải rebuild vector.
-	DocType string `json:"doc_type" gorm:"not null;default:'general'"`
+	DocType     string `json:"doc_type" gorm:"not null;default:'general'"`
 	Description string `json:"description,omitempty"`
 
 	UserID     int64 `json:"user_id" gorm:"not null;index"`
@@ -62,6 +62,16 @@ type Article struct {
 	// IndexedAt mốc giờ index xong (nil khi chưa xong) — audit/tracing, set
 	// cùng lúc đánh done nên không lệch trạng thái.
 	IndexedAt *time.Time `json:"-" gorm:"index"`
+
+	// Cột queue cho phase compile (P2.4 phase 1b) — sau index: đọc mục từ
+	// Qdrant, LLM sinh summary từng mục, ghi article_sections. Bật mặc định:
+	// bài index xong (done) tự vào hàng đợi compile.
+	CompileStatus      string    `json:"-" gorm:"not null;default:'pending'"`
+	CompileAttempts    int       `json:"-" gorm:"not null;default:0"`
+	CompileNextRetryAt time.Time `json:"-" gorm:"not null;default:now()"`
+	// CompiledAt mốc compile xong (nil khi chưa) — audit, cùng pattern
+	// ExtractedAt/IndexedAt.
+	CompiledAt *time.Time `json:"-" gorm:"index"`
 }
 
 // Trạng thái queue dùng chung cho chunk/embed — pending: chờ làm;
@@ -230,6 +240,19 @@ type IArticleRepository interface {
 	// mà không trích gì, bài chỉ còn nửa nội dung cũ. Thứ tự này thuộc
 	// tầng service, không phải tầng repo.
 	ResetExtract(ctx context.Context, ids []int64, userID int64) (int64, error)
+
+	// ClaimCompilePending hốt batch bài tới hạn compile cho worker trong đúng
+	// 1 transaction (FOR UPDATE SKIP LOCKED, cùng pattern extract/index) — chỉ
+	// lấy bài đã index done.
+	ClaimCompilePending(ctx context.Context, limit int, lease time.Duration) ([]*Article, error)
+	// MarkCompileDone đánh dấu compile xong 1 bài (kèm mốc compiled_at).
+	MarkCompileDone(ctx context.Context, id int64) error
+	// MarkCompileError ghi lỗi compile 1 bài — cùng luật backoff/failed như
+	// hai phase trước.
+	MarkCompileError(ctx context.Context, id int64, attempts int) error
+	// ReleaseCompileClaims trả lô bài processing về pending khi job bị hủy —
+	// không tăng attempts, cùng pattern ReleaseExtract/IndexClaims.
+	ReleaseCompileClaims(ctx context.Context, ids []int64) error
 }
 
 // Role interface cho worker — mỗi service chỉ phụ thuộc đúng phương thức nó
@@ -268,6 +291,16 @@ type ArticleExtractQueue interface {
 	// cặp queue extract_*/index_*, nên worker extract có thể vô tình ghi đè
 	// trạng thái mà worker index vừa đặt — chỉ đúng 3 cột cần thiết.
 	UpdateMetadata(ctx context.Context, id int64, pageCount int, version, effectiveDate string) error
+}
+
+// ArticleCompileQueue vai queue phase 2 của worker compile (P2.4 phase 1b) —
+// đọc mục từ Qdrant, LLM tóm tắt từng mục, ghi article_sections.
+type ArticleCompileQueue interface {
+	ClaimCompilePending(ctx context.Context, limit int, lease time.Duration) ([]*Article, error)
+	MarkCompileDone(ctx context.Context, id int64) error
+	MarkCompileError(ctx context.Context, id int64, attempts int) error
+	ReleaseCompileClaims(ctx context.Context, ids []int64) error
+	IsAlive(ctx context.Context, id int64) (bool, error)
 }
 
 // ArticleJanitor vai dọn dẹp của worker purge.

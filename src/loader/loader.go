@@ -61,6 +61,8 @@ func loadAdapter() []fx.Option {
 		// API cần pageRepo cho admin/reset-extract (xoá trang đã trích để
 		// OCR lại). Worker dĩng vậy cũng có repo riêng ở loader/worker.go.
 		fx.Provide(repository.NewArticlePageRepository),
+		// API /sections đọc summary đã compile (phase 1b) merge vào PageIndex.
+		fx.Provide(repository.NewArticleSectionRepository),
 		fx.Provide(repository.NewUnitOfWork),
 		// qdrant cho API rebuild-vectors (xoá vector cũ) — NewConnection
 		// ensureCollection lúc dựng nên API boot giờ fail-fast khi Qdrant

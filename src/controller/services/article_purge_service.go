@@ -32,12 +32,13 @@ type IArticlePurgeService interface {
 type articlePurgeService struct {
 	articleRepo domain.ArticleJanitor
 	pageRepo    domain.IArticlePageRepository
+	sectionRepo domain.IArticleSectionRepository
 	vectors     domain.IVectorStore
 	storage     storage.IStorage
 }
 
-func NewArticlePurgeService(articleRepo domain.ArticleJanitor, pageRepo domain.IArticlePageRepository, vectors domain.IVectorStore, storage storage.IStorage, opts PurgeOptions) IArticlePurgeService {
-	return &articlePurgeService{articleRepo: articleRepo, pageRepo: pageRepo, vectors: vectors, storage: storage}
+func NewArticlePurgeService(articleRepo domain.ArticleJanitor, pageRepo domain.IArticlePageRepository, sectionRepo domain.IArticleSectionRepository, vectors domain.IVectorStore, storage storage.IStorage, opts PurgeOptions) IArticlePurgeService {
+	return &articlePurgeService{articleRepo: articleRepo, pageRepo: pageRepo, sectionRepo: sectionRepo, vectors: vectors, storage: storage}
 }
 
 // PurgeDeleted dọn 1 đợt bài quá grace period, trả số row đã xóa hẳn.
@@ -139,6 +140,15 @@ func (s *articlePurgeService) PurgeDeleted(ctx context.Context) (int, error) {
 	defer det.Close()
 	if err := s.pageRepo.DeleteByArticles(det.Ctx, done); err != nil {
 		logs.Error(err, "purge: xóa trang hàng loạt thất bại, để kỳ sau thử lại",
+			"trace_id", traceID, "articles", len(done))
+		return 0, err
+	}
+	// Summary đã compile (phase 1b) cũng thuộc bài — xóa cùng nhịp với trang
+	// trung gian, trước khi xóa row để không còn dòng mồ côi (Replace của
+	// compile lần sau Unscoped-delete theo article_id nhưng bài đã HardDelete
+	// thì không còn lượt nào quét tới nữa).
+	if err := s.sectionRepo.DeleteByArticles(det.Ctx, done); err != nil {
+		logs.Error(err, "purge: xóa section đã compile thất bại, để kỳ sau thử lại",
 			"trace_id", traceID, "articles", len(done))
 		return 0, err
 	}

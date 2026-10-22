@@ -40,9 +40,10 @@ func main() {
 		fx.Provide(services.NewArticlePurgeService),
 		fx.Provide(services.NewArticleExtractService),
 		fx.Provide(services.NewArticleIndexService),
+		fx.Provide(services.NewArticleCompileService),
 		// Thêm job mới = inject service ở tham số + append 1 dòng Schedule:
 		// {Name: "...", Interval: ..., Run: asJob(svc.Method)}.
-		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, extract services.IArticleExtractService, index services.IArticleIndexService, opts services.PurgeOptions) {
+		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, extract services.IArticleExtractService, index services.IArticleIndexService, compile services.IArticleCompileService, opts services.PurgeOptions) {
 			NewRunner([]Schedule{
 				{Name: "purge-articles", Interval: constants.PURGE_GRACE_PERIOD, Run: func(ctx context.Context) error {
 					_, err := purge.PurgeDeleted(ctx)
@@ -63,6 +64,13 @@ func main() {
 				// gọi Ollama ~47 lần nên vẫn cần timeout riêng.
 				{Name: "index-articles", Interval: constants.INDEX_INTERVAL, Timeout: constants.INDEX_JOB_TIMEOUT, Run: func(ctx context.Context) error {
 					_, err := index.IndexPending(ctx)
+					return err
+				}},
+				// Phase compile (P2.4 phase 1b): bài index done → LLM tóm tắt
+				// từng mục → article_sections. Nhịp thưa hơn index vì call LLM
+				// chậm; timeout riêng < lease để worker khác không reclaim oan.
+				{Name: "compile-articles", Interval: constants.COMPILE_INTERVAL, Timeout: constants.COMPILE_JOB_TIMEOUT, Run: func(ctx context.Context) error {
+					_, err := compile.CompilePending(ctx)
 					return err
 				}},
 			}).Attach(lc)

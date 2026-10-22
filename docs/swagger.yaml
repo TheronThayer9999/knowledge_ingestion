@@ -75,6 +75,17 @@ definitions:
         example: Tài liệu về dependency injection trong Go
         maxLength: 1000
         type: string
+      doc_type:
+        enum:
+        - general
+        - laws
+        - table
+        - paper
+        - book
+        - qa
+        - manual
+        example: laws
+        type: string
       name:
         example: Giới thiệu Go Fx
         maxLength: 255
@@ -134,6 +145,13 @@ definitions:
     - email
     - password
     - username
+    type: object
+  dtos.EmbedCachePurgeRequest:
+    properties:
+      older_than_days:
+        example: 30
+        minimum: 1
+        type: integer
     type: object
   dtos.LoginUserRequest:
     properties:
@@ -219,6 +237,17 @@ definitions:
         example: Tài liệu về dependency injection trong Go
         maxLength: 1000
         type: string
+      doc_type:
+        enum:
+        - general
+        - laws
+        - table
+        - paper
+        - book
+        - qa
+        - manual
+        example: laws
+        type: string
       name:
         example: Giới thiệu Go Fx
         maxLength: 255
@@ -249,6 +278,61 @@ info:
   title: Knowledge Ingestion API
   version: "1.0"
 paths:
+  /api/v1/admin/consistency:
+    get:
+      description: Kiểm tra orphan/cycle/missing self-row trong category closure,
+        articles, article_pages. Tất cả 0 = lành mạnh.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Data consistency check
+      tags:
+      - admin
+  /api/v1/admin/embed-cache/purge:
+    post:
+      consumes:
+      - application/json
+      description: Xóa các entry ít dùng (chunk_count <= 1) cũ hơn older_than_days
+        (mặc định 30) để giữ bảng không phình.
+      parameters:
+      - description: purge options
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/dtos.EmbedCachePurgeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Purge unused embed cache entries
+      tags:
+      - admin
+  /api/v1/admin/embed-cache/stats:
+    get:
+      description: Báo số entry + tổng dung lượng cache embed để monitor hit rate.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Embed cache stats
+      tags:
+      - admin
   /api/v1/admin/queue:
     get:
       description: 'Read-only toàn cảnh hàng đợi: số bài theo trạng thái extract (phase
@@ -527,6 +611,37 @@ paths:
       security:
       - BearerAuth: []
       summary: Update an article
+      tags:
+      - articles
+  /api/v1/articles/{id}/sections:
+    get:
+      description: 'Returns the PageIndex of one of my articles: sections (Dieu/chapter/phan)
+        in reading order with the chunk index each starts at. Empty sections with
+        index_status != done means the article is not indexed yet'
+      parameters:
+      - description: article id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: List article sections (PageIndex)
       tags:
       - articles
   /api/v1/auth/change-password:
@@ -965,6 +1080,24 @@ paths:
       summary: Create a new user
       tags:
       - users
+  /health:
+    get:
+      description: Kiểm tra postgres, qdrant, seaweedfs, rabbitmq. Trả 200 nếu tất
+        cả OK, 503 nếu có thành phần chết.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      summary: Health check
+      tags:
+      - health
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT, e.g. "Bearer eyJhbGciOi..."

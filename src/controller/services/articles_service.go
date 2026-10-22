@@ -21,6 +21,9 @@ type IArticleService interface {
 	List(ctx context.Context, q *dtos.ListArticlesQuery) dtos.Result[dtos.ArticleListResponse]
 	Update(ctx context.Context, id int64, dto *dtos.UpdateArticleRequest) dtos.Result[*dtos.ArticleResponse]
 	Delete(ctx context.Context, id int64) dtos.Result[*dtos.ArticleResponse]
+	// ListSections trả PageIndex (danh mục mục + tọa độ chunk) của 1 bài của
+	// mình — P2.4 phase 1a, promote từ Qdrant ListSections, không cần LLM.
+	ListSections(ctx context.Context, id int64) dtos.Result[*dtos.ArticleSectionsResponse]
 }
 
 type articleService struct {
@@ -28,14 +31,22 @@ type articleService struct {
 	categoryRepo domain.ICategoryRepositoryImpl
 	currentUser  middlewares.ICurrentUser
 	storage      storage.IStorage
+	// vectors đọc mục từ Qdrant payload — DB chunk đã trim sau embed nên
+	// bản đồ section chỉ còn trong vector store (giống tool list_sections).
+	vectors domain.IVectorStore
+	// sectionRepo đọc summary LLM đã compile (phase 1b) để merge vào
+	// PageIndex — best-effort: bài chưa compile thì summary rỗng.
+	sectionRepo domain.IArticleSectionRepository
 }
 
-func NewArticleService(articleRepo domain.IArticleRepository, categoryRepo domain.ICategoryRepositoryImpl, currentUser middlewares.ICurrentUser, storage storage.IStorage) IArticleService {
+func NewArticleService(articleRepo domain.IArticleRepository, categoryRepo domain.ICategoryRepositoryImpl, currentUser middlewares.ICurrentUser, storage storage.IStorage, vectors domain.IVectorStore, sectionRepo domain.IArticleSectionRepository) IArticleService {
 	return &articleService{
 		articleRepo:  articleRepo,
 		categoryRepo: categoryRepo,
 		currentUser:  currentUser,
 		storage:      storage,
+		vectors:      vectors,
+		sectionRepo:  sectionRepo,
 	}
 }
 
@@ -198,4 +209,42 @@ func (s *articleService) Delete(ctx context.Context, id int64) dtos.Result[*dtos
 	}
 
 	return dtos.Ok(dtos.ToArticleResponse(article))
+}
+
+// ListSections trả PageIndex của 1 bài — chủ sở hữu được xác minh qua repo
+// trước (GetByID scope owner, bài của người khác 404 như không tồn tại), rồi
+// mới đọc Qdrant với filter UserID từ token (không tin client) + ArticleID.
+// Bài chưa index xong thì mục trả về rỗng kèm index_status để client tự phân
+// biệt, không phải lỗi. Summary (phase 1b) đọc từ article_sections merge theo
+// tên mục — bài chưa compile thì summary rỗng, không phải lỗi.
+func (s *articleService) ListSections(ctx context.Context, id int64) dtos.Result[*dtos.ArticleSectionsResponse] {
+	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
+	userID, _ := s.currentUser.UserID(ctx)
+	article, err := s.articleRepo.GetByID(ctx, id, userID)
+	if err != nil {
+		if stderrors.Is(err, domain.ErrNotFound) {
+			return dtos.Fail[*dtos.ArticleSectionsResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "bài viết không tồn tại"))
+		}
+		return dtos.Fail[*dtos.ArticleSectionsResponse](err)
+	}
+	sections, err := s.vectors.ListSections(ctx, domain.SearchFilter{
+		UserID:    userID,
+		ArticleID: article.ID,
+	})
+	if err != nil {
+		return dtos.Fail[*dtos.ArticleSectionsResponse](err)
+	}
+	// Gộp summary đã compile theo tên mục. Chưa compile (compile_status !=
+	// done) hoặc bài không có dòng nào thì map rỗng — mục vẫn trả đủ tọa độ.
+	summaries := make(map[string]string)
+	if article.CompileStatus == domain.QueueDone {
+		rows, serr := s.sectionRepo.ListByArticle(ctx, article.ID)
+		if serr != nil {
+			return dtos.Fail[*dtos.ArticleSectionsResponse](serr)
+		}
+		for _, row := range rows {
+			summaries[row.Name] = row.Summary
+		}
+	}
+	return dtos.Ok(dtos.ToArticleSectionsResponse(article, sections, summaries))
 }

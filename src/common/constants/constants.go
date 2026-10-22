@@ -130,6 +130,37 @@ const INDEX_CALL_BASE_DELAY = 2 * time.Second
 // sau chỉ làm nốt phần còn lại.
 const INDEX_JOB_TIMEOUT = 45 * time.Minute
 
+// Knob vận hành phase compile của worker (P2.4 phase 1b) — đọc mục từ Qdrant,
+// LLM sinh summary từng mục, ghi article_sections. Chạy SAU index, bật mặc
+// định: bài index done tự vào hàng đợi.
+
+// COMPILE_INTERVAL nhịp worker quét bài chờ compile — LLM call mắc hơn embed
+// nên nhịp thưa hơn index để đỡ quét DB trống.
+const COMPILE_INTERVAL = 30 * time.Second
+
+// COMPILE_POOL_SIZE số bài compile song song — bottleneck là LLM provider
+// (retry+rate limit đã nằm trong transport), 2 là đủ ấm.
+const COMPILE_POOL_SIZE = 2
+
+// COMPILE_CLAIM_LIMIT số bài hốt mỗi kỳ — BẰNG pool size, cùng lý do với
+// INDEX_CLAIM_LIMIT.
+const COMPILE_CLAIM_LIMIT = COMPILE_POOL_SIZE
+
+// COMPILE_LEASE/COMPILE_JOB_TIMEOUT cùng luật extract/index: timeout PHẢI
+// NHỎ HƠN lease để worker khác không reclaim bài đang chạy.
+const COMPILE_LEASE = 30 * time.Minute
+const COMPILE_JOB_TIMEOUT = 25 * time.Minute
+
+// COMPILE_MAX_CHUNKS_PER_SECTION trần chunk nạp cho 1 mục khi gọi LLM — mục
+// dài (cả chương) chỉ cần vài chunk đầu là tóm đúng ý, chặn prompt phình
+// quá cửa sổ context của model free.
+const COMPILE_MAX_CHUNKS_PER_SECTION = 6
+
+// COMPILE_CACHE_TTL cache Redis summary theo hash (model|tên mục|nội dung)
+// — tái build mục không đổi nội dung thì không tốn LLM lần hai; 30 ngày đủ
+// phủ vòng đời tài liệu sửa chậm.
+const COMPILE_CACHE_TTL = 30 * 24 * time.Hour
+
 // SHUTDOWN_GRACE thời gian worker chờ job đang chạy thoát sau khi cancel —
 // đủ để service thấy ctx.Done giữa 2 batch/page và ghi nốt trạng thái bằng
 // detached ctx. Quá hạn thì vẫn đóng DB/Qdrant để không treo process.

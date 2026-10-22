@@ -159,6 +159,55 @@ func ToSearchHitResponse(h *domain.ScoredChunk) *SearchHitResponse {
 	}
 }
 
+// ArticleSectionsResponse là PageIndex của 1 bài (P2.4 phase 1a) — danh mục
+// các mục (Điều/chương/phần) theo thứ tự đọc kèm tọa độ chunk bắt đầu,
+// promote từ Qdrant ListSections (tool list_sections của agent đã dùng nòng
+// này). Index_status kèm để client phân biệt "bài không có mục nào" với
+// "chưa index xong nên mục còn trống". Compile_status (phase 1b) cho biết
+// LLM đã tóm tắt xong chưa; mục chưa compile thì summary rỗng.
+type ArticleSectionsResponse struct {
+	ArticleID     int64                  `json:"article_id" example:"8"`
+	ArticleName   string                 `json:"article_name" example:"Quy định nội bộ"`
+	IndexStatus   string                 `json:"index_status" example:"done"`
+	CompileStatus string                 `json:"compile_status" example:"done"`
+	SectionCount  int                    `json:"section_count" example:"12"`
+	Sections      []*SectionSpanResponse `json:"sections"`
+}
+
+// SectionSpanResponse là 1 mục + chunk bắt đầu — from là tọa độ để đọc nội
+// dung vùng đó (scroll range), không phải số trang. Summary do worker compile
+// sinh (phase 1b), rỗng khi bài chưa compile.
+type SectionSpanResponse struct {
+	Name    string `json:"name" example:"ĐIỀU 5: CHẾ ĐỘ ĐÓNG BẢO HIỂM"`
+	From    int    `json:"from" example:"40"`
+	Summary string `json:"summary" example:"Quy định mức và thời hạn đóng bảo hiểm xã hội..."`
+}
+
+// ToArticleSectionsResponse map domain -> response, đảm bảo sections là
+// mảng rỗng chứ không null khi bài chưa có mục nào. summaries (name -> LLM
+// summary, đọc từ article_sections) được merge theo tên mục — mục chưa compile
+// thì summary rỗng, PageIndex bên Qdrant vẫn là nguồn thứ tự + tọa độ chuẩn.
+func ToArticleSectionsResponse(a *domain.Article, sections []domain.SectionSpan, summaries map[string]string) *ArticleSectionsResponse {
+	res := &ArticleSectionsResponse{
+		Sections: make([]*SectionSpanResponse, 0, len(sections)),
+	}
+	if a != nil {
+		res.ArticleID = a.ID
+		res.ArticleName = a.Name
+		res.IndexStatus = a.IndexStatus
+		res.CompileStatus = a.CompileStatus
+	}
+	for _, s := range sections {
+		res.Sections = append(res.Sections, &SectionSpanResponse{
+			Name:    s.Name,
+			From:    s.From,
+			Summary: summaries[s.Name],
+		})
+	}
+	res.SectionCount = len(res.Sections)
+	return res
+}
+
 // ResetScopeRequest chọn phạm vi bài cho các thao tác admin theo lô (reset
 // hàng đợi, trích lại). Scope bắt buộc đúng 1 trong 2: article_ids hoặc
 // category_id — cả 2 rỗng service trả 400 để không reset nhầm toàn bộ. Chỉ tác

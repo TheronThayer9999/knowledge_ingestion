@@ -124,3 +124,22 @@ func (a *ArticleAPI) Delete(c *gin.Context) {
 	}
 	Render(c, a, a.svc.Delete(c, p.ID))
 }
+
+// ListSections godoc
+// @Summary List article sections (PageIndex)
+// @Description Returns the PageIndex of one of my articles: sections (Dieu/chapter/phan) in reading order with the chunk index each starts at. Empty sections with index_status != done means the article is not indexed yet
+// @Tags articles
+// @Produce json
+// @Param id path int true "article id"
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 400 {object} dtos.ResponseResource
+// @Failure 404 {object} dtos.ResponseResource
+// @Security BearerAuth
+// @Router /api/v1/articles/{id}/sections [get]
+func (a *ArticleAPI) ListSections(c *gin.Context) {
+	var p dtos.IDParam
+	if !a.BindUri(c, &p, "id bài viết không hợp lệ") {
+		return
+	}
+	Render(c, a, a.svc.ListSections(c, p.ID))
+}
