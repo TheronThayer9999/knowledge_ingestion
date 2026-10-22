@@ -99,7 +99,7 @@ Mỗi mục có mức ưu tiên: **P0** (làm ngay), **P1** (trung hạn), **P2*
 
 ### Giải pháp
 - **P1.8** ✅ Admin endpoint `/admin/consistency` kiểm tra orphan/cycle/missing self-row.
-- **P1.9** Thêm health check cho data integrity.
+- **P1.9** ✅ `/health` endpoint kiểm tra postgres/qdrant/seaweedfs/rabbitmq (200/503).
 
 ---
 
