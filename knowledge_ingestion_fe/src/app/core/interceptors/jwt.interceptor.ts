@@ -4,21 +4,26 @@ import { Router } from '@angular/router';
 import { catchError, switchMap, throwError } from 'rxjs';
 import { MessageService } from '../../shared/feedback/message.service';
 import { AuthService } from '../auth/services/auth.service';
+import { API_BASE_URL } from '../auth/services/auth.interface';
 
 /**
  * Đính Bearer JWT vào request API (bỏ qua endpoint auth/users — chính nó
  * phát token, đính làm gì). Gặp 401: thử refresh rotation ĐÚNG MỘT LẦN
  * (AuthService dedupe request song song), retry request bằng token mới;
  * refresh luôn fail → phiên chết thật → message + logout + về login.
+ * Ngoài ra: CHỈ intercept request cùng origin API_BASE_URL — PUT thẳng vào
+ * presigned URL của SeaweedFS mà dính Bearer là S3 từ chối ngay.
  */
 export const jwtInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const router = inject(Router);
   const messages = inject(MessageService);
+  const base = inject(API_BASE_URL);
   const token = auth.token();
 
+  const isApiCall = req.url.startsWith(base);
   const isPublicEndpoint = req.url.includes('/auth/') || req.url.includes('/users');
-  if (!token || isPublicEndpoint) {
+  if (!token || !isApiCall || isPublicEndpoint) {
     return next(req);
   }
 

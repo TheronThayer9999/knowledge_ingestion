@@ -1,0 +1,19 @@
+<app-top-bar />
+
+<nav class="shell__nav" aria-label="Main navigation">
+  @for (item of visibleNav(); track item.path) {
+    <a
+      mat-button
+      [routerLink]="item.path"
+      routerLinkActive="shell__nav-item--active"
+      [attr.aria-current]="'page'"
+    >
+      <mat-icon>{{ item.icon }}</mat-icon>
+      <span>{{ lang.t(item.labelKey) }}</span>
+    </a>
+  }
+</nav>
+
+<main class="shell__content">
+  <router-outlet />
+</main>

@@ -1,12 +1,14 @@
 import { Component, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
-import { TranslationKey } from '../i18n/lang.model';
+import { TranslationKey, TranslationParams } from '../i18n/lang.model';
 import { LangService } from '../i18n/lang.service';
 
 export interface ConfirmDialogData {
   title: TranslationKey;
   message: TranslationKey;
+  /** params thay thế vào message động (tên đối tượng sắp xóa...) */
+  messageParams?: TranslationParams;
 }
 
 /** Popup confirm dùng chung — đóng góp true (xác nhận) / false (hủy). */
@@ -15,7 +17,7 @@ export interface ConfirmDialogData {
   imports: [MatDialogModule, MatButtonModule],
   template: `
     <h2 mat-dialog-title>{{ lang.t(data.title) }}</h2>
-    <mat-dialog-content>{{ lang.t(data.message) }}</mat-dialog-content>
+    <mat-dialog-content>{{ lang.t(data.message, data.messageParams) }}</mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button (click)="dismiss()">{{ lang.t('COMMON_CANCEL') }}</button>
       <button mat-button color="primary" (click)="accept()">{{ lang.t('COMMON_CONFIRM') }}</button>

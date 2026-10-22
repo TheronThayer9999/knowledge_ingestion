@@ -2,7 +2,6 @@ import { Component, inject } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatIcon } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
-import { TopBar } from '../../shared/components/top-bar/top-bar';
 import { AuthService } from '../../core/auth/services/auth.service';
 import { LangService } from '../../shared/i18n/lang.service';
 import { TranslationKey } from '../../shared/i18n/lang.model';
@@ -34,7 +33,7 @@ const COLUMN_KEYS: Record<RecentColumn, TranslationKey> = {
 /** Trang chủ sau đăng nhập: thống kê + bảng tài liệu gần đây (data dummy). */
 @Component({
   selector: 'app-dashboard',
-  imports: [TopBar, MatCardModule, MatIcon, MatTableModule],
+  imports: [MatCardModule, MatIcon, MatTableModule],
   templateUrl: './dashboard-component.html',
   styleUrl: './dashboard-component.scss',
 })

@@ -23,3 +23,14 @@ export const guestGuard: CanActivateFn = () => {
   }
   return router.createUrlTree(['/dashboard']);
 };
+
+/** Chỉ admin (role >= 1 — domain.RoleAdmin bên Go) vào được khu /admin. */
+export const adminGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+
+  if ((auth.user()?.role ?? 0) >= 1) {
+    return true;
+  }
+  return router.createUrlTree(['/dashboard']);
+};

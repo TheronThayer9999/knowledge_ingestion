@@ -1,0 +1,24 @@
+.shell__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  background: var(--app-surface);
+  border-bottom: var(--border-width) solid var(--color-border);
+
+  a {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+}
+
+.shell__nav-item--active {
+  color: var(--app-primary);
+  font-weight: 600;
+}
+
+.shell__content {
+  padding: var(--space-5);
+  min-height: calc(100dvh - 112px); // trừ toolbar + nav — trang con không cần tự lo chiều cao
+}

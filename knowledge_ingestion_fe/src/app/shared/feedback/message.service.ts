@@ -28,9 +28,21 @@ export class MessageService {
 
   notify(type: MessageType, key: TranslationKey, params?: TranslationParams): void {
     this.history.update((list) => [...list.slice(-HISTORY_LIMIT + 1), { type, key, params }]);
-    this.snackbar.open(this.lang.t(key, params), undefined, {
+    this.show(type, this.lang.t(key, params));
+  }
+
+  /**
+   * Toast nội dung động (message gốc từ server, số liệu...) — không qua i18n
+   * vì text không phải key tĩnh; fallback nên là key đã dịch trước khi gọi.
+   */
+  raw(type: MessageType, text: string): void {
+    this.show(type, text);
+  }
+
+  private show(type: MessageType, text: string): void {
+    this.snackbar.open(text, undefined, {
       duration: TOAST_DURATION_MS,
-      horizontalPosition: 'center',
+      horizontalPosition: 'start',
       verticalPosition: 'top',
       panelClass: ['app-toast', `app-toast--${type}`],
     });
@@ -53,9 +65,9 @@ export class MessageService {
   }
 
   /** Popup xác nhận dùng chung — true khi người dùng bấm Confirm. */
-  confirm(title: TranslationKey, message: TranslationKey): Observable<boolean> {
+  confirm(title: TranslationKey, message: TranslationKey, messageParams?: TranslationParams): Observable<boolean> {
     return this.dialog
-      .open(ConfirmDialog, { data: { title, message }, width: '360px', autoFocus: true })
+      .open(ConfirmDialog, { data: { title, message, messageParams }, width: '360px', autoFocus: true })
       .afterClosed()
       .pipe(map((result) => result === true));
   }

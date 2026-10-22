@@ -1,0 +1,55 @@
+<section class="categories">
+  <div class="categories__header">
+    <h2>{{ lang.t('CATEGORIES_TITLE') }}</h2>
+    <button mat-raised-button color="primary" (click)="openCreateRoot()">
+      <mat-icon>create_new_folder</mat-icon>
+      {{ lang.t('CATEGORIES_NEW_ROOT') }}
+    </button>
+  </div>
+
+  <mat-card appearance="outlined" class="categories__card">
+    <mat-card-content>
+      @if (loading()) {
+        <p class="categories__empty">{{ lang.t('COMMON_LOADING') }}</p>
+      } @else if (ordered().length === 0) {
+        <p class="categories__empty">{{ lang.t('CATEGORIES_EMPTY') }}</p>
+      } @else {
+        @for (node of ordered(); track node.id) {
+          <div class="categories__row" [style.padding-inline-start.px]="node.depth * 24">
+            <mat-icon class="categories__icon">{{ node.depth > 0 ? 'folder' : 'account_tree' }}</mat-icon>
+            <div class="categories__text">
+              <span class="categories__name">{{ node.name }}</span>
+              @if (node.description) {
+                <span class="categories__desc">{{ node.description }}</span>
+              }
+            </div>
+            <div class="categories__actions">
+              <button
+                mat-icon-button
+                [matTooltip]="lang.t('CATEGORIES_ADD_CHILD')"
+                (click)="addChild(node)"
+              >
+                <mat-icon>create_new_folder</mat-icon>
+              </button>
+              <button
+                mat-icon-button
+                [matTooltip]="lang.t('COMMON_EDIT')"
+                (click)="edit(node)"
+              >
+                <mat-icon>edit</mat-icon>
+              </button>
+              <button
+                mat-icon-button
+                color="warn"
+                [matTooltip]="lang.t('COMMON_DELETE')"
+                (click)="remove(node)"
+              >
+                <mat-icon>delete</mat-icon>
+              </button>
+            </div>
+          </div>
+        }
+      }
+    </mat-card-content>
+  </mat-card>
+</section>
