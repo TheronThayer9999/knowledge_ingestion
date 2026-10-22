@@ -470,20 +470,16 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 //
 // Cache không bắt buộc phải có: cache lỗi thì coi như toàn bộ miss và log,
 // job vẫn chạy được. Một bộ cache hỏng không được làm hỏng việc index.
+// lookupCache: embed cache đã bị loại bỏ (hit rate 99.99% count=1 → vô dụng),
+// nên luôn miss — embed toàn bộ. Vector lưu trong Qdrant, rebuild dùng
+// checkpoint index_done_chunks để resume. Giữ chữ ký (4 giá trị) để không
+// phải sửa upsertBatch.
 func (s *articleIndexService) lookupCache(ctx context.Context, texts []string) (map[string][]float32, []int, []string, error) {
-	// Embed cache đã bị loại bỏ (hit rate 99.99% count=1 → vô dụng).
-	// Luôn miss → embed toàn bộ. Vector lưu trong Qdrant, rebuild dùng
-	// checkpoint index_done_chunks để resume.
-	cached := make(map[string][]float32, len(texts))
-	return cached, allMiss(texts), texts, nil
-}
-
-func allMiss(texts []string) []int {
 	idx := make([]int, len(texts))
 	for i := range idx {
 		idx[i] = i
 	}
-	return idx
+	return make(map[string][]float32, len(texts)), idx, texts, nil
 }
 
 // embedMissing gọi model cho phần miss. Trả vector đúng thứ tự với missIdx.
