@@ -19,7 +19,7 @@
 }
 
 .dashboard__stat-card {
-  border-radius: var(--app-radius);
+  border-radius: var(--radius-md);
   background: var(--app-surface-container);
 }
 
@@ -48,8 +48,8 @@
 }
 
 .dashboard__table-card {
-  border-radius: var(--app-radius);
-  background: var(--app-surface-container-low, var(--app-surface-container));
+  border-radius: var(--radius-md);
+  background: var(--app-surface-container);
 }
 
 .dashboard__table {

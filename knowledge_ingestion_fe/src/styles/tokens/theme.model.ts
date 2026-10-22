@@ -33,7 +33,7 @@ export interface ThemeTokens {
   'inverse-surface': string;
   'inverse-on-surface': string;
   'inverse-primary': string;
-  radius: string;
+  'radius-md': string;
 }
 
 /** Danh sách theme cho UI switcher — giữ đồng bộ với registry _index.scss. */

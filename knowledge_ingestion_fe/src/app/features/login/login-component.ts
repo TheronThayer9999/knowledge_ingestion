@@ -8,6 +8,15 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth/services/auth.service';
+import { AuthApiError, AuthErrorCode } from '../../core/auth/models/auth-error.model';
+import { LangService } from '../../shared/i18n/lang.service';
+import { TranslationKey } from '../../shared/i18n/lang.model';
+
+/** Mã lỗi auth → key i18n (key chữ thường trong map vi.ts/en.ts). */
+const AUTH_ERROR_KEYS: Record<AuthErrorCode, TranslationKey> = {
+  INVALID_CREDENTIALS: 'login.errors.invalid_credentials',
+  GENERIC: 'login.errors.generic',
+};
 
 /** Trang login: form username/password, gọi AuthService (mock API), guard chặn khách. */
 @Component({
@@ -29,8 +38,10 @@ export class LoginComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  protected readonly lang = inject(LangService);
 
-  protected readonly errorMessage = signal<string | null>(null);
+  /** Key i18n của lỗi gần nhất — hiển thị bằng lang.t(key). */
+  protected readonly errorKey = signal<TranslationKey | null>(null);
   protected readonly submitting = signal(false);
   protected readonly hidePassword = signal(true);
 
@@ -45,7 +56,7 @@ export class LoginComponent {
       return;
     }
     this.submitting.set(true);
-    this.errorMessage.set(null);
+    this.errorKey.set(null);
 
     this.auth.login(this.form.getRawValue()).subscribe({
       next: () => {
@@ -53,9 +64,10 @@ export class LoginComponent {
         const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/dashboard';
         void this.router.navigateByUrl(returnUrl);
       },
-      error: (err: Error) => {
+      error: (err: unknown) => {
         this.submitting.set(false);
-        this.errorMessage.set(err.message);
+        const code: AuthErrorCode = err instanceof AuthApiError ? err.code : 'GENERIC';
+        this.errorKey.set(AUTH_ERROR_KEYS[code]);
       },
     });
   }

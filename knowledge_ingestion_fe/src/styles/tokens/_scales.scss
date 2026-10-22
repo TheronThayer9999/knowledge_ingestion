@@ -1,0 +1,26 @@
+// Thang token cố định, KHÔNG phụ thuộc theme (độ đậm viền, khoảng cách, alias ngữ nghĩa).
+// Component chỉ dùng các tên --space-*, --border-width*, --radius-md, --color-*;
+// màu thật vẫn lấy từ token theme hiện hành qua alias → đúng ở cả light/dark/brand.
+
+// 1) Thang đo cố định
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --border-width: 1px;          // viền khi không focus
+  --border-width-focus: 2px;    // viền khi focus
+}
+
+// 2) Alias ngữ nghĩa — trỏ về token của theme đang áp trên [data-theme]
+//    (data-theme nằm chính ở <html> nên var resolve đúng tại :root)
+:root {
+  --color-primary: var(--app-primary);
+  --color-danger: var(--app-error);
+  --color-border: var(--app-outline);
+  --color-muted: var(--app-on-surface-variant);
+  --radius-md: var(--app-radius-md);
+}

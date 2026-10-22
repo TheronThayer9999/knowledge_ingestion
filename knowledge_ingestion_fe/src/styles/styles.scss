@@ -1,5 +1,6 @@
 // Entry style global — theme/material đặt ở src/styles/.
 @use './material-theme';
+@use './tokens/scales';
 
 html,
 body {

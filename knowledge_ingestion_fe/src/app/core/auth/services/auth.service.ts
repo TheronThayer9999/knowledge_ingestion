@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
+import { safeLocalStorage } from '../../../shared/browser';
 import { AuthState, LoginRequest, LoginResponse, User } from '../models/auth.model';
 import { AUTH_CHANNEL_NAME, AuthEvent } from '../models/auth-event.model';
 import { AUTH_SERVICE, IAuthService } from './auth.interface';
@@ -66,8 +67,9 @@ export class AuthService {
   }
 
   private restore(): AuthState {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    const rawUser = localStorage.getItem(USER_STORAGE_KEY);
+    const storage = safeLocalStorage();
+    const token = storage?.getItem(TOKEN_STORAGE_KEY);
+    const rawUser = storage?.getItem(USER_STORAGE_KEY);
     if (!token || !rawUser) {
       return { user: null, token: null, status: 'unauthenticated' };
     }
@@ -87,13 +89,13 @@ export class AuthService {
   }
 
   private persist(token: string, user: User): void {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    safeLocalStorage()?.setItem(TOKEN_STORAGE_KEY, token);
+    safeLocalStorage()?.setItem(USER_STORAGE_KEY, JSON.stringify(user));
   }
 
   private clearStorage(): void {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    localStorage.removeItem(USER_STORAGE_KEY);
+    safeLocalStorage()?.removeItem(TOKEN_STORAGE_KEY);
+    safeLocalStorage()?.removeItem(USER_STORAGE_KEY);
   }
 
   private broadcast(event: AuthEvent): void {

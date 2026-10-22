@@ -3,13 +3,13 @@
 
   <main class="dashboard__content">
     <section class="dashboard__stats">
-      @for (stat of stats; track stat.label) {
+      @for (stat of stats; track stat.labelKey) {
         <mat-card appearance="outlined" class="dashboard__stat-card">
           <mat-card-content>
             <mat-icon class="dashboard__stat-icon">{{ stat.icon }}</mat-icon>
             <div>
               <div class="dashboard__stat-value">{{ stat.value }}</div>
-              <div class="dashboard__stat-label">{{ stat.label }}</div>
+              <div class="dashboard__stat-label">{{ lang.t(stat.labelKey) }}</div>
             </div>
           </mat-card-content>
         </mat-card>
@@ -18,14 +18,16 @@
 
     <mat-card appearance="outlined" class="dashboard__table-card">
       <mat-card-header>
-        <mat-card-title>Tài liệu gần đây</mat-card-title>
-        <mat-card-subtitle>Chào {{ auth.user()?.displayName }} — phiên đăng nhập đang hoạt động</mat-card-subtitle>
+        <mat-card-title>{{ lang.t('dashboard.recent.title') }}</mat-card-title>
+        <mat-card-subtitle>
+          {{ lang.t('dashboard.recent.subtitle', { name: auth.user()?.displayName ?? '' }) }}
+        </mat-card-subtitle>
       </mat-card-header>
       <mat-card-content>
         <table mat-table [dataSource]="recentArticles" class="dashboard__table">
           @for (col of columns; track col) {
             <ng-container [matColumnDef]="col">
-              <th mat-header-cell *matHeaderCellDef>{{ col }}</th>
+              <th mat-header-cell *matHeaderCellDef>{{ lang.t(columnKey(col)) }}</th>
               <td mat-cell *matCellDef="let article">{{ article[col] }}</td>
             </ng-container>
           }

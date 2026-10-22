@@ -1,4 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
+import { safeDocument, safeLocalStorage } from '../browser';
 import { DEFAULT_THEME, ThemeName } from '../../../styles/tokens/theme.model';
 
 const THEME_STORAGE_KEY = 'ki.theme';
@@ -22,15 +23,18 @@ export class ThemeService {
   setTheme(name: ThemeName): void {
     this.current.set(name);
     this.apply(name);
-    localStorage.setItem(THEME_STORAGE_KEY, name);
+    safeLocalStorage()?.setItem(THEME_STORAGE_KEY, name);
   }
 
   private restore(): ThemeName {
-    const saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemeName | null;
+    const saved = safeLocalStorage()?.getItem(THEME_STORAGE_KEY) as ThemeName | null;
     return saved ?? DEFAULT_THEME;
   }
 
   private apply(name: ThemeName): void {
-    document.documentElement.dataset['theme'] = name;
+    const doc = safeDocument();
+    if (doc) {
+      doc.documentElement.dataset['theme'] = name;
+    }
   }
 }

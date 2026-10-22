@@ -2,7 +2,7 @@
   display: grid;
   place-items: center;
   min-height: 100vh;
-  // Gradient từ design token — đổi theme là đổi màu nền theo.
+  // Gradient từ design token của theme — đổi theme là đổi màu nền theo.
   background:
     linear-gradient(
       135deg,
@@ -10,45 +10,67 @@
       var(--app-background) 55%,
       var(--app-secondary-container) 100%
     );
-  padding: 16px;
+  padding: var(--space-6);
 }
 
 .login__card {
   width: 100%;
   max-width: 400px;
-  border-radius: var(--app-radius);
+  border-radius: var(--radius-md);
   background: var(--app-surface);
   color: var(--app-on-surface);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--mat-sys-shadow) 25%, transparent);
+}
+
+.login__lang-switch {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  gap: var(--space-1);
 }
 
 .login__form {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 16px;
+  gap: var(--space-4); // 16px giữa các field
+  margin-top: var(--space-4);
 }
 
-.login__submit {
-  margin-top: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+// Viền input do CHÍNHNÓ là Material outline form-field vẽ (label nằm đúng trên
+// đường viền, không cắt khúc) — mình chỉ dẫn động token của Material bằng
+// design token, không tự vẽ border đè lên mat-form-field.
+.login__form mat-form-field {
+  margin: 0; // khoảng cách đã do gap của form kiểm soát
+  --mat-form-field-outlined-container-shape: var(--radius-md);
+  --mat-form-field-outlined-outline-width: var(--border-width); // 1px thường
+  --mat-form-field-outlined-focus-outline-width: var(--border-width-focus); // 2px focus
 }
 
+// Khối alert (lỗi cấp request) nằm giữa field cuối và nút —
+// cùng bo góc + cùng độ dày viền với input; lỗi cấp field dùng mat-error, không bo box riêng.
 .login__error {
-  color: var(--app-error);
-  background: color-mix(in srgb, var(--app-error) 10%, transparent);
-  border: 1px solid var(--app-error);
-  border-radius: calc(var(--app-radius) / 2);
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  border: var(--border-width) solid var(--color-danger);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   font-size: 14px;
 }
 
+// gap 16px + margin 8px = 24px trước nút; nút cùng bán kính bo góc với input/alert
+.login__submit {
+  margin-top: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+}
+
 .login__demo-hint {
-  margin: 12px 0 0;
-  color: var(--app-on-surface-variant);
+  margin: 0;
+  color: var(--color-muted);
   font-size: 13px;
 }

@@ -1,22 +1,36 @@
+<!-- Switcher ngôn ngữ cho khách (trước đăng nhập) -->
+<div class="login__lang-switch" role="group" [attr.aria-label]="lang.t('lang.label')">
+  @for (opt of lang.langs; track opt.code) {
+    <button
+      type="button"
+      mat-button
+      [color]="lang.lang() === opt.code ? 'primary' : undefined"
+      (click)="lang.setLang(opt.code)"
+    >
+      {{ opt.code.toUpperCase() }}
+    </button>
+  }
+</div>
+
 <div class="login">
   <mat-card appearance="outlined" class="login__card">
     <mat-card-header>
-      <mat-card-title>Đăng nhập</mat-card-title>
-      <mat-card-subtitle>Knowledge Ingestion</mat-card-subtitle>
+      <mat-card-title>{{ lang.t('login.title') }}</mat-card-title>
+      <mat-card-subtitle>{{ lang.t('app.name') }}</mat-card-subtitle>
     </mat-card-header>
 
     <mat-card-content>
       <form [formGroup]="form" (ngSubmit)="submit()" class="login__form">
         <mat-form-field appearance="outline">
-          <mat-label>Tài khoản</mat-label>
+          <mat-label>{{ lang.t('login.username') }}</mat-label>
           <input matInput formControlName="username" autocomplete="username" placeholder="admin" />
           @if (form.controls.username.touched && form.controls.username.invalid) {
-            <mat-error>Tài khoản là bắt buộc (tối thiểu 3 ký tự)</mat-error>
+            <mat-error>{{ lang.t('login.username_error') }}</mat-error>
           }
         </mat-form-field>
 
         <mat-form-field appearance="outline">
-          <mat-label>Mật khẩu</mat-label>
+          <mat-label>{{ lang.t('login.password') }}</mat-label>
           <input
             matInput
             formControlName="password"
@@ -28,28 +42,30 @@
             matSuffix
             type="button"
             (click)="togglePasswordVisibility()"
-            [attr.aria-label]="hidePassword() ? 'Hiện mật khẩu' : 'Ẩn mật khẩu'"
+            [attr.aria-label]="lang.t(hidePassword() ? 'login.show_password' : 'login.hide_password')"
           >
             <mat-icon>{{ hidePassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
           </button>
           @if (form.controls.password.touched && form.controls.password.invalid) {
-            <mat-error>Nhập mật khẩu (tối thiểu 4 ký tự)</mat-error>
+            <mat-error>{{ lang.t('login.password_error') }}</mat-error>
           }
         </mat-form-field>
 
-        @if (errorMessage(); as message) {
-          <div class="login__error" role="alert">{{ message }}</div>
+        @if (errorKey(); as key) {
+          <div class="login__error" role="alert">{{ lang.t(key) }}</div>
         }
 
         <button mat-raised-button color="primary" type="submit" class="login__submit" [disabled]="submitting()">
           @if (submitting()) {
             <mat-spinner diameter="20" />
           } @else {
-            <span>Đăng nhập</span>
+            <span>{{ lang.t('login.submit') }}</span>
           }
         </button>
 
-        <p class="login__demo-hint">Demo: <strong>admin</strong> / <strong>admin123</strong></p>
+        <p class="login__demo-hint">
+          {{ lang.t('login.demo_hint', { username: 'admin', password: 'admin123' }) }}
+        </p>
       </form>
     </mat-card-content>
   </mat-card>

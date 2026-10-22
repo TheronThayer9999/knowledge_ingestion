@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Observable, delay, map, of, throwError } from 'rxjs';
+import { AuthApiError } from '../models/auth-error.model';
 import { LoginRequest, LoginResponse, User } from '../models/auth.model';
 import { IAuthService } from './auth.interface';
 
@@ -19,9 +20,8 @@ export class MockAuthService implements IAuthService {
       request.password === DEMO_CREDENTIALS.password;
 
     if (!valid) {
-      return throwError(
-        () => new Error('Sai tài khoản hoặc mật khẩu (demo: admin / admin123)'),
-      );
+      // Trả về mã lỗi — người dùng hiển thị qua i18n ở component.
+      return throwError(() => new AuthApiError('INVALID_CREDENTIALS'));
     }
 
     const user: User = {

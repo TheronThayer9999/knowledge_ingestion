@@ -4,10 +4,13 @@ import { MatIcon } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
 import { TopBar } from '../../shared/components/top-bar/top-bar';
 import { AuthService } from '../../core/auth/services/auth.service';
+import { LangService } from '../../shared/i18n/lang.service';
+import { TranslationKey } from '../../shared/i18n/lang.model';
 
 interface StatCard {
   icon: string;
-  label: string;
+  /** key i18n của nhãn thống kê */
+  labelKey: TranslationKey;
   value: string;
 }
 
@@ -18,6 +21,16 @@ interface RecentArticle {
   indexedAt: string;
 }
 
+type RecentColumn = keyof RecentArticle;
+
+/** Tên cột bảng → key i18n (key chữ thường trong map vi.ts/en.ts). */
+const COLUMN_KEYS: Record<RecentColumn, TranslationKey> = {
+  title: 'dashboard.columns.title',
+  category: 'dashboard.columns.category',
+  status: 'dashboard.columns.status',
+  indexedAt: 'dashboard.columns.indexed_at',
+};
+
 /** Trang chủ sau đăng nhập: thống kê + bảng tài liệu gần đây (data dummy). */
 @Component({
   selector: 'app-dashboard',
@@ -27,14 +40,20 @@ interface RecentArticle {
 })
 export class DashboardComponent {
   protected readonly auth = inject(AuthService);
+  protected readonly lang = inject(LangService);
 
   protected readonly stats: StatCard[] = [
-    { icon: 'folder', label: 'Danh mục', value: '12' },
-    { icon: 'article', label: 'Tài liệu', value: '348' },
-    { icon: 'hub', label: 'Chunk đã index', value: '9.7k' },
+    { icon: 'folder', labelKey: 'dashboard.stats.categories', value: '12' },
+    { icon: 'article', labelKey: 'dashboard.stats.articles', value: '348' },
+    { icon: 'hub', labelKey: 'dashboard.stats.chunks', value: '9.7k' },
   ];
 
-  protected readonly columns: (keyof RecentArticle)[] = ['title', 'category', 'status', 'indexedAt'];
+  protected readonly columns: RecentColumn[] = ['title', 'category', 'status', 'indexedAt'];
+
+  /** Header bảng tra key i18n theo cột. */
+  protected columnKey(col: RecentColumn): TranslationKey {
+    return COLUMN_KEYS[col];
+  }
 
   protected readonly recentArticles: RecentArticle[] = [
     { title: 'Quy định nội bộ', category: 'HR', status: 'Indexed', indexedAt: '20/10/2026' },

@@ -6,6 +6,7 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { Router } from '@angular/router';
 import { AVAILABLE_THEMES, ThemeName } from '../../../../styles/tokens/theme.model';
 import { AuthService } from '../../../core/auth/services/auth.service';
+import { LangService } from '../../i18n/lang.service';
 import { ThemeService } from '../../theme/theme.service';
 
 /**
@@ -21,6 +22,7 @@ import { ThemeService } from '../../theme/theme.service';
 export class TopBar {
   protected readonly auth = inject(AuthService);
   protected readonly themeService = inject(ThemeService);
+  protected readonly lang = inject(LangService);
   protected readonly themes = AVAILABLE_THEMES;
   private readonly router = inject(Router);
 
