@@ -32,6 +32,10 @@ func NewConnection(cfg config.IConfig) (IDB, error) {
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		// TranslateError dịch lỗi driver (23505 unique violation...) sang
+		// sentinel gorm.ErrDuplicatedKey — service map thẳng thành 409 thay vì
+		// phải so chuỗi lỗi raw của pgx.
+		TranslateError: true,
 		// traceLogger giữ ngưỡng SLOW 200ms như gorm default, thêm trace_id
 		// vào mỗi dòng để truy từ SQL chậm ngược về request/job gây ra nó.
 		Logger: traceLogger{},

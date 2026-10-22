@@ -16,6 +16,7 @@ import { TranslationKey } from '../../shared/i18n/lang.model';
 /** Mã lỗi auth → key i18n (SCREAMING_SNAKE trong vi.json/en.json). */
 const AUTH_ERROR_KEYS: Record<AuthErrorCode, TranslationKey> = {
   INVALID_CREDENTIALS: 'LOGIN_ERRORS_INVALID_CREDENTIALS',
+  ACCOUNT_LOCKED: 'LOGIN_ERRORS_ACCOUNT_LOCKED',
   USERNAME_TAKEN: 'LOGIN_ERRORS_USERNAME_TAKEN',
   GENERIC: 'LOGIN_ERRORS_GENERIC',
 };

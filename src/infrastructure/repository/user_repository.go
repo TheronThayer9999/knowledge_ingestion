@@ -48,6 +48,19 @@ func (u *UserRepository) GetUserByUsername(ctx context.Context, username string)
 	return &user, nil
 }
 
+// GetUserByEmail tra theo email — phục vụ pre-check đăng ký (unique index
+// ux_users_email là chốt chặn cuối cùng khi 2 request đua nhau).
+func (u *UserRepository) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+	var user domain.User
+	if err := dbConn(ctx, u.db).Where("email = ?", email).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
 // TouchLastLogin cập nhật mốc login gần nhất — login vẫn thành công dù bước này lỗi.
 func (u *UserRepository) TouchLastLogin(ctx context.Context, id int64, at time.Time) error {
 	return dbConn(ctx, u.db).Model(&domain.User{}).Where("id = ?", id).Update("last_login", at).Error

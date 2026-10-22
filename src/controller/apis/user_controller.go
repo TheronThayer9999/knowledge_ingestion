@@ -26,6 +26,7 @@ func NewUserAPI(base *baseController, svc services.IUserService) *UserAPI {
 // @Param request body dtos.CreateUserRequest true "user payload"
 // @Success 200 {object} dtos.ResponseResource
 // @Failure 400 {object} dtos.ResponseResource
+// @Failure 409 {object} dtos.ResponseResource "tên đăng nhập hoặc email đã tồn tại"
 // @Failure 500 {object} dtos.ResponseResource
 // @Router /api/v1/users [post]
 func (a *UserAPI) Create(c *gin.Context) {

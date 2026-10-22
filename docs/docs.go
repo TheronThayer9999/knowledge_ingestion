@@ -1389,6 +1389,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/dtos.ResponseResource"
                         }
                     },
+                    "409": {
+                        "description": "tên đăng nhập hoặc email đã tồn tại",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {

@@ -38,6 +38,7 @@ type IUserRepositoryImpl interface {
 	UpdateUser(ctx context.Context, user *User) (*User, error)
 	GetUserById(ctx context.Context, id int64) (*User, error)
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
+	GetUserByEmail(ctx context.Context, email string) (*User, error)
 	TouchLastLogin(ctx context.Context, id int64, at time.Time) error
 	UpdatePassword(ctx context.Context, id int64, hash string, changedAt time.Time) error
 	DeleteUser(ctx context.Context, id int64) error

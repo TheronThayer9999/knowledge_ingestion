@@ -4,8 +4,8 @@ import { provideAnimationsAsync } from '@angular/platform-browser/animations/asy
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 
 import { routes } from './app.routes';
-import { AUTH_SERVICE } from './core/auth/services/auth.interface';
-import { MockAuthService } from './core/auth/services/mock-auth.service';
+import { ApiAuthService } from './core/auth/services/api-auth.service';
+import { API_BASE_URL, AUTH_SERVICE } from './core/auth/services/auth.interface';
 import { jwtInterceptor } from './core/interceptors/jwt.interceptor';
 
 export const appConfig: ApplicationConfig = {
@@ -15,7 +15,9 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes, withComponentInputBinding()),
     provideAnimationsAsync(),
     provideHttpClient(withInterceptors([jwtInterceptor])),
-    // Auth: hiện dùng mock — thay bằng RealApiAuthService implements IAuthService khi nối API thật
-    { provide: AUTH_SERVICE, useClass: MockAuthService },
+    // Auth nối API thật (cmd/apis chạy port 9001, CORS đã allow 4200).
+    // Offline/dev không cần backend: đổi useClass về MockAuthService.
+    { provide: API_BASE_URL, useValue: 'http://localhost:9001/api/v1' },
+    { provide: AUTH_SERVICE, useClass: ApiAuthService },
   ],
 };

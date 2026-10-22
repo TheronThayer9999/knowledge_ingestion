@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 type IUserService interface {
@@ -43,7 +44,26 @@ func NewUserService(cfg config.IConfig, auth middlewares.IAuthMiddleware, userRe
 	}
 }
 
+// errUsernameOrEmailTaken — 409 cho đăng ký trùng danh tính. Message tiếng
+// Việt chỉ để debug/API; FE không hiển thị thẳng mà map status 409 sang
+// key i18n riêng.
+var errUsernameOrEmailTaken = errors.NewCustomHttpError(http.StatusConflict, http.StatusConflict, "tên đăng nhập hoặc email đã tồn tại")
+
 func (u *userService) Create(ctx context.Context, dto *dtos.CreateUserRequest) dtos.Result[*dtos.UserResponse] {
+	// Pre-check username/email cho message rõ ràng; unique index partial
+	// (ux_users_username/ux_users_email) mới là chốt chặn cuối khi 2 request
+	// đua nhau lọt qua pre-check.
+	if _, err := u.userRepo.GetUserByUsername(ctx, dto.Username); err == nil {
+		return dtos.Fail[*dtos.UserResponse](errUsernameOrEmailTaken)
+	} else if !stderrors.Is(err, domain.ErrNotFound) {
+		return dtos.Fail[*dtos.UserResponse](err)
+	}
+	if _, err := u.userRepo.GetUserByEmail(ctx, dto.Email); err == nil {
+		return dtos.Fail[*dtos.UserResponse](errUsernameOrEmailTaken)
+	} else if !stderrors.Is(err, domain.ErrNotFound) {
+		return dtos.Fail[*dtos.UserResponse](err)
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(dto.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return dtos.Fail[*dtos.UserResponse](err)
@@ -53,6 +73,9 @@ func (u *userService) Create(ctx context.Context, dto *dtos.CreateUserRequest) d
 	user.Active = true
 
 	if err := u.userRepo.CreateUser(ctx, user); err != nil {
+		if stderrors.Is(err, gorm.ErrDuplicatedKey) {
+			return dtos.Fail[*dtos.UserResponse](errUsernameOrEmailTaken)
+		}
 		return dtos.Fail[*dtos.UserResponse](err)
 	}
 	return dtos.Ok(dtos.ToUserResponse(user))

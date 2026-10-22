@@ -20,7 +20,7 @@
       <mat-card-header>
         <mat-card-title>{{ lang.t('DASHBOARD_RECENT_TITLE') }}</mat-card-title>
         <mat-card-subtitle>
-          {{ lang.t('DASHBOARD_RECENT_SUBTITLE', { name: auth.user()?.displayName ?? '' }) }}
+          {{ lang.t('DASHBOARD_RECENT_SUBTITLE', { name: auth.user()?.username ?? '' }) }}
         </mat-card-subtitle>
       </mat-card-header>
       <mat-card-content>

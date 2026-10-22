@@ -16,6 +16,7 @@ import { TranslationKey } from '../../shared/i18n/lang.model';
 /** Mã lỗi auth từ API → key i18n — đăng ký trùng tên thì báo rõ. */
 const REGISTER_ERROR_KEYS: Record<AuthErrorCode, TranslationKey> = {
   INVALID_CREDENTIALS: 'LOGIN_ERRORS_INVALID_CREDENTIALS',
+  ACCOUNT_LOCKED: 'LOGIN_ERRORS_ACCOUNT_LOCKED',
   USERNAME_TAKEN: 'LOGIN_ERRORS_USERNAME_TAKEN',
   GENERIC: 'LOGIN_ERRORS_GENERIC',
 };
@@ -68,7 +69,7 @@ export class RegisterComponent {
   protected readonly form = this.fb.nonNullable.group({
     username: ['', [Validators.required, Validators.minLength(3)]],
     email: ['', [Validators.required, Validators.email]],
-    password: ['', [Validators.required, Validators.minLength(4)]],
+    password: ['', [Validators.required, Validators.minLength(8)]], // backend binding:"required,min=8"
     confirmPassword: ['', [Validators.required, mustMatchPassword]],
   });
 

@@ -1,21 +1,23 @@
 import { Injectable } from '@angular/core';
 import { Observable, delay, map, of, throwError } from 'rxjs';
 import { AuthApiError } from '../models/auth-error.model';
-import { LoginRequest, LoginResponse, RegisterRequest, User } from '../models/auth.model';
+import { LoginRequest, LoginResponse, RegisterRequest, SessionTokens, User } from '../models/auth.model';
 import { IAuthService } from './auth.interface';
 
 /** Tài khoản demo — chỉ dùng khi còn mock, xóa khi nối API thật. */
 const DEMO_CREDENTIALS = { username: 'admin', password: 'admin123' };
 
 /**
- * Mock IAuthService — giả lập độ trễ mạng 500ms và sinh JWT giả lập.
- * Đổi sang API thật: viết service khác implements IAuthService (dùng
- * HttpClient gọi /api/v1/auth/...) rồi thay useClass trong app.config.
+ * Mock IAuthService — giữ để test/spec và để quay lại chế độ offline khi
+ * backend chết. Bản production wire trong app.config là ApiAuthService.
+ * Mô phỏng đủ rotation: refresh() sinh cặp mới, token cũ không dùng lại.
  */
 @Injectable()
 export class MockAuthService implements IAuthService {
   /** Bộ tên đăng nhập đã tồn tại — seed sẵn admin, register trùng thì báo lỗi. */
   private readonly takenUsernames = new Set<string>([DEMO_CREDENTIALS.username]);
+  /** Refresh token đang sống — bản cũ bị vô hiệu sau lần refresh đầu. */
+  private liveRefreshToken: string | null = null;
 
   login(request: LoginRequest): Observable<LoginResponse> {
     const valid =
@@ -28,29 +30,30 @@ export class MockAuthService implements IAuthService {
     }
 
     const user: User = {
-      id: crypto.randomUUID(),
+      id: 1,
       username: DEMO_CREDENTIALS.username,
-      displayName: 'Quản trị',
       email: 'admin@example.com',
-      roles: ['admin'],
+      phone: '',
+      avatar: '',
+      active: true,
+      role: 1,
     };
 
-    return of(user).pipe(
-      delay(500),
-      map((u) => ({ token: this.fakeJwt(u), user: u })),
-    );
+    return of(user).pipe(delay(500), map((u) => this.issueSession(u)));
   }
 
   /** Mock OAuth Google: giả lập OAuth đã thành công, trả user Google cố định. */
   loginWithGoogle(): Observable<LoginResponse> {
     const user: User = {
-      id: crypto.randomUUID(),
+      id: 2,
       username: 'google.user',
-      displayName: 'Google User',
       email: 'google.user@gmail.com',
-      roles: ['user'],
+      phone: '',
+      avatar: '',
+      active: true,
+      role: 0,
     };
-    return of(user).pipe(delay(700), map((u) => ({ token: this.fakeJwt(u), user: u })));
+    return of(user).pipe(delay(700), map((u) => this.issueSession(u)));
   }
 
   register(request: RegisterRequest): Observable<LoginResponse> {
@@ -60,28 +63,49 @@ export class MockAuthService implements IAuthService {
     this.takenUsernames.add(request.username);
 
     const user: User = {
-      id: crypto.randomUUID(),
+      id: this.takenUsernames.size + 10,
       username: request.username,
-      displayName: request.username,
       email: request.email,
-      roles: ['user'],
+      phone: '',
+      avatar: '',
+      active: true,
+      role: 0,
     };
-    return of(user).pipe(delay(500), map((u) => ({ token: this.fakeJwt(u), user: u })));
+    return of(user).pipe(delay(500), map((u) => this.issueSession(u)));
   }
 
-  logout(): Observable<void> {
+  refresh(refreshToken: string): Observable<SessionTokens> {
+    if (!this.liveRefreshToken || refreshToken !== this.liveRefreshToken) {
+      return throwError(() => new AuthApiError('INVALID_CREDENTIALS'));
+    }
+    const rotated = this.fakeSession();
+    this.liveRefreshToken = rotated.refreshToken;
+    return of(rotated).pipe(delay(300));
+  }
+
+  logout(refreshToken: string | null): Observable<void> {
+    if (refreshToken && refreshToken === this.liveRefreshToken) {
+      this.liveRefreshToken = null;
+    }
     return of(undefined).pipe(delay(200));
   }
 
-  /** Chuỗi giống cấu trúc JWT (header.payload.signature) — chữ ký là giả. */
-  private fakeJwt(user: User): string {
+  private issueSession(user: User): LoginResponse {
+    const session = this.fakeSession();
+    this.liveRefreshToken = session.refreshToken;
+    return { ...session, user };
+  }
+
+  private fakeSession(): SessionTokens {
     const encode = (obj: object) => btoa(JSON.stringify(obj)).replace(/=+$/, '');
-    const payload = {
-      sub: user.id,
-      username: user.username,
-      roles: user.roles,
-      exp: Math.floor(Date.now() / 1000) + 60 * 60,
+    const now = Math.floor(Date.now() / 1000);
+    const payload = { sub: 'mock', exp: now + 60 * 60 };
+    return {
+      // Chuỗi giống cấu trúc JWT (header.payload.signature) — chữ ký là giả.
+      token: `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode(payload)}.mock-signature`,
+      expiresAt: new Date((now + 3600) * 1000).toISOString(),
+      refreshToken: crypto.randomUUID(),
+      refreshExpiresAt: new Date((now + 30 * 86400) * 1000).toISOString(),
     };
-    return `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode(payload)}.mock-signature`;
   }
 }

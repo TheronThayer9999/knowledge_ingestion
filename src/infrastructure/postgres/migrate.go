@@ -26,6 +26,11 @@ func migrate(db *gorm.DB) error {
 	if err := migrateQueueColumns(db); err != nil {
 		return err
 	}
+	// users: username/email là danh tính đăng nhập — thiếu unique thì đăng ký
+	// trùng vẫn 200 và login không biết trúng ai (đã xảy ra với feuser x2).
+	if err := migrateUsersUnique(db); err != nil {
+		return err
+	}
 	// Closure table thay cho categories.parent_id: PK phải là cặp
 	// (ancestor_id, descendant_id), có FK về categories và parent_id bị xoá.
 	if err := migrateCategoryClosure(db); err != nil {
@@ -105,6 +110,37 @@ func migrate(db *gorm.DB) error {
 	}
 	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_index_poll ON articles (index_status, index_next_retry_at, id) WHERE deleted_at IS NULL AND extract_status = 'done'`).Error; err != nil {
 		return fmt.Errorf("failed to create articles index poll index: %w", err)
+	}
+	return nil
+}
+
+// migrateUsersUnique dựng unique index partial cho users.user_name và
+// users.email — partial theo `deleted_at IS NULL` để user bị xóa mềm rồi
+// được đăng ký lại tên cũ (đúng tinh thần soft-delete của BaseModel).
+//
+// Trước khi tạo index phải dọn dữ liệu trùng ĐÃ TỒN TẠI nếu không
+// CREATE UNIQUE INDEX fail và app fail-fast lúc boot. Chiến lược: giữ row
+// nhỏ id nhất (bản gốc có nhiều khả năng còn sống — login trước đây vẫn
+// trúng nó), soft-delete các bản sau. Idempotent: dedup không còn bắt
+// trùng, index có IF NOT EXISTS.
+func migrateUsersUnique(db *gorm.DB) error {
+	dedup := `
+		UPDATE users u SET deleted_at = NOW()
+		FROM (
+			SELECT id, ROW_NUMBER() OVER (PARTITION BY %s ORDER BY id) AS rn
+			FROM users WHERE deleted_at IS NULL
+		) d
+		WHERE u.id = d.id AND d.rn > 1 AND u.deleted_at IS NULL`
+	for _, col := range []string{"user_name", "email"} {
+		if err := db.Exec(fmt.Sprintf(dedup, col)).Error; err != nil {
+			return fmt.Errorf("dedup users.%s: %w", col, err)
+		}
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_username ON users (user_name) WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("tạo unique index users.user_name: %w", err)
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users (email) WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("tạo unique index users.email: %w", err)
 	}
 	return nil
 }

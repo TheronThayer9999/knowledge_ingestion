@@ -1,12 +1,17 @@
-/** Model domain của auth — tách khỏi component, dùng chung cho core/features. */
+/** Model domain của auth — khớp contract backend Go (dtos.UserResponse, snake_case JSON). */
 
-/** Người dùng sau khi đăng nhập thành công. */
+/** Người dùng — map từ dtos.UserResponse. */
 export interface User {
-  id: string;
+  id: number;
   username: string;
-  displayName: string;
   email: string;
-  roles: string[];
+  phone: string;
+  avatar: string;
+  active: boolean;
+  /** 0 = user thường, 1 = admin (domain.RoleAdmin bên Go). */
+  role: number;
+  /** ISO string, backend có thể omit nếu chưa đăng nhập lần nào. */
+  lastLogin?: string;
 }
 
 /** Body gửi lên endpoint login. */
@@ -15,17 +20,23 @@ export interface LoginRequest {
   password: string;
 }
 
-/** Body gửi lên endpoint tạo tài khoản. */
+/** Body gửi lên endpoint tạo tài khoản (POST /users — password tối thiểu 8 ký tự). */
 export interface RegisterRequest {
   username: string;
   email: string;
   password: string;
 }
 
-/** Response trả về từ endpoint login. */
-export interface LoginResponse {
-  /** JWT access token (mock: chuỗi JWT giả lập). */
+/** Cặp token từ login/refresh — refresh token rotation, phải lưu bản mới nhất. */
+export interface SessionTokens {
   token: string;
+  expiresAt: string;
+  refreshToken: string;
+  refreshExpiresAt: string;
+}
+
+/** Response đăng nhập thành công = cặp token + user. */
+export interface LoginResponse extends SessionTokens {
   user: User;
 }
 
@@ -35,5 +46,6 @@ export type AuthStatus = 'authenticated' | 'unauthenticated';
 export interface AuthState {
   user: User | null;
   token: string | null;
+  refreshToken: string | null;
   status: AuthStatus;
 }
