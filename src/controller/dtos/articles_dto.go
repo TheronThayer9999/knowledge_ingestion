@@ -16,6 +16,7 @@ type CreateArticleRequest struct {
 	StorageKey  string `json:"storage_key,omitempty" binding:"omitempty,max=500" example:"uploads/550e8400-e29b-41d4-a716-446655440000.pdf"`
 	Name        string `json:"name" binding:"required,min=1,max=255" example:"Giới thiệu Go Fx"`
 	ContentType string `json:"content_type" binding:"required,max=100" example:"text/html"`
+	DocType     string `json:"doc_type,omitempty" binding:"omitempty,oneof=general laws table paper book qa manual" example:"laws"`
 	Description string `json:"description,omitempty" binding:"omitempty,max=1000" example:"Tài liệu về dependency injection trong Go"`
 	CategoryID  int64  `json:"category_id" binding:"required,gt=0" example:"1"`
 }
@@ -26,6 +27,7 @@ type CreateArticleRequest struct {
 type UpdateArticleRequest struct {
 	Name        *string `json:"name,omitempty" binding:"omitempty,min=1,max=255" example:"Giới thiệu Go Fx"`
 	ContentType *string `json:"content_type,omitempty" binding:"omitempty,max=100" example:"text/html"`
+	DocType     *string `json:"doc_type,omitempty" binding:"omitempty,oneof=general laws table paper book qa manual" example:"laws"`
 	Description *string `json:"description,omitempty" binding:"omitempty,max=1000" example:"Tài liệu về dependency injection trong Go"`
 	CategoryID  *int64  `json:"category_id,omitempty" binding:"omitempty,gt=0" example:"2"`
 }
@@ -48,6 +50,7 @@ type ArticleResponse struct {
 	StorageKey  string    `json:"storage_key,omitempty" example:"uploads/550e8400-e29b-41d4-a716-446655440000.pdf"`
 	Name        string    `json:"name" example:"Giới thiệu Go Fx"`
 	ContentType string    `json:"content_type" example:"text/html"`
+	DocType     string    `json:"doc_type,omitempty" example:"laws"`
 	Description string    `json:"description,omitempty" example:"Tài liệu về dependency injection trong Go"`
 	CategoryID  int64     `json:"category_id" example:"1"`
 	CreatedAt   time.Time `json:"created_at" example:"2026-10-06T10:00:00+07:00"`
@@ -69,6 +72,7 @@ func (r *CreateArticleRequest) ToModel() *domain.Article {
 		StorageKey:  r.StorageKey,
 		Name:        r.Name,
 		ContentType: r.ContentType,
+		DocType:     r.DocType,
 		Description: r.Description,
 		CategoryID:  r.CategoryID,
 	}
@@ -86,6 +90,7 @@ func ToArticleResponse(a *domain.Article) *ArticleResponse {
 		StorageKey:  a.StorageKey,
 		Name:        a.Name,
 		ContentType: a.ContentType,
+		DocType:     a.DocType,
 		Description: a.Description,
 		CategoryID:  a.CategoryID,
 		CreatedAt:   a.CreatedAt,

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	stderrors "errors"
+	"knowledge_ingestion/src/common/chunker"
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/common/storage"
@@ -86,6 +87,10 @@ func (s *articleService) Create(ctx context.Context, dto *dtos.CreateArticleRequ
 	}
 	article := dto.ToModel()
 	article.UserID = userID
+	// Tự detect loại tài liệu nếu client không khai — dùng cho template chunking.
+	if strings.TrimSpace(article.DocType) == "" {
+		article.DocType = string(chunker.DetectType(article.ContentType, article.Name))
+	}
 	if err := s.articleRepo.Create(ctx, article); err != nil {
 		return dtos.Fail[*dtos.ArticleResponse](err)
 	}
@@ -150,6 +155,12 @@ func (s *articleService) Update(ctx context.Context, id int64, dto *dtos.UpdateA
 	}
 	if dto.ContentType != nil {
 		article.ContentType = *dto.ContentType
+		if dto.DocType == nil {
+			article.DocType = string(chunker.DetectType(article.ContentType, article.Name))
+		}
+	}
+	if dto.DocType != nil {
+		article.DocType = *dto.DocType
 	}
 	if dto.Description != nil {
 		article.Description = *dto.Description

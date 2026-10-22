@@ -45,9 +45,10 @@ type articleIndexService struct {
 	pageRepo    domain.IArticlePageRepository
 	embedder    domain.Embedder
 	vectors     domain.IVectorStore
-	// splitter chiến lược cắt chunk (Eino recursive/semantic hoặc manual) —
+	// baseSplitter chiến lược cắt nền (Eino recursive/semantic/manual) —
 	// loader chọn theo config worker.chunker, dựng 1 lần rồi tái dùng.
-	splitter chunker.Chunker
+	// Template (laws/table/...) bọc base này để áp chiến lược theo loại tài liệu.
+	baseSplitter chunker.Chunker
 	// NOTE: embed_cache đã bị loại bỏ (hit rate 99.99% count=1 → vô dụng).
 	// Vector lưu trong Qdrant; rebuild dùng checkpoint index_done_chunks.
 }
@@ -57,13 +58,13 @@ func NewArticleIndexService(
 	pageRepo domain.IArticlePageRepository,
 	embedder domain.Embedder,
 	vectors domain.IVectorStore,
-	splitter chunker.Chunker) IArticleIndexService {
+	baseSplitter chunker.Chunker) IArticleIndexService {
 	return &articleIndexService{
-		articleRepo: articleRepo,
-		pageRepo:    pageRepo,
-		embedder:    embedder,
-		vectors:     vectors,
-		splitter:    splitter,
+		articleRepo:  articleRepo,
+		pageRepo:     pageRepo,
+		embedder:     embedder,
+		vectors:      vectors,
+		baseSplitter: baseSplitter,
 	}
 }
 
@@ -313,7 +314,19 @@ func (s *articleIndexService) indexOne(ctx context.Context, traceID string, arti
 				}
 				// Lỗi splitter (tầng semantic gọi Ollama) là transient — trả
 				// về để caller backoff, không failed oan như lỗi dữ liệu hỏng.
-				parts, err := s.splitter.Split(ctx, piece.text)
+				// Chọn template theo loại tài liệu của bài (laws/table/...) —
+				// bọc baseSplitter, fallback general = base.
+				tmpl := chunker.NewTemplate(chunker.NormalizeType(article.DocType), s.baseSplitter)
+				if tmpl == nil {
+					tmpl = s.baseSplitter
+				}
+				if article.DocType == "" {
+					tmpl = chunker.NewTemplate(chunker.DetectType(article.ContentType, article.Name), s.baseSplitter)
+					if tmpl == nil {
+						tmpl = s.baseSplitter
+					}
+				}
+				parts, err := tmpl.Split(ctx, piece.text)
 				if err != nil {
 					return fmt.Errorf("cắt chunk: %w", err)
 				}

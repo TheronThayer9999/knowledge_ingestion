@@ -15,6 +15,10 @@ type Article struct {
 	StorageKey  string `json:"storage_key" gorm:"not null;index"`
 	Name        string `json:"name" gorm:"not null"`
 	ContentType string `json:"content_type" gorm:"not null"`
+	// DocType là loại tài liệu để chọn chiến lược chunking: general, laws,
+	// table, paper, book, qa, manual. Rỗng → worker tự detect từ content_type
+	// + tên file. Đổi doc_type thì phải rebuild vector.
+	DocType string `json:"doc_type" gorm:"not null;default:'general'"`
 	Description string `json:"description,omitempty"`
 
 	UserID     int64 `json:"user_id" gorm:"not null;index"`
