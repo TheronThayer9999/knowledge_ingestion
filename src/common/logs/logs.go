@@ -49,6 +49,17 @@ func Infow(msg string, kv ...interface{}) {
 	callLogger.Infow(msg, kv...)
 }
 
+// InfowSkip như Infow nhưng lùi thêm skip frame khi xác định caller — dùng cho
+// logger nằm sâu trong thư viện (vd gorm logger): frame giữa wrapper và nơi
+// phát sinh log không cố định nên caller chỉnh tay, để dòng log trỏ đúng về
+// repository thay vì file wrapper. skip là số frame lùi thêm tính từ hàm gọi
+// InfowSkip — 0 là đúng hàm đó.
+//
+//go:noinline
+func InfowSkip(skip int, msg string, kv ...interface{}) {
+	callLogger.WithOptions(zap.AddCallerSkip(skip)).Infow(msg, kv...)
+}
+
 func Warn(args ...interface{}) {
 	callLogger.Warn(args...)
 }
@@ -61,8 +72,22 @@ func Warnw(msg string, kv ...interface{}) {
 	callLogger.Warnw(msg, kv...)
 }
 
+// WarnwSkip như Warnw nhưng lùi thêm skip frame — xem InfowSkip.
+//
+//go:noinline
+func WarnwSkip(skip int, msg string, kv ...interface{}) {
+	callLogger.WithOptions(zap.AddCallerSkip(skip)).Warnw(msg, kv...)
+}
+
 func Error(err error, msg string, kv ...interface{}) {
 	callLogger.Errorw(msg, append([]interface{}{"error", err}, kv...)...)
+}
+
+// ErrorSkip như Error nhưng lùi thêm skip frame — xem InfowSkip.
+//
+//go:noinline
+func ErrorSkip(skip int, err error, msg string, kv ...interface{}) {
+	callLogger.WithOptions(zap.AddCallerSkip(skip)).Errorw(msg, append([]interface{}{"error", err}, kv...)...)
 }
 
 func Errorf(template string, args ...interface{}) {
