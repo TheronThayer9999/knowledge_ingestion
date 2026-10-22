@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
@@ -90,6 +91,16 @@ func (r *EmbedCacheRepository) Stats(ctx context.Context) (int64, int64, error) 
 		Select("COUNT(*) AS count, COALESCE(SUM(length(vector)), 0) AS bytes").
 		Scan(&row).Error
 	return row.Count, row.Bytes, err
+}
+
+// PurgeUnused xóa các entry ít dùng (chunk_count <= 1) cũ hơn olderThan.
+// Janitor cho embed_cache — giữ bảng không phình khi hit rate thấp.
+func (r *EmbedCacheRepository) PurgeUnused(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+	res := dbConn(ctx, r.db).
+		Where("chunk_count <= ? AND created_at < ?", 1, cutoff).
+		Delete(&domain.EmbedCacheEntry{})
+	return res.RowsAffected, res.Error
 }
 
 var (

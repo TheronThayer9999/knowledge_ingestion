@@ -96,4 +96,7 @@ type EmbedCache interface {
 	// Stats trả số entry + tổng dung lượng để admin nhìn được cache có đang
 	// ăn không (không ăn thì hash key sai, hoặc text không lặp).
 	Stats(ctx context.Context) (count int64, bytes int64, err error)
+	// PurgeUnused xóa các entry ít dùng (chunk_count <= 1) cũ hơn olderThan —
+	// janitor cho embed_cache. Trả số row đã xóa. Dùng để giữ bảng không phình.
+	PurgeUnused(ctx context.Context, olderThan time.Duration) (int64, error)
 }

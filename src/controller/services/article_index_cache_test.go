@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"knowledge_ingestion/src/common/chunker"
 	"knowledge_ingestion/src/domain"
@@ -63,6 +64,10 @@ func (m *memEmbedCache) PutMany(_ context.Context, entries []*domain.EmbedCacheE
 
 func (m *memEmbedCache) Stats(context.Context) (int64, int64, error) {
 	return int64(len(m.data)), 0, nil
+}
+
+func (m *memEmbedCache) PurgeUnused(context.Context, time.Duration) (int64, error) {
+	return 0, nil
 }
 
 func cachePoints(texts ...string) []*domain.VectorPoint {

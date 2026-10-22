@@ -68,6 +68,7 @@ func loadAdapter() []fx.Option {
 		fx.Provide(qdrant.NewConnection),
 		//
 		fx.Provide(repository.NewCategoryClosureRepository),
+		fx.Provide(repository.NewEmbedCacheRepository),
 	}
 }
 
@@ -79,6 +80,7 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewCategoryService),
 		fx.Provide(services.NewArticleService),
 		fx.Provide(services.NewArticleAdminService),
+		fx.Provide(services.NewEmbedCacheAdminService),
 		// agent không import middlewares — loader nối ICurrentUser với IUserResolver.
 		fx.Provide(func(u middlewares.ICurrentUser) port.IUserResolver { return u }),
 		fx.Provide(newHybridSearcher),
@@ -117,6 +119,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewCategoryAPI),
 		fx.Provide(apis.NewArticleAPI),
 		fx.Provide(apis.NewArticleAdminAPI),
+		fx.Provide(apis.NewEmbedCacheAdminAPI),
 		fx.Provide(apis.NewSearchAPI),
 		fx.Provide(apis.NewChatAPI),
 		fx.Provide(routers.NewRouter),
