@@ -78,7 +78,7 @@ Mỗi mục có mức ưu tiên: **P0** (làm ngay), **P1** (trung hạn), **P2*
 
 ### Còn có thể cải tiến
 - **P2.2** ✅ Unit test category (create/move/cycle/delete/cascade/cross-user).
-- **P2.3** Test E2E tự động cho category API.
+- **P2.3** ✅ E2E test category API (build tag e2e, chạy với `-tags e2e`).
 
 ---
 
