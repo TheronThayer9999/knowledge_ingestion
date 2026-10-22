@@ -1,6 +1,6 @@
 <mat-toolbar color="primary" class="top-bar">
   <mat-icon>library_books</mat-icon>
-  <span class="top-bar__title">{{ lang.t('app.name') }}</span>
+  <span class="top-bar__title">{{ lang.t('APP_NAME') }}</span>
 
   <span class="top-bar__spacer"></span>
 
@@ -25,7 +25,7 @@
   <!-- Switcher theme: menu liệt kê từ AVAILABLE_THEMES, thêm theme mới tự xuất hiện -->
   <button mat-button [matMenuTriggerFor]="themeMenu">
     <mat-icon>palette</mat-icon>
-    <span>{{ lang.t('theme.label') }}</span>
+    <span>{{ lang.t('THEME_LABEL') }}</span>
   </button>
   <mat-menu #themeMenu="matMenu">
     @for (theme of themes; track theme.name) {
@@ -49,7 +49,7 @@
       <div mat-menu-item disabled class="top-bar__user-email">{{ user.email }}</div>
       <button mat-menu-item (click)="logout()">
         <mat-icon>logout</mat-icon>
-        <span>{{ lang.t('top_bar.logout') }}</span>
+        <span>{{ lang.t('TOP_BAR_LOGOUT') }}</span>
       </button>
     </mat-menu>
   }

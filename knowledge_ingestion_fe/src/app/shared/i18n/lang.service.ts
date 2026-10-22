@@ -1,20 +1,21 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { browserLangPrefix, safeDocument, safeLocalStorage } from '../browser';
-import { EN } from './en';
+import EN from './en.json';
 import { AVAILABLE_LANGS, DEFAULT_LANG, LangName, TranslationKey, TranslationParams } from './lang.model';
-import { VI } from './vi';
+import VI from './vi.json';
 
 const LANG_STORAGE_KEY = 'ki.lang';
 
-/** Map ngôn ngữ → bảng dịch (thêm ngôn ngữ mới = thêm file map + 1 dòng ở đây). */
+/** Map ngôn ngữ → bảng dịch JSON phẳng (thêm ngôn ngữ mới = thêm file json + 1 dòng ở đây).
+ * Kiểu Record<...> ở đây chính là chỗ ép en.json phải đủ bộ key của vi.json — thiếu là lỗi build. */
 const MAPS: Record<LangName, Record<TranslationKey, string>> = {
   vi: VI,
   en: EN,
 };
 
 /**
- * i18n tối giản, signal-based: mỗi ngôn ngữ là một map phẳng key → value.
- * Nơi cần chỉ gọi `lang.t('login.title')` (kèm params nội suy nếu value có {{var}}).
+ * i18n tối giản, signal-based: mỗi ngôn ngữ là một file JSON phẳng key → value (SCREAMING_SNAKE).
+ * Nơi cần chỉ gọi `lang.t('LOGIN_TITLE')` (kèm params nội suy nếu value có {{var}}).
  * Ưu tiên ngôn ngữ: lựa chọn đã lưu (localStorage) → navigator → DEFAULT_LANG.
  * Đổi language runtime: setLang() — mọi template đọc t() cập nhật ngay vì là signal.
  */

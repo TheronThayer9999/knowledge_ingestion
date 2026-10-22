@@ -1,5 +1,5 @@
 <!-- Switcher ngôn ngữ cho khách (trước đăng nhập) -->
-<div class="login__lang-switch" role="group" [attr.aria-label]="lang.t('lang.label')">
+<div class="login__lang-switch" role="group" [attr.aria-label]="lang.t('LANG_LABEL')">
   @for (opt of lang.langs; track opt.code) {
     <button
       type="button"
@@ -15,22 +15,22 @@
 <div class="login">
   <mat-card appearance="outlined" class="login__card">
     <mat-card-header>
-      <mat-card-title>{{ lang.t('login.title') }}</mat-card-title>
-      <mat-card-subtitle>{{ lang.t('app.name') }}</mat-card-subtitle>
+      <mat-card-title>{{ lang.t('LOGIN_TITLE') }}</mat-card-title>
+      <mat-card-subtitle>{{ lang.t('APP_NAME') }}</mat-card-subtitle>
     </mat-card-header>
 
     <mat-card-content>
       <form [formGroup]="form" (ngSubmit)="submit()" class="login__form">
         <mat-form-field appearance="outline">
-          <mat-label>{{ lang.t('login.username') }}</mat-label>
+          <mat-label>{{ lang.t('LOGIN_USERNAME') }}</mat-label>
           <input matInput formControlName="username" autocomplete="username" placeholder="admin" />
           @if (form.controls.username.touched && form.controls.username.invalid) {
-            <mat-error>{{ lang.t('login.username_error') }}</mat-error>
+            <mat-error>{{ lang.t('LOGIN_USERNAME_ERROR') }}</mat-error>
           }
         </mat-form-field>
 
         <mat-form-field appearance="outline">
-          <mat-label>{{ lang.t('login.password') }}</mat-label>
+          <mat-label>{{ lang.t('LOGIN_PASSWORD') }}</mat-label>
           <input
             matInput
             formControlName="password"
@@ -42,12 +42,12 @@
             matSuffix
             type="button"
             (click)="togglePasswordVisibility()"
-            [attr.aria-label]="lang.t(hidePassword() ? 'login.show_password' : 'login.hide_password')"
+            [attr.aria-label]="lang.t(hidePassword() ? 'LOGIN_SHOW_PASSWORD' : 'LOGIN_HIDE_PASSWORD')"
           >
             <mat-icon>{{ hidePassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
           </button>
           @if (form.controls.password.touched && form.controls.password.invalid) {
-            <mat-error>{{ lang.t('login.password_error') }}</mat-error>
+            <mat-error>{{ lang.t('LOGIN_PASSWORD_ERROR') }}</mat-error>
           }
         </mat-form-field>
 
@@ -59,12 +59,12 @@
           @if (submitting()) {
             <mat-spinner diameter="20" />
           } @else {
-            <span>{{ lang.t('login.submit') }}</span>
+            <span>{{ lang.t('LOGIN_SUBMIT') }}</span>
           }
         </button>
 
         <p class="login__demo-hint">
-          {{ lang.t('login.demo_hint', { username: 'admin', password: 'admin123' }) }}
+          {{ lang.t('LOGIN_DEMO_HINT', { username: 'admin', password: 'admin123' }) }}
         </p>
       </form>
     </mat-card-content>

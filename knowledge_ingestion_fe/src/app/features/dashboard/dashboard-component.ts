@@ -23,12 +23,12 @@ interface RecentArticle {
 
 type RecentColumn = keyof RecentArticle;
 
-/** Tên cột bảng → key i18n (key chữ thường trong map vi.ts/en.ts). */
+/** Tên cột bảng → key i18n (SCREAMING_SNAKE trong vi.json/en.json). */
 const COLUMN_KEYS: Record<RecentColumn, TranslationKey> = {
-  title: 'dashboard.columns.title',
-  category: 'dashboard.columns.category',
-  status: 'dashboard.columns.status',
-  indexedAt: 'dashboard.columns.indexed_at',
+  title: 'DASHBOARD_COLUMNS_TITLE',
+  category: 'DASHBOARD_COLUMNS_CATEGORY',
+  status: 'DASHBOARD_COLUMNS_STATUS',
+  indexedAt: 'DASHBOARD_COLUMNS_INDEXED_AT',
 };
 
 /** Trang chủ sau đăng nhập: thống kê + bảng tài liệu gần đây (data dummy). */
@@ -43,9 +43,9 @@ export class DashboardComponent {
   protected readonly lang = inject(LangService);
 
   protected readonly stats: StatCard[] = [
-    { icon: 'folder', labelKey: 'dashboard.stats.categories', value: '12' },
-    { icon: 'article', labelKey: 'dashboard.stats.articles', value: '348' },
-    { icon: 'hub', labelKey: 'dashboard.stats.chunks', value: '9.7k' },
+    { icon: 'folder', labelKey: 'DASHBOARD_STATS_CATEGORIES', value: '12' },
+    { icon: 'article', labelKey: 'DASHBOARD_STATS_ARTICLES', value: '348' },
+    { icon: 'hub', labelKey: 'DASHBOARD_STATS_CHUNKS', value: '9.7k' },
   ];
 
   protected readonly columns: RecentColumn[] = ['title', 'category', 'status', 'indexedAt'];

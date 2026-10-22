@@ -1,6 +1,10 @@
-import { VI } from './vi';
+import VI from './vi.json';
 
-/** Mọi key dịch đều lấy từ VI — không tự phát sinh key lẻ ở nơi sử dụng. */
+/**
+ * Mọi key dịch đều lấy từ vi.json (SCREAMING_SNAKE_CASE, map phẳng key → value).
+ * en.json được kiểm qua Record<TranslationKey, string> ở lang.service.ts —
+ * thiếu key là lỗi build.
+ */
 export type TranslationKey = keyof typeof VI;
 
 /** Tham số nội suy trong value: `{{name}}`, `{{username}}`, … */
@@ -8,7 +12,7 @@ export interface TranslationParams {
   [param: string]: string | number;
 }
 
-/** Model ngôn ngữ — thêm ngôn ngữ mới = thêm file map phẳng (vd fr.ts, Record<TranslationKey, string>) + đăng ký vào MAPS trong lang.service.ts và AVAILABLE_LANGS. */
+/** Model ngôn ngữ — thêm ngôn ngữ mới = thêm file json (đủ bộ key của vi.json) + đăng ký vào MAPS trong lang.service.ts và AVAILABLE_LANGS. */
 
 export type LangName = 'vi' | 'en';
 

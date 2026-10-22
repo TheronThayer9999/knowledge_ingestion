@@ -12,10 +12,10 @@ import { AuthApiError, AuthErrorCode } from '../../core/auth/models/auth-error.m
 import { LangService } from '../../shared/i18n/lang.service';
 import { TranslationKey } from '../../shared/i18n/lang.model';
 
-/** Mã lỗi auth → key i18n (key chữ thường trong map vi.ts/en.ts). */
+/** Mã lỗi auth → key i18n (SCREAMING_SNAKE trong vi.json/en.json). */
 const AUTH_ERROR_KEYS: Record<AuthErrorCode, TranslationKey> = {
-  INVALID_CREDENTIALS: 'login.errors.invalid_credentials',
-  GENERIC: 'login.errors.generic',
+  INVALID_CREDENTIALS: 'LOGIN_ERRORS_INVALID_CREDENTIALS',
+  GENERIC: 'LOGIN_ERRORS_GENERIC',
 };
 
 /** Trang login: form username/password, gọi AuthService (mock API), guard chặn khách. */
