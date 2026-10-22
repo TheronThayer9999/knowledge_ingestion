@@ -51,13 +51,10 @@ type ICategoryClosureRepositoryImpl interface {
 	// loại cây trước khi gọi.
 	Move(ctx context.Context, categoryID int64, newParentID *int64) error
 
-	// Remove xoá mọi dòng chạm categoryID (cả ancestor_id lẫn descendant_id)
-	// — gọi trong cùng transaction với categoryRepo.Delete.
-	Remove(ctx context.Context, categoryID int64) error
-
-	// CountChildren đếm con trực tiếp (depth = DirectChildDepth) — điều kiện
-	// chặn xoá.
-	CountChildren(ctx context.Context, categoryID int64) (int64, error)
+	// RemoveSubtree xoá mọi dòng closure chạm bất kỳ category nào trong
+	// categoryIDs (cả hai chiều) — gọi trong cùng transaction với xoá
+	// category để không để lại dòng trỏ vào row đã xoá.
+	RemoveSubtree(ctx context.Context, categoryIDs []int64) error
 
 	// IsAncestor báo ancestorID có phải tổ tiên của descendantID không
 	// (hai id trùng nhau trả true). Dùng để chặn cycle khi Move.
@@ -68,7 +65,8 @@ type ICategoryClosureRepositoryImpl interface {
 	GetByOwner(ctx context.Context, userID int64) ([]*CategoryClosure, error)
 
 	// GetDescendants trả mọi con cháu của categoryID (gồm chính nó) kèm
-	// depth tương đối: 0 = chính nó, 1 = con, 2 = cháu…
+	// depth tương đối: 0 = chính nó, 1 = con, 2 = cháu… Đây là danh sách
+	// folder bị xoá khi xoá cả cây.
 	GetDescendants(ctx context.Context, categoryID int64) ([]*CategoryWithDepth, error)
 
 	// GetAncestors trả mọi tổ tiên của categoryID (gồm chính nó) kèm depth

@@ -56,6 +56,8 @@ func loadAdapter() []fx.Option {
 		// bắt buộc phải có dòng này — thiếu thì app fail lúc boot với
 		// "missing type: domain.ArticleAdminQueue", và `go build` vẫn xanh.
 		fx.Provide(func(repo domain.IArticleRepository) domain.ArticleAdminQueue { return repo }),
+		// Category lẫn xoá bài trong cả subtree — cùng repo, vai hẹp hơn.
+		fx.Provide(func(repo domain.IArticleRepository) domain.ArticleCategoryCascade { return repo }),
 		// API cần pageRepo cho admin/reset-extract (xoá trang đã trích để
 		// OCR lại). Worker dĩng vậy cũng có repo riêng ở loader/worker.go.
 		fx.Provide(repository.NewArticlePageRepository),

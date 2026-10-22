@@ -747,7 +747,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Deletes a category that has no children",
+                "description": "Deletes a category together with every nested category and article under it",
                 "produces": [
                     "application/json"
                 ],

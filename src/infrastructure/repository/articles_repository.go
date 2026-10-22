@@ -55,6 +55,18 @@ func (a *ArticleRepository) Delete(ctx context.Context, article *domain.Article)
 	return nil
 }
 
+// DeleteByCategoryIDs xoá mềm mọi bài còn sống trong các danh mục — cascade
+// khi xoá folder cha. 1 câu UPDATE cho cả cây folder; gorm tự thêm điều kiện
+// deleted_at IS NULL nên bài đã xoá mềm giữ nguyên mốc purge, không bị dời
+// hạn dọn blob/vector.
+func (a *ArticleRepository) DeleteByCategoryIDs(ctx context.Context, categoryIDs []int64) (int64, error) {
+	if len(categoryIDs) == 0 {
+		return 0, nil
+	}
+	res := dbConn(ctx, a.db).Where("category_id IN ?", categoryIDs).Delete(&domain.Article{})
+	return res.RowsAffected, res.Error
+}
+
 func (a *ArticleRepository) GetByID(ctx context.Context, id int64, userID int64) (*domain.Article, error) {
 	var article domain.Article
 	if err := dbConn(ctx, a.db).First(&article, "id = ? AND user_id = ?", id, userID).Error; err != nil {

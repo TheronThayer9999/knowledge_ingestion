@@ -104,7 +104,7 @@ func (a *CategoryAPI) Update(c *gin.Context) {
 
 // Delete godoc
 // @Summary Delete a category
-// @Description Deletes a category that has no children
+// @Description Deletes a category together with every nested category and article under it
 // @Tags categories
 // @Produce json
 // @Param id path int true "category id"

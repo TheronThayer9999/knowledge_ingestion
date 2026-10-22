@@ -664,7 +664,8 @@ paths:
       - categories
   /api/v1/categories/{id}:
     delete:
-      description: Deletes a category that has no children
+      description: Deletes a category together with every nested category and article
+        under it
       parameters:
       - description: category id
         in: path

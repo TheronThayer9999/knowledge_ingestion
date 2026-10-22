@@ -97,6 +97,10 @@ type IArticleRepository interface {
 	// không dùng Update cho việc này.
 	UpdateMetadata(ctx context.Context, id int64, pageCount int, version, effectiveDate string) error
 	Delete(ctx context.Context, article *Article) error
+	// DeleteByCategoryIDs xoá mềm mọi bài còn sống thuộc các danh mục
+	// categoryIDs — cascade khi xoá folder cha. Trả số row vừa xoá; bài đã
+	// xoá mềm từ trước không bị đụng nên giữ nguyên mốc purge.
+	DeleteByCategoryIDs(ctx context.Context, categoryIDs []int64) (int64, error)
 
 	// GetByID chỉ thấy bài của đúng owner — id của người khác thì 404 như không tồn tại.
 	GetByID(ctx context.Context, id int64, userID int64) (*Article, error)
@@ -266,6 +270,12 @@ type ArticleExtractQueue interface {
 type ArticleJanitor interface {
 	ListSoftDeleted(ctx context.Context, before time.Time, limit int) ([]*Article, error)
 	HardDeleteMany(ctx context.Context, ids []int64) error
+}
+
+// ArticleCategoryCascade vai cascade khi xoá folder — category service chỉ
+// cần đúng 1 method, không ôm cả IArticleRepository.
+type ArticleCategoryCascade interface {
+	DeleteByCategoryIDs(ctx context.Context, categoryIDs []int64) (int64, error)
 }
 
 // ArticleAdminQueue vai của controller admin — 9 phương thức nó thật sự

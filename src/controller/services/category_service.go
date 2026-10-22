@@ -4,6 +4,8 @@ import (
 	"context"
 	stderrors "errors"
 	"knowledge_ingestion/src/common/errors"
+	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 	"net/http"
@@ -22,16 +24,19 @@ type categoryService struct {
 	categoryRepo        domain.ICategoryRepositoryImpl
 	unitOfWork          domain.IUnitOfWork
 	categoryClosureRepo domain.ICategoryClosureRepositoryImpl
+	articleCascade      domain.ArticleCategoryCascade
 }
 
 func NewCategoryService(
 	categoryRepo domain.ICategoryRepositoryImpl,
 	unitOfWork domain.IUnitOfWork,
-	categoryClosureRepo domain.ICategoryClosureRepositoryImpl) ICategoryService {
+	categoryClosureRepo domain.ICategoryClosureRepositoryImpl,
+	articleCascade domain.ArticleCategoryCascade) ICategoryService {
 	return &categoryService{
 		categoryRepo:        categoryRepo,
 		unitOfWork:          unitOfWork,
 		categoryClosureRepo: categoryClosureRepo,
+		articleCascade:      articleCascade,
 	}
 }
 
@@ -39,11 +44,12 @@ func NewCategoryService(
 // tại VÀ cùng owner. ParentID nil nghĩa là tạo root (user được nhiều root).
 func (c *categoryService) Create(ctx context.Context, userId int64, dto *dtos.CreateCategoryRequest) dtos.Result[*dtos.CategoryNodeResponse] {
 	if dto.ParentID != nil {
-		if _, err := c.categoryRepo.GetById(ctx, *dto.ParentID, userId); err != nil {
-			if stderrors.Is(err, domain.ErrNotFound) {
-				return dtos.Fail[*dtos.CategoryNodeResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "danh mục cha không tồn tại"))
-			}
+		ok, err := c.categoryRepo.Exists(ctx, *dto.ParentID, userId)
+		if err != nil {
 			return dtos.Fail[*dtos.CategoryNodeResponse](err)
+		}
+		if !ok {
+			return dtos.Fail[*dtos.CategoryNodeResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "danh mục cha không tồn tại"))
 		}
 	}
 	category := &domain.Category{
@@ -187,8 +193,10 @@ func (c *categoryService) Update(ctx context.Context, id int64, userId int64, dt
 	return dtos.Ok(dtos.ToCategoryNodeResponse(category, parentID, depth))
 }
 
-// Delete chỉ xoá được folder lá — còn con thì 400. Remove closure và soft
-// delete row nằm chung transaction để không để lại dòng trỏ vào category đã xoá.
+// Delete xoá cả cây: toàn bộ folder con bên dưới và mọi bài viết trong các
+// folder đó bị xoá mềm trong CÙNG transaction — không thể xoá folder cha
+// xong chết giữa chừng để lại bài mồ côi. Bài đã xoá mềm được purge worker
+// dọn blob + vector sau grace như xoá lẻ.
 func (c *categoryService) Delete(ctx context.Context, id int64, userId int64) dtos.Result[*dtos.CategoryResponse] {
 	category, err := c.categoryRepo.GetById(ctx, id, userId)
 	if err != nil {
@@ -197,22 +205,35 @@ func (c *categoryService) Delete(ctx context.Context, id int64, userId int64) dt
 		}
 		return dtos.Fail[*dtos.CategoryResponse](err)
 	}
-	children, err := c.categoryClosureRepo.CountChildren(ctx, category.ID)
-	if err != nil {
-		return dtos.Fail[*dtos.CategoryResponse](err)
-	}
-	if children > 0 {
-		return dtos.Fail[*dtos.CategoryResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "không thể xóa danh mục còn danh mục con"))
-	}
+	var folderIDs []int64
+	var deletedArticles int64
 	err = c.unitOfWork.InTx(ctx, func(txCtx context.Context) error {
-		if err := c.categoryClosureRepo.Remove(txCtx, category.ID); err != nil {
+		subtree, err := c.categoryClosureRepo.GetDescendants(txCtx, category.ID)
+		if err != nil {
 			return err
 		}
-		return c.categoryRepo.Delete(txCtx, category)
+		// Self row luôn có trong descendants; vẫn khởi tạo bằng chính nó để
+		// danh sách không rỗng kể cả khi dữ liệu cũ thiếu self row.
+		folderIDs = make([]int64, 0, len(subtree)+1)
+		folderIDs = append(folderIDs, category.ID)
+		for _, node := range subtree {
+			if node.ID != category.ID {
+				folderIDs = append(folderIDs, node.ID)
+			}
+		}
+		if deletedArticles, err = c.articleCascade.DeleteByCategoryIDs(txCtx, folderIDs); err != nil {
+			return err
+		}
+		if err := c.categoryClosureRepo.RemoveSubtree(txCtx, folderIDs); err != nil {
+			return err
+		}
+		return c.categoryRepo.DeleteByIDs(txCtx, folderIDs)
 	})
 	if err != nil {
 		return dtos.Fail[*dtos.CategoryResponse](err)
 	}
+	logs.Infow("category deleted", "trace_id", utils.TraceIDFromCtx(ctx), "category_id", category.ID,
+		"folders", len(folderIDs), "articles", deletedArticles)
 	return dtos.Ok(dtos.ToCategoryResponse(category))
 }
 

@@ -40,6 +40,15 @@ func (t *CategoryRepository) Delete(ctx context.Context, topic *domain.Category)
 	return nil
 }
 
+// DeleteByIDs xoá mềm cả danh sách trong 1 câu UPDATE — cascade xoá cây
+// folder nên 1 lần xoá có thể hàng trăm row.
+func (t *CategoryRepository) DeleteByIDs(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return dbConn(ctx, t.db).Where("id IN ?", ids).Delete(&domain.Category{}).Error
+}
+
 func (t *CategoryRepository) GetById(ctx context.Context, id int64, userId int64) (*domain.Category, error) {
 	var topic domain.Category
 	err := dbConn(ctx, t.db).First(&topic, "id = ? AND user_id = ?", id, userId).Error
@@ -71,4 +80,14 @@ func (t *CategoryRepository) GetAll(ctx context.Context, userId int64) ([]*domai
 		return nil, err
 	}
 	return topics, nil
+}
+
+// Exists báo category id có tồn tại và thuộc đúng owner không — chỉ kiểm tra
+// sự tồn tại, không tải row.
+func (t *CategoryRepository) Exists(ctx context.Context, id int64, userId int64) (bool, error) {
+	var count int64
+	if err := dbConn(ctx, t.db).Model(&domain.Category{}).Where("id = ? AND user_id = ?", id, userId).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }

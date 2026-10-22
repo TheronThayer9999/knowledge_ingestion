@@ -68,20 +68,16 @@ func (c *CategoryClosureRepository) Move(ctx context.Context, categoryID int64, 
 		categoryID, *newParentID).Error
 }
 
-// Remove xoá mọi dòng chạm categoryID — cả hai chiều, không để dòng mồ côi.
-func (c *CategoryClosureRepository) Remove(ctx context.Context, categoryID int64) error {
-	return dbConn(ctx, c.db).Exec(
-		`DELETE FROM category_closure WHERE descendant_id = ? OR ancestor_id = ?`,
-		categoryID, categoryID).Error
-}
-
-// CountChildren đếm con trực tiếp (depth = domain.DirectChildDepth).
-func (c *CategoryClosureRepository) CountChildren(ctx context.Context, categoryID int64) (int64, error) {
-	var n int64
-	err := dbConn(ctx, c.db).Model(&domain.CategoryClosure{}).
-		Where("ancestor_id = ? AND depth = ?", categoryID, domain.DirectChildDepth).
-		Count(&n).Error
-	return n, err
+// RemoveSubtree xoá mọi dòng chạm subtree trong 1 câu DELETE — cả dòng
+// nội bộ subtree lẫn dòng nối từ tổ tiên bên ngoài vào, không để dòng mồ
+// côi trỏ vào category đã xoá.
+func (c *CategoryClosureRepository) RemoveSubtree(ctx context.Context, categoryIDs []int64) error {
+	if len(categoryIDs) == 0 {
+		return nil
+	}
+	return dbConn(ctx, c.db).
+		Where("ancestor_id IN ? OR descendant_id IN ?", categoryIDs, categoryIDs).
+		Delete(&domain.CategoryClosure{}).Error
 }
 
 // IsAncestor báo ancestorID có phải tổ tiên của descendantID không. Hai id
