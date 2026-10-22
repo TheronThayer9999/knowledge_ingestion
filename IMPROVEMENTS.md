@@ -49,7 +49,7 @@ Mỗi mục có mức ưu tiên: **P0** (làm ngay), **P1** (trung hạn), **P2*
 - Cache kết quả LLM trong Redis (`chunkcache`), key = model+content+operation.
 
 ### Giải pháp
-- **P1.4** Thêm auto keywords/questions/tags cho chunk, cache trong Redis.
+- **P1.4** ✅ Auto keywords cho chunk (Ollama + Redis cache), Keywords payload. (questions/tags còn lại.)
 
 ---
 
