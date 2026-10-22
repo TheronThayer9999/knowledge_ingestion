@@ -10,8 +10,7 @@ import (
 	"knowledge_ingestion/src/agent/prompts"
 )
 
-// QuestionType là 1 trong 8 loại câu hỏi theo
-// technical_debt/AGENT_LLM_INSTRUCTIONS.md §5 — vòng 1 của agent dùng để chọn
+// QuestionType là 1 trong 8 loại câu hỏi — vòng 1 của agent dùng để chọn
 // tool + tham số search, không phải để từ chối user.
 type QuestionType int
 

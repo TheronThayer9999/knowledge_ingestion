@@ -22,8 +22,7 @@ import (
 
 const (
 	// maxPDFBytes trần bytes PDF được nhận. File được spool ra đĩa nên trần
-	// này không còn là trần RAM — chỉ chặn file quá khổ (xem
-	// plans/pdf-streaming-extract.md).
+	// này không còn là trần RAM — chỉ chặn file quá khổ.
 	maxPDFBytes = 100 << 20
 	// maxPDFPages trần số trang parse mỗi file — PDF khai gian page tree để
 	// treo worker thì lỗi sớm thay vì loop hàng giờ.
@@ -44,8 +43,7 @@ type pdfRange struct{ from, to int }
 //
 // VÌ SAO KHÔNG DÙNG gopdf NỮA: thư viện chỉ nhận []byte nên cả PDF phải nằm
 // trong RAM, đo thật trên PDF 90MB (3629 trang) đỉnh ~920MB. pdftotext đọc từ
-// file trên đĩa và ghi text ra stdout: đỉnh 79MB, 14s, không NUL. Chi tiết:
-// plans/pdf-streaming-extract.md.
+// file trên đĩa và ghi text ra stdout: đỉnh 79MB, 14s, không NUL.
 //
 // SONG SONG THEO KHOẢNG: các trang chưa có trong have được gom thành khoảng
 // liên tiếp (tối đa pdfTextChunkPages), rồi EXTRACT_PAGE_WORKERS goroutine
