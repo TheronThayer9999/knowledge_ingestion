@@ -1,0 +1,54 @@
+.login {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  // Gradient từ design token — đổi theme là đổi màu nền theo.
+  background:
+    linear-gradient(
+      135deg,
+      var(--app-primary-container) 0%,
+      var(--app-background) 55%,
+      var(--app-secondary-container) 100%
+    );
+  padding: 16px;
+}
+
+.login__card {
+  width: 100%;
+  max-width: 400px;
+  border-radius: var(--app-radius);
+  background: var(--app-surface);
+  color: var(--app-on-surface);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+}
+
+.login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.login__submit {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.login__error {
+  color: var(--app-error);
+  background: color-mix(in srgb, var(--app-error) 10%, transparent);
+  border: 1px solid var(--app-error);
+  border-radius: calc(var(--app-radius) / 2);
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.login__demo-hint {
+  margin: 12px 0 0;
+  color: var(--app-on-surface-variant);
+  font-size: 13px;
+}

@@ -1,0 +1,33 @@
+// Design token của theme DARK — bộ key bắt buộc giống hệt _tokens-light.scss.
+
+$tokens: (
+  // Color roles (tương thích M3 system roles)
+  'primary': #abc7ff,
+  'on-primary': #002f65,
+  'primary-container': #00458f,
+  'on-primary-container': #d7e3ff,
+  'secondary': #bec6dc,
+  'on-secondary': #283141,
+  'secondary-container': #3e4759,
+  'on-secondary-container': #dae2f9,
+  'error': #ffb4ab,
+  'on-error': #690005,
+  'background': #121316,
+  'on-background': #e3e1e5,
+  'surface': #121316,
+  'on-surface': #e3e1e5,
+  'surface-container': #27282c,
+  'surface-container-high': #313236,
+  'surface-container-highest': #3c3d41,
+  'on-surface-variant': #c4c6d0,
+  'outline': #8e9099,
+  'outline-variant': #44474e,
+  'inverse-surface': #e3e1e5,
+  'inverse-on-surface': #2f3033,
+  'inverse-primary': #005cbb,
+  // Token riêng của app
+  'radius': 12px,
+);
+
+$scheme: dark;
+$palette: 'blue';

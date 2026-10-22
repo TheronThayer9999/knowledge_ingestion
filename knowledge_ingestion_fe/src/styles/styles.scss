@@ -1,0 +1,15 @@
+// Entry style global — theme/material đặt ở src/styles/.
+@use './material-theme';
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  background: var(--app-background);
+  color: var(--app-on-background);
+  transition: background 0.2s ease, color 0.2s ease;
+}

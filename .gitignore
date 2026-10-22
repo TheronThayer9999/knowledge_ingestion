@@ -14,3 +14,4 @@ __pycache__/
 tmp_*.log
 tmp_*.err
 *~
+.qoder
