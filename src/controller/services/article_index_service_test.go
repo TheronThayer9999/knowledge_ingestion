@@ -204,7 +204,7 @@ func pagesFrom(texts ...string) []*domain.ArticlePage {
 }
 
 func newIndexSvc(arts domain.ArticleIndexQueue, pages *indexStubPages, vec *indexStubVectors) IArticleIndexService {
-	return NewArticleIndexService(arts, pages, indexStubEmbedder{}, vec, nil, chunker.Manual{})
+	return NewArticleIndexService(arts, pages, indexStubEmbedder{}, vec, chunker.Manual{})
 }
 
 func TestIndexOneChunkIndexAndPage(t *testing.T) {

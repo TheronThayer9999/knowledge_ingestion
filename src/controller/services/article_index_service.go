@@ -47,13 +47,11 @@ type articleIndexService struct {
 	pageRepo    domain.IArticlePageRepository
 	embedder    domain.Embedder
 	vectors     domain.IVectorStore
-	// cache khoá theo sha256(text + model) → vector đã tính. Nhằm không gọi
-	// lại model cho chunk đã embed. Có thể nil (cache lỗi hoặc chưa cấu
-	// hình) — mọi đường đi đều phải chạy được khi không có nó.
-	cache domain.EmbedCache
 	// splitter chiến lược cắt chunk (Eino recursive/semantic hoặc manual) —
 	// loader chọn theo config worker.chunker, dựng 1 lần rồi tái dùng.
 	splitter chunker.Chunker
+	// NOTE: embed_cache đã bị loại bỏ (hit rate 99.99% count=1 → vô dụng).
+	// Vector lưu trong Qdrant; rebuild dùng checkpoint index_done_chunks.
 }
 
 func NewArticleIndexService(
@@ -61,14 +59,12 @@ func NewArticleIndexService(
 	pageRepo domain.IArticlePageRepository,
 	embedder domain.Embedder,
 	vectors domain.IVectorStore,
-	cache domain.EmbedCache,
 	splitter chunker.Chunker) IArticleIndexService {
 	return &articleIndexService{
 		articleRepo: articleRepo,
 		pageRepo:    pageRepo,
 		embedder:    embedder,
 		vectors:     vectors,
-		cache:       cache,
 		splitter:    splitter,
 	}
 }
@@ -475,31 +471,11 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 // Cache không bắt buộc phải có: cache lỗi thì coi như toàn bộ miss và log,
 // job vẫn chạy được. Một bộ cache hỏng không được làm hỏng việc index.
 func (s *articleIndexService) lookupCache(ctx context.Context, texts []string) (map[string][]float32, []int, []string, error) {
+	// Embed cache đã bị loại bỏ (hit rate 99.99% count=1 → vô dụng).
+	// Luôn miss → embed toàn bộ. Vector lưu trong Qdrant, rebuild dùng
+	// checkpoint index_done_chunks để resume.
 	cached := make(map[string][]float32, len(texts))
-	if s.cache == nil {
-		return cached, allMiss(texts), texts, nil
-	}
-	hashes := make([]string, 0, len(texts))
-	for _, t := range texts {
-		hashes = append(hashes, chunkHash(t))
-	}
-	found, err := s.cache.Get(ctx, hashes, s.embedder.ModelName(), s.embedder.Dimension())
-	if err != nil {
-		logs.Error(err, "index: đọc embed cache lỗi, coi như cache trống (vẫn embed lại)")
-		return cached, allMiss(texts), texts, nil
-	}
-	missIdx := make([]int, 0, len(texts)-len(found))
-	missTexts := make([]string, 0, len(texts)-len(found))
-	for i, h := range hashes {
-		v, ok := found[h]
-		if !ok {
-			missIdx = append(missIdx, i)
-			missTexts = append(missTexts, texts[i])
-			continue
-		}
-		cached[h] = v
-	}
-	return cached, missIdx, missTexts, nil
+	return cached, allMiss(texts), texts, nil
 }
 
 func allMiss(texts []string) []int {
@@ -539,24 +515,7 @@ func (s *articleIndexService) embedMissing(ctx context.Context, traceID string, 
 // storeCache ghi vector mới xuống cache. Lỗi ghi cache chỉ log, KHÔNG làm
 // fail job — cache là tối ưu, thiếu nó thì chỉ tốn thêm lượt embed sau.
 func (s *articleIndexService) storeCache(ctx context.Context, texts []string, vectors [][]float32) error {
-	if s.cache == nil {
-		return nil
-	}
-	entries := make([]*domain.EmbedCacheEntry, 0, len(texts))
-	model := s.embedder.ModelName()
-	dim := s.embedder.Dimension()
-	for i, t := range texts {
-		entries = append(entries, &domain.EmbedCacheEntry{
-			TextHash:   chunkHash(t),
-			Model:      model,
-			Dim:        dim,
-			Vector:     domain.EncodeVector(vectors[i]),
-			ChunkCount: 1,
-		})
-	}
-	if err := s.cache.PutMany(ctx, entries); err != nil {
-		logs.Error(err, "index: ghi embed cache lỗi (không ảnh hưởng kết quả)")
-	}
+	// Embed cache đã bị loại bỏ — không ghi gì.
 	return nil
 }
 
