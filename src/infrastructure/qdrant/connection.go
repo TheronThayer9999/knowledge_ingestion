@@ -459,6 +459,7 @@ func (c *connection) UpsertPoints(ctx context.Context, points []*domain.VectorPo
 				"page_num":    p.PageNum,
 				"section":     p.Section,
 				"text":        p.Text,
+				"keywords":    p.Keywords,
 			}),
 		})
 	}

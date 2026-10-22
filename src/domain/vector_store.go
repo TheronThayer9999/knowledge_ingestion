@@ -20,8 +20,9 @@ type VectorPoint struct {
 	ChunkIndex int
 	PageNum    int
 	// Section tiêu đề mục chứa chunk — payload để agent attribute đúng Điều.
-	Section string
-	Text       string
+	Section  string
+	Text     string
+	Keywords []string
 }
 
 // SearchFilter khóa phân quyền query — UserID bắt buộc (owner từ token,

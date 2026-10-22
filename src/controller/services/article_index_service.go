@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"knowledge_ingestion/src/common/chunker"
+	"knowledge_ingestion/src/common/enhancement"
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/extractor"
 	"knowledge_ingestion/src/common/logs"
@@ -49,6 +50,8 @@ type articleIndexService struct {
 	// loader chọn theo config worker.chunker, dựng 1 lần rồi tái dùng.
 	// Template (laws/table/...) bọc base này để áp chiến lược theo loại tài liệu.
 	baseSplitter chunker.Chunker
+	// enhancer sinh metadata (keywords) cho chunk — best-effort, nil = tắt.
+	enhancer enhancement.Enhancer
 	// NOTE: embed_cache đã bị loại bỏ (hit rate 99.99% count=1 → vô dụng).
 	// Vector lưu trong Qdrant; rebuild dùng checkpoint index_done_chunks.
 }
@@ -58,13 +61,18 @@ func NewArticleIndexService(
 	pageRepo domain.IArticlePageRepository,
 	embedder domain.Embedder,
 	vectors domain.IVectorStore,
-	baseSplitter chunker.Chunker) IArticleIndexService {
+	baseSplitter chunker.Chunker,
+	enhancer enhancement.Enhancer) IArticleIndexService {
+	if enhancer == nil {
+		enhancer = enhancement.Noop{}
+	}
 	return &articleIndexService{
 		articleRepo:  articleRepo,
 		pageRepo:     pageRepo,
 		embedder:     embedder,
 		vectors:      vectors,
 		baseSplitter: baseSplitter,
+		enhancer:     enhancer,
 	}
 }
 
@@ -476,6 +484,10 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 			p.TitleVector = titleVec
 		} else {
 			p.TitleVector = vectors[i]
+		}
+		// Content enhancement: keywords best-effort, không fail job.
+		if kw, err := s.enhancer.Keywords(ctx, p.Text); err == nil && len(kw) > 0 {
+			p.Keywords = kw
 		}
 	}
 	if err := worker.WithRetry(ctx, constants.INDEX_CALL_ATTEMPTS, constants.INDEX_CALL_BASE_DELAY,

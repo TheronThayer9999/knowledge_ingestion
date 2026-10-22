@@ -4,11 +4,13 @@ import (
 	"time"
 
 	"knowledge_ingestion/src/common/chunker"
+	"knowledge_ingestion/src/common/enhancement"
 	"knowledge_ingestion/src/common/extractor"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/services"
 	"knowledge_ingestion/src/domain"
+	"knowledge_ingestion/src/infrastructure/caches"
 	"knowledge_ingestion/src/infrastructure/embedding"
 	"knowledge_ingestion/src/infrastructure/postgres"
 	"knowledge_ingestion/src/infrastructure/qdrant"
@@ -29,6 +31,7 @@ func LoadWorkerInfra() []fx.Option {
 		fx.Provide(postgres.NewConnection),
 		fx.Provide(func(db postgres.IDB) *gorm.DB { return db.GetDB() }), // unwrap IDB -> *gorm.DB cho repository
 		fx.Provide(seaweedfs.NewStorage),
+		fx.Provide(caches.NewConnection),
 		fx.Provide(embedding.NewEmbedder),
 		fx.Provide(qdrant.NewConnection),
 		fx.Provide(repository.NewArticleRepository),
@@ -45,6 +48,10 @@ func LoadWorkerInfra() []fx.Option {
 			return services.PurgeOptions{
 				TrimInterval: time.Duration(w.TrimIntervalHours) * time.Hour,
 			}
+		}),
+		// Enhancement (keywords) cho chunk — best-effort, tắt mặc định.
+		fx.Provide(func(cfg config.IConfig, cache caches.ICache) enhancement.Enhancer {
+			return enhancement.NewOllamaEnhancer(cfg, cache.GetClient())
 		}),
 		// Chunker + OCR cho worker chunk phase 1.
 		//

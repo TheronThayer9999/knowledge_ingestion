@@ -233,7 +233,8 @@ type WorkerConfig struct {
 	// đệ quy, mặc định — rẻ, bulk), "semantic" (Eino splitter ngữ nghĩa qua
 	// Ollama embed, đắt — tài liệu ưu tiên/văn bản hành chính nhiều viết
 	// tắt), "manual" (Split thủ công cũ, giữ cho test/fallback).
-	Chunker string `json:"chunker"`
+	Chunker          string `json:"chunker"`
+	EnhanceKeywords  bool   `json:"enhance_keywords"`
 }
 
 // AgentConfig giữ đường dẫn thư mục prompt LLM của agent (prompts/*.md) —
