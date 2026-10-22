@@ -192,7 +192,7 @@ Có, quy định về trang phục nằm ở **Điều 15: QUY ĐỊNH TRANG PH�
 **Nguồn tham khảo:** Điều 5 (quy_dinh_noi_bo.pdf)
 
 ### Case 28
-**Câu hỏi:** Anh F đi công tác xa 5 ngày. Tính toán tổng chi phí tạm ứng tối đa anh F có thể nhận từ công ty, bao gồm tiền ăn và khách sạn (biết khách sạn 800k/đêm).
+**Câu hỏi:** Anh F đi công tác xa 5 ngày (lưu trú 5 đêm). Tính toán tổng chi phí tạm ứng tối đa anh F có thể nhận từ công ty, bao gồm tiền ăn và khách sạn (biết khách sạn 800k/đêm).
 **Đáp án mong đợi:** 
 - Tiền ăn: 200.000 VNĐ/ngày x 5 ngày = 1.000.000 VNĐ
 - Khách sạn: 800.000 VNĐ/đêm x 5 đêm = 4.000.000 VNĐ
@@ -292,7 +292,7 @@ Có, quy định về trang phục nằm ở **Điều 15: QUY ĐỊNH TRANG PH�
 **Nguồn tham khảo:** File quy_dinh_bo_sung.pdf
 
 ### Case 52
-**Câu hỏi:** Anh H đi công tác 4 ngày, khách sạn 700k/đêm. Tính tổng tạm ứng tối đa (70% chi phí dự kiến).
+**Câu hỏi:** Anh H đi công tác 4 ngày (lưu trú 4 đêm), khách sạn 700k/đêm. Tính tổng tạm ứng tối đa (70% chi phí dự kiến).
 **Đáp án mong đợi:** 
 - Tiền ăn: 200.000 x 4 = 800.000 VNĐ
 - Khách sạn: 700.000 x 4 = 2.800.000 VNĐ
