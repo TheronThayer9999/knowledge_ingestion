@@ -1,0 +1,36 @@
+{
+  "Case 7 (chi B, 3 ngay, khong du toan)": {
+    "expected_contains": [
+      "6000000",
+      "6.000.000",
+      "6 triệu"
+    ],
+    "matched": true,
+    "qtype": "scenario",
+    "n_cites": 8,
+    "answer": "Dựa trên tài liệu đã upload, tôi tìm thấy **hai quy định khác nhau** về ứng trước chi phí công tác xa từ hai văn bản nội bộ:\n\n---\n\n### 1. Theo **Tài liệu nội bộ - Công ty ABC (Phiên bản 2024-Q3), Điều 6: CHÍNH SÁCH ĂN TRƯA VÀ ĐI LẠI** [^2]\n> \"Nhân viên công tác xa có thể được **ứng trước chi phí đi lại và ăn ở tối đa 2 triệu VNĐ/ngày** với điều kiện có yêu cầu trước 3 ngày.\"\n\n- Áp dụng cho Chị B (3 ngày): **Tối đa 6.000.000 VNĐ** (2 triệu × 3 ngày).\n- Điều kiện: Phải yêu cầu **trước 3 ngày** so với ngày đi.\n\n---\n\n### 2. Theo **Văn bản khác (Điều 14: CHÍNH SÁCH CÔNG TÁC - TRAVEL)** [^6]\n> \"**Tạm ứng công tác phí tối đa 70% tổng chi phí dự kiến**, thanh toán dư nợ trong vòng 07 ngày sau chuyến đi.\"\n\n- Áp dụng cho Chị B: Số tiền tối đa = **70% × (tổng chi phí ăn ở + đi lại dự kiến của 3 ngày)**.\n- Cần có bản dự toán chi tiết để tính con số cụ thể.\n- Phải thanh toán dư nợ (quyết toán) trong **7 ngày sau khi về**.\n\n---\n\n### ⚠️ Lưu ý quan trọng\nHai văn bản này **có thể là hai chính sách khác nhau** (ví dụ: một áp dụng cho công tác trong nước, một cho công tác nước ngoài; hoặc một là quy định cũ, một là quy định mới). Tài liệu upload **không nêu rõ phạm vi áp dụng của từng văn bản** cũng như văn bản nào có hiệu lực ưu tiên.\n\n**Để cho Chị B con số chính xác, bạn cần:**\n1. Xác nhận văn bản nào đang áp dụng cho trường hợp của chị (có thể hỏi HR/Phòng Hành chính).\n2. Nếu áp dụng văn bản 2: Chuẩn bị bảng dự toán chi phí ăn, ở, đi lại 3 ngày để tính 70%.\n3. Kiểm tra điều kiện \"yêu cầu trước 3 ngày\" (văn bản 1) hoặc \"đặt vé qua Hành chính trước 5 ngày\" (văn bản 2, khoản 3) có được đáp ứng không.\n\n---\n\n**Tóm lại:**  \n- Nếu theo văn bản 1: **Tối đa 6 triệu VNĐ** (có yêu cầu trước 3 ngày).  \n- Nếu theo văn bản 2: **Tối đa 70% tổng chi phí dự kiến** (cần có bảng dự toán, quyết toán trong 7 ngày sau chuyến đi).\n\nBạn nên đối chiếu với bộ phận ban hành (HR/Hành chính) để biết văn bản nào đang có hiệu lực cho chuyến đi này."
+  },
+  "Case 28 (anh F, 5 ngay, KS 800k)": {
+    "expected_contains": [
+      "3500000",
+      "3.500.000",
+      "3,500,000",
+      "3.5 triệu"
+    ],
+    "matched": false,
+    "qtype": "calc",
+    "n_cites": 10,
+    "answer": "Dựa trên quy định của công ty, tôi tính toán như sau:\n\n## 1. Các mức hỗ trợ theo quy định [^6]\n\n| Khoản | Mức hỗ trợ | Ghi chú |\n|-------|------------|---------|\n| Tiền ăn | 200.000 VNĐ/ngày | Điều 14 khoản 1 |\n| Khách sạn | Tối đa 800.000 VNĐ/đêm (theo hóa đơn thực tế) | Điều 14 khoản 2 |\n| Tạm ứng tối đa | 70% tổng chi phí dự kiến | Điều 14 khoản 4 |\n\n*Lưu ý: Điều 6 khoản 4 cho phép ứng trước tối đa 2 triệu VNĐ/ngày, nhưng Điều 14 (chuyên biệt về công tác) quy định cụ thể hơn là 70% tổng chi phí dự kiến, nên ta áp dụng Điều 14.*\n\n## 2. Tính toán cho chuyến đi 5 ngày\n\n**Giả định:** 5 ngày công tác = 4 đêm nghỉ khách sạn (ngày đi và ngày về thường không cần ở đêm cuối).\n\n| Khoản | Công thức | Số tiền |\n|-------|-----------|---------|\n| Tiền ăn | 200.000 × 5 ngày | **1.000.000 VNĐ** |\n| Khách sạn | 800.000 × 4 đêm | **3.200.000 VNĐ** |\n| **Tổng chi phí dự kiến** | | **4.200.000 VNĐ** |\n| **Tạm ứng tối đa (70%)** | 4.200.000 × 70% | **2.940.000 VNĐ** |\n\n## 3. Kết luận\n\n**Anh F có thể được tạm ứng tối đa: 2.940.000 VNĐ**\n\n- Số dư 30% (1.260.000 VNĐ) sẽ được thanh toán sau khi anh F hoàn tất thủ tục quyết toán trong vòng **07 ngày sau chuyến đi** (theo Điều 14 khoản 4).\n- Chi phí khách sạn thực tế phải có hóa đơn, không vượt quá 800.000 VNĐ/đêm.\n- Điều kiện: phải có yêu cầu tạm ứng trước (theo quy trình bộ phận Hành chính)."
+  },
+  "Case 52 (anh H, 4 ngay, KS 700k)": {
+    "expected_contains": [
+      "2520000",
+      "2.520.000",
+      "2,520,000"
+    ],
+    "matched": true,
+    "qtype": "calc",
+    "n_cites": 8,
+    "answer": "Dựa trên **Điều 14: CHÍNH SÁCH CÔNG TÁC** trong tài liệu nội bộ Công ty ABC [^1], quy định như sau:\n\n- **Tiền ăn**: 200.000 VNĐ/ngày\n- **Khách sạn**: thanh toán theo hóa đơn thực tế, **tối đa 800.000 VNĐ/đêm**\n- **Tạm ứng**: tối đa **70% tổng chi phí dự kiến**\n\n---\n\n### Tính toán cho anh H (4 ngày, khách sạn 700.000 VNĐ/đêm):\n\n| Khoản | Đơn giá | Số ngày/đêm | Thành tiền |\n|-------|---------|-------------|------------|\n| Khách sạn | 700.000 VNĐ/đêm (≤ 800.000 VNĐ/đêm cho phép) | 4 đêm | **2.800.000 VNĐ** |\n| Tiền ăn | 200.000 VNĐ/ngày | 4 ngày | **800.000 VNĐ** |\n| **Tổng chi phí dự kiến** | | | **3.600.000 VNĐ** |\n| **Tạm ứng tối đa (70%)** | 3.600.000 × 70% | | **2.520.000 VNĐ** |\n\n---\n\n**Kết quả:** Anh H được tạm ứng tối đa **2.520.000 VNĐ**.  \nSố dư còn lại (30% = 1.080.000 VNĐ) sẽ được thanh toán sau khi anh H nộp hóa đơn và quyết toán trong vòng **07 ngày sau chuyến đi** theo quy định khoản 4 Điều 14 [^1]."
+  }
+}
