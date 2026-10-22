@@ -18,7 +18,7 @@ type ChatRequest struct {
 	Provider string `json:"provider,omitempty" example:"openrouter"`
 	// Model ép model trong provider đó (rỗng = model mặc định theo provider).
 	Model       string            `json:"model,omitempty" example:"apodex/apodex-1.1-mini:free"`
-	CategoryIDs []int64           `json:"category_ids,omitempty" binding:"omitempty,dive,gt=0"`
+	CategoryIDs []int64           `json:"category_ids,omitempty" binding:"omitempty,max=100,dive,gt=0"`
 	Limit       int               `json:"limit,omitempty" binding:"omitempty,gte=0"`
 	History     []ChatHistoryItem `json:"history,omitempty"`
 }

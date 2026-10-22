@@ -2,6 +2,7 @@ package eino
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"knowledge_ingestion/src/domain"
@@ -37,6 +38,16 @@ func WithScope(ctx context.Context, s Scope) context.Context {
 func ScopeFrom(ctx context.Context) (Scope, bool) {
 	s, ok := ctx.Value(scopeKey).(Scope)
 	return s, ok
+}
+
+// AllowsCategory báo categoryID có nằm trong phạm vi request không.
+// Scope rỗng (request không khoanh chủ đề) thì mọi category của user hợp lệ —
+// quyền owner vẫn do repo kiểm tra riêng.
+func (s Scope) AllowsCategory(categoryID int64) bool {
+	if len(s.CategoryIDs) == 0 {
+		return true
+	}
+	return slices.Contains(s.CategoryIDs, categoryID)
 }
 
 // maxCollectedHits chặn số hit gom cho cites — agent có thể gọi tool nhiều

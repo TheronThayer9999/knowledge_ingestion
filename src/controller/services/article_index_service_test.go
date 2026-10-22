@@ -170,6 +170,9 @@ func (v *indexStubVectors) DeleteByArticles(context.Context, []int64) error { re
 func (v *indexStubVectors) CountByArticle(context.Context, int64) (int64, error) {
 	return int64(len(v.points)), nil
 }
+func (v *indexStubVectors) CountByFilter(context.Context, domain.SearchFilter) (int64, error) {
+	return int64(len(v.points)), nil
+}
 func (v *indexStubVectors) Search(context.Context, []float32, domain.SearchFilter, int, float32) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }

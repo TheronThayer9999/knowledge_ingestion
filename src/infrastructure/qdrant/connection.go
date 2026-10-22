@@ -221,7 +221,7 @@ func (c *connection) createCollection(ctx context.Context) error {
 	}
 	req := &qdrantapi.CreateCollection{
 		CollectionName: c.collection,
-		VectorsConfig:  qdrantapi.NewVectorsConfigMap(map[string]*qdrantapi.VectorParams{
+		VectorsConfig: qdrantapi.NewVectorsConfigMap(map[string]*qdrantapi.VectorParams{
 			"content": vectors,
 			"title":   {Size: uint64(c.dim), Distance: qdrantapi.Distance_Cosine},
 		}),
@@ -542,11 +542,11 @@ func permissionMusts(f domain.SearchFilter) []*qdrantapi.Condition {
 func (c *connection) queryNamed(ctx context.Context, named string, vector []float32, filter domain.SearchFilter, limit int, scoreThreshold float32) ([]*domain.ScoredChunk, error) {
 	req := &qdrantapi.QueryPoints{
 		CollectionName: c.collection,
-		Using:         &named,
-		Query:         qdrantapi.NewQuery(vector...),
-		Filter:        searchFilter(filter),
-		Limit:         ptrUint64(uint64(limit)),
-		WithPayload:   qdrantapi.NewWithPayload(true),
+		Using:          &named,
+		Query:          qdrantapi.NewQuery(vector...),
+		Filter:         searchFilter(filter),
+		Limit:          ptrUint64(uint64(limit)),
+		WithPayload:    qdrantapi.NewWithPayload(true),
 	}
 	if scoreThreshold > 0 {
 		req.ScoreThreshold = &scoreThreshold
@@ -887,6 +887,22 @@ func (c *connection) CountByArticle(ctx context.Context, articleID int64) (int64
 	})
 	if err != nil {
 		return 0, fmt.Errorf("qdrant: count points của article %d: %w", articleID, err)
+	}
+	return int64(n), nil
+}
+
+// CountByFilter đếm point khớp filter phân quyền — dùng chung searchFilter
+// (permissionMusts) với Search/SearchText để không lệch phạm vi. read_article
+// dùng hàm này thay CountByArticle để total_chunk không lộ bài ngoài scope.
+func (c *connection) CountByFilter(ctx context.Context, filter domain.SearchFilter) (int64, error) {
+	exact := true
+	n, err := c.client.Count(ctx, &qdrantapi.CountPoints{
+		CollectionName: c.collection,
+		Filter:         searchFilter(filter),
+		Exact:          &exact,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("qdrant: count points theo filter: %w", err)
 	}
 	return int64(n), nil
 }

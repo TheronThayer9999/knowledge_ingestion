@@ -52,7 +52,7 @@ KHI NÀO KHÔNG GỌC: hỏi 1 thông tin cụ thể (knowledge_search); hỏi s
 
 CÁCH DÙNG: biết ID file thì gọi với from=0. Còn trang thì trả về next_from > 0 — truyền next_from vào lần gọi sau cho đến khi next_from = 0 (hết file) hoặc đã đủ nội dung cần trả lời. Mỗi trang có cột section — ghi căn cứ theo section đó khi trích dẫn [^n].`
 
-// NewReadArticleTool bọc IVectorStore.ScrollRange + CountByArticle thành
+// NewReadArticleTool bọc IVectorStore.ScrollRange + CountByFilter thành
 // Eino InvokableTool — đọc từ Qdrant payload (DB chunk đã trim sau embed).
 // Phạm vi tin cậy (user, category ép) đọc qua ScopeFrom(ctx).
 func NewReadArticleTool(vectors domain.IVectorStore) (einotool.InvokableTool, error) {
@@ -87,10 +87,11 @@ func NewReadArticleTool(vectors domain.IVectorStore) (einotool.InvokableTool, er
 			if err != nil {
 				return nil, err
 			}
-			total, err := vectors.CountByArticle(ctx, int64(in.ArticleID))
+			total, err := vectors.CountByFilter(ctx, filter)
 			if err != nil {
 				// Tổng số là phụ (hết trang khi next_from vượt) — không chặn
-				// đọc vì lỗi đếm.
+				// đọc vì lỗi đếm. Đếm PHẢI cùng filter scope với ScrollRange,
+				// nếu không bài ngoài phạm vi sẽ lộ total_chunk.
 				total = 0
 			}
 			if scope.Collector != nil {

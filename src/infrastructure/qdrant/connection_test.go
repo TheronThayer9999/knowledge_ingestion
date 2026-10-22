@@ -94,6 +94,16 @@ func TestUpsertCountDelete_Integration(t *testing.T) {
 	if n, err := c.CountByArticle(ctx, 5); err != nil || n != 2 {
 		t.Fatalf("count bài 5 = %d, err = %v, want 2", n, err)
 	}
+	// CountByFilter phải áp đúng scope: đúng user + category + article mới đếm.
+	if n, err := c.CountByFilter(ctx, domain.SearchFilter{UserID: 7, CategoryIDs: []int64{3}, ArticleID: 5}); err != nil || n != 2 {
+		t.Fatalf("count scoped bài 5 = %d, err = %v, want 2", n, err)
+	}
+	if n, err := c.CountByFilter(ctx, domain.SearchFilter{UserID: 7, CategoryIDs: []int64{4}, ArticleID: 5}); err != nil || n != 0 {
+		t.Fatalf("count scoped sai category = %d, err = %v, want 0", n, err)
+	}
+	if n, err := c.CountByFilter(ctx, domain.SearchFilter{UserID: 8, CategoryIDs: []int64{3}, ArticleID: 5}); err != nil || n != 0 {
+		t.Fatalf("count scoped sai user = %d, err = %v, want 0", n, err)
+	}
 	// Payload đọc lại phải đủ 6 field phân quyền + text.
 	withPayload := true
 	var scrollLimit uint32 = 10
@@ -162,7 +172,8 @@ func TestUpsertPoints_EmptyNoop(t *testing.T) {
 }
 
 // Phân loại vĩnh viễn/không qua mã gRPC — không cần server.
-func TestIsPermanent(t *testing.T) {	cases := []struct {
+func TestIsPermanent(t *testing.T) {
+	cases := []struct {
 		name string
 		err  error
 		want bool

@@ -30,7 +30,7 @@ KHI NÀO GỌI: người dùng nhắc tên chủ đề bằng lời ("trong ch�
 
 KHI NÀO KHÔNG GỌI: người dùng đã nêu rõ ID số; chào hỏi, cảm ơn, xưng hô thuần túy không kèm nội dung tri thức. Khi không chắc có dính đến tài liệu hay không, luôn gọi tool tìm kiếm một lần trước rồi mới kết luận.
 
-KẾT QUẢ TRẢ VỀ: JSON gồm các phần tử {id, name, description}. Chỉ dùng ID có trong kết quả, không bịa ID. Không tìm thấy tên nào khớp thì tìm mọi chủ đề (bỏ trống category_ids ở knowledge_search), không đoán.`
+KẾT QUẢ TRẢ VỀ: JSON gồm các phần tử {id, name, description}. Chỉ dùng ID có trong kết quả, không bịa ID. Nếu request đã khoanh phạm vi chủ đề, tool chỉ trả các chủ đề trong phạm vi đó — không tìm thấy tên khớp thì tìm trong phạm vi hiện tại, không tự mở rộng ra mọi chủ đề.`
 
 // NewListCategoriesTool bọc CategoryRepository thành tool — đi qua chain 1
 // lambda + graph-tool (xem chaintool.go) nên cùng họ với graph nhiều node;
@@ -52,7 +52,7 @@ func NewListCategoriesTool(repo domain.ICategoryRepositoryImpl) (einotool.Invoka
 			}
 			out := make([]listCategoriesItem, 0, len(cats))
 			for _, c := range cats {
-				if c == nil {
+				if c == nil || !scope.AllowsCategory(c.ID) {
 					continue
 				}
 				out = append(out, listCategoriesItem{

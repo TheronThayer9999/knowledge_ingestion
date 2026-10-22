@@ -120,7 +120,7 @@ func ToArticleListResponse(articles []*domain.Article) ArticleListResponse {
 // thì để trống, search tự classify.
 type SearchRequest struct {
 	Query          string  `json:"query" binding:"required,min=1,max=2000" example:"Go Fx quản lý vòng đời thế nào"`
-	CategoryIDs    []int64 `json:"category_ids,omitempty" binding:"omitempty,dive,gt=0"`
+	CategoryIDs    []int64 `json:"category_ids,omitempty" binding:"omitempty,max=100,dive,gt=0"`
 	Limit          int     `json:"limit,omitempty" binding:"omitempty,gte=0"`
 	ScoreThreshold float32 `json:"score_threshold,omitempty" binding:"omitempty,gte=0"`
 	Model          string  `json:"model,omitempty" example:"gemma4:31b"`

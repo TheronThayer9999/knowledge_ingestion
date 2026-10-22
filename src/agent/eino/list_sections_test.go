@@ -27,6 +27,9 @@ func (f *fakeSectionVectors) DeleteByArticles(_ context.Context, _ []int64) erro
 func (f *fakeSectionVectors) CountByArticle(_ context.Context, _ int64) (int64, error) {
 	return 0, nil
 }
+func (f *fakeSectionVectors) CountByFilter(_ context.Context, _ domain.SearchFilter) (int64, error) {
+	return 0, nil
+}
 func (f *fakeSectionVectors) Search(_ context.Context, _ []float32, _ domain.SearchFilter, _ int, _ float32) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }

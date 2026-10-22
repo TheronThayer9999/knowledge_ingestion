@@ -165,6 +165,9 @@ func (v adminStubVectors) DeleteByArticles(context.Context, []int64) error {
 	return nil
 }
 func (v adminStubVectors) CountByArticle(context.Context, int64) (int64, error) { return 0, nil }
+func (v adminStubVectors) CountByFilter(context.Context, domain.SearchFilter) (int64, error) {
+	return 0, nil
+}
 func (v adminStubVectors) Search(context.Context, []float32, domain.SearchFilter, int, float32) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }

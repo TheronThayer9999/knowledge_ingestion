@@ -146,11 +146,12 @@ KHI NÀO GỌI: người dùng hỏi về bản thân tài liệu ("file này c�
 
 KHI NÀO KHÔNG GỌI: hỏi nội dung bên trong tài liệu (gọi knowledge_search); chào hỏi, cảm ơn.
 
-CÁCH DÙNG: biết ID bài thì truyền article_id; muốn liệt kê thì truyền category_id (bỏ trống là mọi chủ đề). Không có thông tin nào thì nói rõ "tài liệu không ghi", không đoán.`
+CÁCH DÙNG: biết ID bài thì truyền article_id; muốn liệt kê thì truyền category_id (bỏ trống là mọi chủ đề trong phạm vi request). Nếu request đã khoanh phạm vi chủ đề, chỉ dùng category_id trong phạm vi đó. Không có thông tin nào thì nói rõ "tài liệu không ghi", không đoán.`
 
 // NewArticleInfoTool bọc ArticleRepository thành Eino InvokableTool — chỉ
-// thấy bài của đúng owner trong Scope, LLM không có đường đọc ké bài user
-// khác (GetByID/ListByCategoryID đều khóa user).
+// thấy bài của đúng owner trong Scope và đúng category nếu request khoanh
+// phạm vi, LLM không có đường đọc ké bài user khác (GetByID/ListByCategoryID
+// đều khóa user; category do Scope quyết, không tin args LLM).
 func NewArticleInfoTool(repo domain.IArticleRepository) (einotool.InvokableTool, error) {
 	if repo == nil {
 		return nil, fmt.Errorf("eino article_info: article repo is required")
@@ -179,6 +180,12 @@ func NewArticleInfoTool(repo domain.IArticleRepository) (einotool.InvokableTool,
 				if err != nil {
 					return nil, err
 				}
+				// Owner đã đúng (GetByID khóa user_id), nhưng request có thể
+				// đã khoanh thêm category — bài ngoài phạm vi trả rỗng thay vì
+				// lộ metadata.
+				if !scope.AllowsCategory(a.CategoryID) {
+					return []articleInfoItem{}, nil
+				}
 				if scope.Collector != nil {
 					scope.Collector.MarkSearched()
 				}
@@ -186,6 +193,11 @@ func NewArticleInfoTool(repo domain.IArticleRepository) (einotool.InvokableTool,
 			}
 			ids := scope.CategoryIDs
 			if in.CategoryID > 0 {
+				// DTO thắng LLM: LLM chỉ được chọn trong phạm vi request, không
+				// được tự mở rộng sang chủ đề khác của user.
+				if !scope.AllowsCategory(int64(in.CategoryID)) {
+					return []articleInfoItem{}, nil
+				}
 				ids = []int64{int64(in.CategoryID)}
 			}
 			var out []articleInfoItem

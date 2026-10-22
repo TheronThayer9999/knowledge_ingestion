@@ -15,10 +15,10 @@ type VectorPoint struct {
 	Vector      []float32 // content vector (primary)
 	TitleVector []float32 // title vector (article name) — dual embedding
 	ArticleID   int64
-	UserID     int64
-	CategoryID int64
-	ChunkIndex int
-	PageNum    int
+	UserID      int64
+	CategoryID  int64
+	ChunkIndex  int
+	PageNum     int
 	// Section tiêu đề mục chứa chunk — payload để agent attribute đúng Điều.
 	Section  string
 	Text     string
@@ -71,6 +71,10 @@ type IVectorStore interface {
 	// done-rỗng (chunk hết nhưng chưa chắc vector đã lên): count 0 thì không
 	// được done, phải retry thay vì done âm thầm với search trống.
 	CountByArticle(ctx context.Context, articleID int64) (int64, error)
+	// CountByFilter đếm point khớp filter phân quyền (user_id + category_ids
+	// + article_id) — read_article dùng để total_chunk không vượt phạm vi
+	// scope. CountByArticle giữ nguyên cho worker (guard nội bộ, không scope).
+	CountByFilter(ctx context.Context, filter SearchFilter) (int64, error)
 	// Search trả top chunk gần vector nhất trong phạm vi filter — agent RAG
 	// gọi qua service search. ScoreThreshold > 0 thì lọc hit yếu để không
 	// trả lời bừa; limit <= 0 thì adapter tự lấy mặc định.
@@ -90,7 +94,7 @@ type IVectorStore interface {
 	// ScrollRange đọc 1 lát chunk của 1 bài từ from (chunk_index >= from)
 	// tối đa limit điểm, trả theo ChunkIndex tăng dần — tool read_article
 	// cho agent đọc trực tiếp file theo trang (câu liệt kê/tóm tắt toàn
-	// bài). ArticleID bắt buộc; tổng số chunk lấy qua CountByArticle.
+	// bài). ArticleID bắt buộc; tổng số chunk lấy qua CountByFilter.
 	ScrollRange(ctx context.Context, filter SearchFilter, from, limit int) ([]*ScoredChunk, error)
 	// ListSections trả các mục (section) của 1 bài theo thứ tự chunk kèm
 	// chunk bắt đầu — tool list_sections đếm/liệt kê Điều (ground-truth) +

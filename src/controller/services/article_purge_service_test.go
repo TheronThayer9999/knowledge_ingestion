@@ -86,6 +86,9 @@ func (v *purgeStubVectors) UpsertPoints(context.Context, []*domain.VectorPoint) 
 func (v *purgeStubVectors) CountByArticle(context.Context, int64) (int64, error) {
 	return 0, nil
 }
+func (v *purgeStubVectors) CountByFilter(context.Context, domain.SearchFilter) (int64, error) {
+	return 0, nil
+}
 func (v *purgeStubVectors) Search(context.Context, []float32, domain.SearchFilter, int, float32) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }
