@@ -143,3 +143,22 @@ func (a *ArticleAPI) ListSections(c *gin.Context) {
 	}
 	Render(c, a, a.svc.ListSections(c, p.ID))
 }
+
+// GetTree godoc
+// @Summary Article section tree (knowledge tree)
+// @Description Returns the sections of one of my articles nested by heading hierarchy (Chuong/Phan > Muc > Dieu/Bai) with compiled summaries; flat roots when the document has no chapter headings or is not compiled yet
+// @Tags articles
+// @Produce json
+// @Param id path int true "article id"
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 400 {object} dtos.ResponseResource
+// @Failure 404 {object} dtos.ResponseResource
+// @Security BearerAuth
+// @Router /api/v1/articles/{id}/tree [get]
+func (a *ArticleAPI) GetTree(c *gin.Context) {
+	var p dtos.IDParam
+	if !a.BindUri(c, &p, "id bài viết không hợp lệ") {
+		return
+	}
+	Render(c, a, a.svc.GetTree(c, p.ID))
+}

@@ -2,6 +2,8 @@ package dtos
 
 import (
 	"knowledge_ingestion/src/domain"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -205,6 +207,91 @@ func ToArticleSectionsResponse(a *domain.Article, sections []domain.SectionSpan,
 		})
 	}
 	res.SectionCount = len(res.Sections)
+	return res
+}
+
+// ArticleTreeResponse là cây mục của 1 bài (P2.4 phase 1c) — cùng nguồn dữ
+// liệu với PageIndex (Qdrant ListSections + summary đã compile) nhưng nest
+// theo phân cấp heading: Chương/Phần > Mục > Điều/Bài. Tài liệu không có
+// heading chương thì mọi mục là root (cây phẳng) — không cần LLM, đúng ý
+// proposal §4.2 "group sections theo heading hierarchy".
+type ArticleTreeResponse struct {
+	ArticleID     int64                      `json:"article_id" example:"8"`
+	ArticleName   string                     `json:"article_name" example:"Quy định nội bộ"`
+	IndexStatus   string                     `json:"index_status" example:"done"`
+	CompileStatus string                     `json:"compile_status" example:"done"`
+	NodeCount     int                        `json:"node_count" example:"24"`
+	Roots         []*SectionTreeNodeResponse `json:"roots"`
+}
+
+// SectionTreeNodeResponse là 1 nút cây — tọa độ chunk bắt đầu + summary
+// (rỗng khi chưa compile) + con.
+type SectionTreeNodeResponse struct {
+	Name     string                     `json:"name" example:"CHƯƠNG II: CHẾ ĐỘ NGHỈ PÉP"`
+	From     int                        `json:"from" example:"30"`
+	Summary  string                     `json:"summary" example:"Quy định 12 ngày phép năm..."`
+	Children []*SectionTreeNodeResponse `json:"children"`
+}
+
+// treeHeadwordRe nhận diện headword đầu tên mục — cùng bộ heading words
+// chunker.SplitBlocks tách được (CHƯƠNG/PHẦN/MỤC/ĐIỀU/BÀI), kể cả kiểu
+// in hoa lẫn in thường pha chữ thường phía sau.
+var treeHeadwordRe = regexp.MustCompile(`(?i)^\s*(\p{L}+)`)
+
+// sectionLevel gán mức theo từ đầu tên mục: chương/phần = 1, mục = 2,
+// điều/bài = 3; tên không thuộc bộ nào (vd tiêu đề tự do) coi là lá (3) để
+// treo dưới cha gần nhất thay vì cắt đôi cây.
+func sectionLevel(name string) int {
+	m := treeHeadwordRe.FindStringSubmatch(name)
+	if m == nil {
+		return 3
+	}
+	switch strings.ToUpper(m[1]) {
+	case "CHƯƠNG", "PHẦN":
+		return 1
+	case "MỤC":
+		return 2
+	default:
+		return 3
+	}
+}
+
+// BuildArticleTree dựng cây từ PageIndex đã sắp xếp (ListSections trả theo
+// from tăng dần) bằng stack mức: node treo dưới tổ tiên gần nhất có mức nhỏ
+// hơn, không có thì thành root. Đổi cấu trúc heading chỉ cần sửa sectionLevel.
+func BuildArticleTree(a *domain.Article, sections []domain.SectionSpan, summaries map[string]string) *ArticleTreeResponse {
+	res := &ArticleTreeResponse{Roots: make([]*SectionTreeNodeResponse, 0, len(sections))}
+	if a != nil {
+		res.ArticleID = a.ID
+		res.ArticleName = a.Name
+		res.IndexStatus = a.IndexStatus
+		res.CompileStatus = a.CompileStatus
+	}
+	type stackItem struct {
+		level int
+		node  *SectionTreeNodeResponse
+	}
+	var stack []stackItem
+	for _, s := range sections {
+		level := sectionLevel(s.Name)
+		node := &SectionTreeNodeResponse{
+			Name:     s.Name,
+			From:     s.From,
+			Summary:  summaries[s.Name],
+			Children: make([]*SectionTreeNodeResponse, 0),
+		}
+		for len(stack) > 0 && stack[len(stack)-1].level >= level {
+			stack = stack[:len(stack)-1]
+		}
+		if len(stack) == 0 {
+			res.Roots = append(res.Roots, node)
+		} else {
+			parent := stack[len(stack)-1].node
+			parent.Children = append(parent.Children, node)
+		}
+		stack = append(stack, stackItem{level: level, node: node})
+		res.NodeCount++
+	}
 	return res
 }
 

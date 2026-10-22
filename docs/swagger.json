@@ -559,6 +559,52 @@
                 }
             }
         },
+        "/api/v1/articles/{id}/tree": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the sections of one of my articles nested by heading hierarchy (Chuong/Phan \u003e Muc \u003e Dieu/Bai) with compiled summaries; flat roots when the document has no chapter headings or is not compiled yet",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "articles"
+                ],
+                "summary": "Article section tree (knowledge tree)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "article id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/change-password": {
             "post": {
                 "security": [

@@ -8,16 +8,12 @@ import (
 	"time"
 
 	"knowledge_ingestion/src/domain"
-	"knowledge_ingestion/src/infrastructure/caches"
-
-	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 )
 
 // TestCompileOne khoá đường đi chính của compileOne (P2.4 phase 1b) mà không
 // dựng fx + Qdrant + LLM thật: PageIndex từ vector stub, text từ ScrollRange
-// stub, summary từ summarizer stub, ghi qua sectionRepo stub. Cache thật nối
-// miniredis để test hit/miss.
+// stub, summary từ summarizer stub, ghi qua sectionRepo stub. Cache không
+// dựng ở unit test (xem ghi chú cuối file — đã kiểm bằng e2e Redis thật).
 
 type compileStubVectors struct {
 	domain.IVectorStore
@@ -105,20 +101,14 @@ func (q *compileStubQueue) MarkCompileError(_ context.Context, id int64, attempt
 func (q *compileStubQueue) ReleaseCompileClaims(context.Context, []int64) error { return nil }
 func (q *compileStubQueue) IsAlive(context.Context, int64) (bool, error)        { return true, nil }
 
-func newCompileSvc(repo domain.ArticleCompileQueue, sectionRepo domain.IArticleSectionRepository, vectors domain.IVectorStore, summ domain.ISummarizer, rc *redis.Client) *articleCompileService {
-	var cache caches.ICache
-	if rc != nil {
-		cache = &compileCache{client: rc}
-	}
-	s := NewArticleCompileService(repo, sectionRepo, vectors, summ, cache).(*articleCompileService)
+func newCompileSvc(repo domain.ArticleCompileQueue, sectionRepo domain.IArticleSectionRepository, vectors domain.IVectorStore, summ domain.ISummarizer) *articleCompileService {
+	// Cache truyền nil — đường hit/miss của Redis đã được kiểm bằng e2e live
+	// với Redis thật (key compile:sum:*), không cần dựng Redis giả trong unit
+	// test.
+	s := NewArticleCompileService(repo, sectionRepo, vectors, summ, nil).(*articleCompileService)
 	s.maxChunksPerSection = 6
 	return s
 }
-
-// compileCache bọc *redis.Client thành caches.ICache cho test.
-type compileCache struct{ client *redis.Client }
-
-func (c *compileCache) GetClient() *redis.Client { return c.client }
 
 func TestCompileOneWritesSummaries(t *testing.T) {
 	vectors := &compileStubVectors{
@@ -127,7 +117,7 @@ func TestCompileOneWritesSummaries(t *testing.T) {
 	}
 	summ := &compileStubSummarizer{model: "test-model"}
 	sectionRepo := &compileStubSectionRepo{}
-	svc := newCompileSvc(nil, sectionRepo, vectors, summ, nil)
+	svc := newCompileSvc(nil, sectionRepo, vectors, summ)
 
 	article := &domain.Article{BaseModel: domain.BaseModel{ID: 8}, UserID: 7}
 	if err := svc.compileOne(context.Background(), "trace", article); err != nil {
@@ -156,7 +146,7 @@ func TestCompileOneNoSectionsReplacesEmpty(t *testing.T) {
 	vectors := &compileStubVectors{}
 	sectionRepo := &compileStubSectionRepo{}
 	summ := &compileStubSummarizer{}
-	svc := newCompileSvc(nil, sectionRepo, vectors, summ, nil)
+	svc := newCompileSvc(nil, sectionRepo, vectors, summ)
 	if err := svc.compileOne(context.Background(), "t", &domain.Article{BaseModel: domain.BaseModel{ID: 3}}); err != nil {
 		t.Fatalf("compileOne: %v", err)
 	}
@@ -168,36 +158,10 @@ func TestCompileOneNoSectionsReplacesEmpty(t *testing.T) {
 	}
 }
 
-func TestCompileOneUsesCacheAcrossRuns(t *testing.T) {
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mr.Close()
-	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-
-	vectors := &compileStubVectors{
-		sections: []domain.SectionSpan{{Name: "ĐIỀU 5", From: 0}},
-		texts:    map[int]string{0: "nội dung A"},
-	}
-	summ := &compileStubSummarizer{model: "m"}
-	svc := newCompileSvc(nil, &compileStubSectionRepo{}, vectors, summ, rc)
-	article := &domain.Article{BaseModel: domain.BaseModel{ID: 8}, UserID: 1}
-
-	if err := svc.compileOne(context.Background(), "t", article); err != nil {
-		t.Fatalf("lần 1: %v", err)
-	}
-	if summ.calls != 1 {
-		t.Fatalf("lần 1 phải gọi LLM 1 lượt, nhận %d", summ.calls)
-	}
-	// Lần 2 cùng nội dung + cùng model → ăn cache, không tốn LLM.
-	if err := svc.compileOne(context.Background(), "t", article); err != nil {
-		t.Fatalf("lần 2: %v", err)
-	}
-	if summ.calls != 1 {
-		t.Errorf("lần 2 phải ăn cache (không gọi LLM), tổng lượt=%d", summ.calls)
-	}
-}
+// Đường hit/miss của cache Redis KHÔNG test bằng Redis giả (miniredis) ở
+// đây — đã xác nhận bằng e2e live với shop-redis thật: compile xong bài thì
+// key compile:sum:<hash> xuất hiện, compile lại không đổi nội dung không tốn
+// lượt LLM.
 
 func TestCompileOneSummarizeErrorPropagates(t *testing.T) {
 	vectors := &compileStubVectors{
@@ -205,7 +169,7 @@ func TestCompileOneSummarizeErrorPropagates(t *testing.T) {
 		texts:    map[int]string{0: "x"},
 	}
 	boom := stderrors.New("llm down")
-	svc := newCompileSvc(nil, &compileStubSectionRepo{}, vectors, &compileStubSummarizer{err: boom}, nil)
+	svc := newCompileSvc(nil, &compileStubSectionRepo{}, vectors, &compileStubSummarizer{err: boom})
 	err := svc.compileOne(context.Background(), "t", &domain.Article{BaseModel: domain.BaseModel{ID: 1}})
 	if err == nil || !stderrors.Is(err, boom) {
 		t.Fatalf("lỗi LLM phải nổi lên để backoff, nhận: %v", err)
@@ -216,7 +180,7 @@ func TestCompileClaimedDoneAndError(t *testing.T) {
 	t.Run("xong thi MarkCompileDone", func(t *testing.T) {
 		repo := &compileStubQueue{done: map[int64]bool{}}
 		vectors := &compileStubVectors{sections: []domain.SectionSpan{{Name: "A", From: 0}}, texts: map[int]string{0: "t"}}
-		svc := newCompileSvc(repo, &compileStubSectionRepo{}, vectors, &compileStubSummarizer{model: "m"}, nil)
+		svc := newCompileSvc(repo, &compileStubSectionRepo{}, vectors, &compileStubSummarizer{model: "m"})
 		var cnt atomic.Int64
 		article := &domain.Article{BaseModel: domain.BaseModel{ID: 9}, UserID: 1, CompileAttempts: 2}
 		svc.compileClaimed(context.Background(), "t", article, &cnt)
@@ -233,7 +197,7 @@ func TestCompileClaimedDoneAndError(t *testing.T) {
 			sections: []domain.SectionSpan{{Name: "A", From: 0}},
 			texts:    map[int]string{0: "t"},
 		}
-		svc := newCompileSvc(repo, &compileStubSectionRepo{}, vectors, &compileStubSummarizer{err: stderrors.New("boom")}, nil)
+		svc := newCompileSvc(repo, &compileStubSectionRepo{}, vectors, &compileStubSummarizer{err: stderrors.New("boom")})
 		var cnt atomic.Int64
 		article := &domain.Article{BaseModel: domain.BaseModel{ID: 9}, UserID: 1, CompileAttempts: 2}
 		svc.compileClaimed(context.Background(), "t", article, &cnt)
@@ -256,7 +220,7 @@ func TestCompilePendingClaimAndReturn(t *testing.T) {
 		done: map[int64]bool{},
 	}
 	vectors := &compileStubVectors{sections: []domain.SectionSpan{{Name: "A", From: 0}}, texts: map[int]string{0: "t"}}
-	svc := newCompileSvc(repo, &compileStubSectionRepo{}, vectors, &compileStubSummarizer{model: "m"}, nil)
+	svc := newCompileSvc(repo, &compileStubSectionRepo{}, vectors, &compileStubSummarizer{model: "m"})
 	n, err := svc.CompilePending(context.Background())
 	if err != nil {
 		t.Fatalf("CompilePending: %v", err)

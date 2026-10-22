@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	cerr "knowledge_ingestion/src/common/errors"
+	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 	"net/http"
 	"testing"
@@ -200,4 +201,125 @@ func TestArticleListSectionsNotCompiledSkipsSectionRepo(t *testing.T) {
 	if res.Data.Sections[0].Summary != "" || res.Data.CompileStatus != domain.QueuePending {
 		t.Errorf("payload sai: %+v", res.Data)
 	}
+}
+
+// ---------- Phase 1c: cây mục (BuildArticleTree + GetTree) ----------
+
+func TestBuildArticleTreeNestsByHeading(t *testing.T) {
+	// Phân cấp heading của chunker: Chương/Phần = 1, Mục = 2, Điều/Bài = 3;
+	// tên tự do (không headword) coi là lá treo dưới cha gần nhất.
+	sections := []domain.SectionSpan{
+		{Name: "PHẦN A: QUY ĐỊNH CHUNG", From: 0},
+		{Name: "CHƯƠNG I: CHẾ ĐỘ"},
+		{Name: "MỤC 1: BẢO HIỂM", From: 10},
+		{Name: "ĐIỀU 1: PHẠM VI", From: 11},
+		{Name: "ĐIỀU 2: ĐỐI TƯỢNG", From: 15},
+		{Name: "CHƯƠNG II: HIỆU LỰC", From: 20},
+		{Name: "ĐIỀU 3: TỔ CHỨC THỰC HIỆN", From: 21},
+		{Name: "PHỤ LỤC", From: 30},
+	}
+	sections[1].From = 5
+	res := dtos.BuildArticleTree(&domain.Article{BaseModel: domain.BaseModel{ID: 1}}, sections, map[string]string{})
+	if res.NodeCount != 8 {
+		t.Fatalf("node_count = %d, muốn 8", res.NodeCount)
+	}
+	if len(res.Roots) != 3 || res.Roots[0].Name != "PHẦN A: QUY ĐỊNH CHUNG" {
+		t.Fatalf("roots sai: %v", rootNames(res.Roots))
+	}
+	chuongI := res.Roots[1]
+	if len(chuongI.Children) != 1 || chuongI.Children[0].Name != "MỤC 1: BẢO HIỂM" {
+		t.Fatalf("CHƯƠNG I phải có đúng con MỤC 1: %v", chuongI.Children)
+	}
+	if len(chuongI.Children[0].Children) != 2 {
+		t.Errorf("MỤC 1 phải có 2 Điều, nhận %d", len(chuongI.Children[0].Children))
+	}
+	chuongII := res.Roots[2]
+	// ĐIỀU 3 + PHỤ LỤC (lá không headword) đều treo dưới CHƯƠNG II.
+	if len(chuongII.Children) != 2 || chuongII.Children[1].Name != "PHỤ LỤC" {
+		t.Errorf("CHƯƠNG II con sai: %v", chuongII.Children)
+	}
+	if chuongII.Children[0].Children == nil {
+		t.Error("children phải là mảng rỗng, không null (JSON)")
+	}
+}
+
+func TestBuildArticleTreeFlatWhenNoChapters(t *testing.T) {
+	// Bài chỉ có Điều (như tài liệu test hiện tại): mọi mục là root — cây
+	// phẳng, không bịa ra cha ảo.
+	sections := []domain.SectionSpan{
+		{Name: "ĐIỀU 1: A", From: 0},
+		{Name: "ĐIỀU 2: B", From: 5},
+		{Name: "ĐIỀU 3: C", From: 9},
+	}
+	res := dtos.BuildArticleTree(nil, sections, nil)
+	if len(res.Roots) != 3 || res.NodeCount != 3 {
+		t.Fatalf("muốn 3 root phẳng, nhận %d/%d", len(res.Roots), res.NodeCount)
+	}
+	for _, r := range res.Roots {
+		if len(r.Children) != 0 {
+			t.Errorf("root %q không được có con", r.Name)
+		}
+	}
+}
+
+func TestArticleGetTreeNestsWithSummaries(t *testing.T) {
+	// GetTree đi đúng nguồn với ListSections: owner check + filter từ token +
+	// merge summary khi bài done, rồi mới nest.
+	repo := &sectionsStubArticles{article: &domain.Article{
+		BaseModel:     domain.BaseModel{ID: 8},
+		IndexStatus:   domain.QueueDone,
+		CompileStatus: domain.QueueDone,
+	}}
+	vectors := &sectionsStubVectors{sections: []domain.SectionSpan{
+		{Name: "CHƯƠNG I: CHẾ ĐỘ", From: 0},
+		{Name: "ĐIỀU 1: PHẠM VI", From: 1},
+		{Name: "ĐIỀU 2: ĐỐI TƯỢNG", From: 9},
+	}}
+	sectionRepo := &sectionsStubRepo{rows: []*domain.ArticleSection{
+		{Name: "CHƯƠNG I: CHẾ ĐỘ", Summary: "Chương gộp 2 điều đầu."},
+		{Name: "ĐIỀU 1: PHẠM VI", Summary: "Phạm vi áp dụng toàn công ty."},
+	}}
+	res := newSectionsSvc(repo, vectors, sectionRepo).GetTree(context.Background(), 8)
+	if res.Err != nil {
+		t.Fatalf("GetTree: %v", res.Err)
+	}
+	if res.Data.NodeCount != 3 || len(res.Data.Roots) != 1 {
+		t.Fatalf("cây sai: nodes=%d roots=%d", res.Data.NodeCount, len(res.Data.Roots))
+	}
+	root := res.Data.Roots[0]
+	if root.Name != "CHƯƠNG I: CHẾ ĐỘ" || root.Summary != "Chương gộp 2 điều đầu." {
+		t.Errorf("root sai: %+v", root)
+	}
+	if len(root.Children) != 2 || root.Children[0].Summary != "Phạm vi áp dụng toàn công ty." {
+		t.Errorf("con sai: %+v", root.Children)
+	}
+	if root.Children[1].Summary != "" {
+		t.Errorf("mục thiếu dòng trong bảng phải có summary rỗng")
+	}
+	if vectors.got.UserID != 7 || vectors.got.ArticleID != 8 {
+		t.Errorf("filter Qdrant sai quyền: %+v", vectors.got)
+	}
+}
+
+func TestArticleGetTreeForeignArticleIs404(t *testing.T) {
+	vectors := &sectionsStubVectors{}
+	res := newSectionsSvc(&sectionsStubArticles{err: domain.ErrNotFound}, vectors, &sectionsStubRepo{}).
+		GetTree(context.Background(), 99)
+	if res.Err == nil {
+		t.Fatal("muốn 404, nhận ok")
+	}
+	if e := cerr.From(res.Err); e == nil || e.GetHttpCode() != http.StatusNotFound {
+		t.Fatalf("không phải 404: %v", res.Err)
+	}
+	if vectors.called {
+		t.Error("bài không thuộc owner mà vẫn hỏi Qdrant")
+	}
+}
+
+func rootNames(nodes []*dtos.SectionTreeNodeResponse) []string {
+	out := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		out = append(out, n.Name)
+	}
+	return out
 }

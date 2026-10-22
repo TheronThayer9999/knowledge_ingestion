@@ -644,6 +644,37 @@ paths:
       summary: List article sections (PageIndex)
       tags:
       - articles
+  /api/v1/articles/{id}/tree:
+    get:
+      description: Returns the sections of one of my articles nested by heading hierarchy
+        (Chuong/Phan > Muc > Dieu/Bai) with compiled summaries; flat roots when the
+        document has no chapter headings or is not compiled yet
+      parameters:
+      - description: article id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Article section tree (knowledge tree)
+      tags:
+      - articles
   /api/v1/auth/change-password:
     post:
       consumes:

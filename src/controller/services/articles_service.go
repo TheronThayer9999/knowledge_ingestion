@@ -24,6 +24,9 @@ type IArticleService interface {
 	// ListSections trả PageIndex (danh mục mục + tọa độ chunk) của 1 bài của
 	// mình — P2.4 phase 1a, promote từ Qdrant ListSections, không cần LLM.
 	ListSections(ctx context.Context, id int64) dtos.Result[*dtos.ArticleSectionsResponse]
+	// GetTree trả cây mục theo phân cấp heading (P2.4 phase 1c) — cùng nguồn
+	// PageIndex + summary đã compile, nest Chương/Phần > Mục > Điều/Bài.
+	GetTree(ctx context.Context, id int64) dtos.Result[*dtos.ArticleTreeResponse]
 }
 
 type articleService struct {
@@ -218,33 +221,55 @@ func (s *articleService) Delete(ctx context.Context, id int64) dtos.Result[*dtos
 // biệt, không phải lỗi. Summary (phase 1b) đọc từ article_sections merge theo
 // tên mục — bài chưa compile thì summary rỗng, không phải lỗi.
 func (s *articleService) ListSections(ctx context.Context, id int64) dtos.Result[*dtos.ArticleSectionsResponse] {
+	article, sections, summaries, err := s.loadSections(ctx, id)
+	if err != nil {
+		return dtos.Fail[*dtos.ArticleSectionsResponse](err)
+	}
+	return dtos.Ok(dtos.ToArticleSectionsResponse(article, sections, summaries))
+}
+
+// GetTree dựng cây mục (phase 1c) từ đúng dữ liệu ListSections — builder
+// thuần trong dtos, không LLM, không thêm lượt Qdrant/DB nào.
+func (s *articleService) GetTree(ctx context.Context, id int64) dtos.Result[*dtos.ArticleTreeResponse] {
+	article, sections, summaries, err := s.loadSections(ctx, id)
+	if err != nil {
+		return dtos.Fail[*dtos.ArticleTreeResponse](err)
+	}
+	return dtos.Ok(dtos.BuildArticleTree(article, sections, summaries))
+}
+
+// loadSections là phần dùng chung ListSections + GetTree: xác minh owner qua
+// repo trước (bài của người khác 404 như không tồn tại), đọc PageIndex từ
+// Qdrant với filter owner từ token, rồi merge summary DB khi bài đã compile
+// done. Trả errors.Error để Render map đúng mã status.
+func (s *articleService) loadSections(ctx context.Context, id int64) (*domain.Article, []domain.SectionSpan, map[string]string, error) {
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
 	article, err := s.articleRepo.GetByID(ctx, id, userID)
 	if err != nil {
 		if stderrors.Is(err, domain.ErrNotFound) {
-			return dtos.Fail[*dtos.ArticleSectionsResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "bài viết không tồn tại"))
+			return nil, nil, nil, errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "bài viết không tồn tại")
 		}
-		return dtos.Fail[*dtos.ArticleSectionsResponse](err)
+		return nil, nil, nil, err
 	}
 	sections, err := s.vectors.ListSections(ctx, domain.SearchFilter{
 		UserID:    userID,
 		ArticleID: article.ID,
 	})
 	if err != nil {
-		return dtos.Fail[*dtos.ArticleSectionsResponse](err)
+		return nil, nil, nil, err
 	}
-	// Gộp summary đã compile theo tên mục. Chưa compile (compile_status !=
-	// done) hoặc bài không có dòng nào thì map rỗng — mục vẫn trả đủ tọa độ.
+	// Chưa compile (compile_status != done) hoặc bài không có dòng nào thì
+	// map rỗng — mục vẫn trả đủ tọa độ, client phân biệt qua compile_status.
 	summaries := make(map[string]string)
 	if article.CompileStatus == domain.QueueDone {
 		rows, serr := s.sectionRepo.ListByArticle(ctx, article.ID)
 		if serr != nil {
-			return dtos.Fail[*dtos.ArticleSectionsResponse](serr)
+			return nil, nil, nil, serr
 		}
 		for _, row := range rows {
 			summaries[row.Name] = row.Summary
 		}
 	}
-	return dtos.Ok(dtos.ToArticleSectionsResponse(article, sections, summaries))
+	return article, sections, summaries, nil
 }
