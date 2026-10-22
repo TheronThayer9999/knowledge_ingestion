@@ -8,8 +8,8 @@ import (
 )
 
 // ArticleAdminAPI vận hành hàng đợi tri thức — controller chỉ validate
-// (Bind) rồi Render, nghiệp vụ nằm ở service. Gate Role để sau (endpoint
-// hiện nằm sau auth thường như mọi route articles).
+// (Bind) rồi Render, nghiệp vụ nằm ở service. Route đã gate Role admin
+// (RequireRole) trong router.
 type ArticleAdminAPI struct {
 	*baseController
 	svc services.IArticleAdminService

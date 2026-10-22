@@ -101,6 +101,7 @@ func loadMiddleware() []fx.Option {
 		fx.Provide(middlewares.NewTraceMiddleware),
 		fx.Provide(middlewares.NewAuthMiddleware),
 		fx.Provide(middlewares.NewCurrentUser),
+		fx.Provide(middlewares.NewRateLimiter),
 	}
 }
 

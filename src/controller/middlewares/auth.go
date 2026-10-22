@@ -16,6 +16,8 @@ import (
 
 // Context key lưu thông tin user đã xác thực — handler lấy qua GetUserID.
 const CtxUserID = "user_id"
+// CtxUserRole lưu role của user đã xác thực (để RequireRole kiểm tra).
+const CtxUserRole = "user_role"
 
 // Claims là payload nhét vào JWT: ai (user_id/username) + hết hạn khi nào +
 // PwdChangedAt là mốc đổi pass lúc ký — Handler so với DB để đá token cũ.
@@ -37,9 +39,10 @@ type IAuthMiddleware interface {
 	// ParseToken verify chữ ký + hạn của token, trả claims khi hợp lệ.
 	ParseToken(tokenString string) (*Claims, error)
 	// VerifyToken verify trọn vẹn 1 token (chữ ký + hạn + đối chiếu DB: acc
-	// bị khóa hoặc đổi pass sau khi ký đều rớt) — gin Handler và gRPC
-	// interceptor dùng chung để 2 transport thu hồi tức thì như nhau.
-	VerifyToken(ctx context.Context, tokenString string) (int64, error)
+	// bị khóa hoặc đổi pass sau khi ký đều rớt) — trả user_id + role khi hợp
+	// lệ. gin Handler và gRPC interceptor dùng chung để 2 transport thu hồi
+	// tức thì như nhau.
+	VerifyToken(ctx context.Context, tokenString string) (int64, int, error)
 }
 
 type authMiddleware struct {
@@ -96,22 +99,22 @@ func (m *authMiddleware) ParseToken(tokenString string) (*Claims, error) {
 
 // VerifyToken verify trọn vẹn 1 token: chữ ký + hạn + đối chiếu DB (tài
 // khoản bị khóa hoặc đổi pass sau khi ký đều rớt) — trả user_id khi hợp lệ.
-func (m *authMiddleware) VerifyToken(ctx context.Context, tokenString string) (int64, error) {
+func (m *authMiddleware) VerifyToken(ctx context.Context, tokenString string) (int64, int, error) {
 	claims, err := m.ParseToken(tokenString)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	user, err := m.users.GetUserById(ctx, claims.UserID)
 	if err != nil || user == nil {
-		return 0, jwt.ErrTokenInvalidClaims
+		return 0, 0, jwt.ErrTokenInvalidClaims
 	}
 	if !user.Active {
-		return 0, jwt.ErrTokenInvalidClaims
+		return 0, 0, jwt.ErrTokenInvalidClaims
 	}
 	if user.PasswordChangedAt.Unix() != claims.PwdChangedAt {
-		return 0, jwt.ErrTokenInvalidClaims
+		return 0, 0, jwt.ErrTokenInvalidClaims
 	}
-	return claims.UserID, nil
+	return claims.UserID, user.Role, nil
 }
 
 // Handler trả middleware chặn request không có/không đúng JWT — client gửi
@@ -127,12 +130,13 @@ func (m *authMiddleware) Handler() gin.HandlerFunc {
 			abortUnauthorized(c, "thiếu token xác thực")
 			return
 		}
-		userID, err := m.VerifyToken(c.Request.Context(), strings.TrimSpace(token))
+		userID, role, err := m.VerifyToken(c.Request.Context(), strings.TrimSpace(token))
 		if err != nil {
 			abortUnauthorized(c, "token không hợp lệ hoặc đã hết hạn")
 			return
 		}
 		c.Set(CtxUserID, userID)
+		c.Set(CtxUserRole, role)
 		// Nhét tiếp vào request context chuẩn để tầng service đọc qua
 		// ICurrentUser mà không cần biết gin.
 		c.Request = c.Request.WithContext(WithUserID(c.Request.Context(), userID))
@@ -148,6 +152,38 @@ func GetUserID(c *gin.Context) (int64, bool) {
 	}
 	uid, ok := id.(int64)
 	return uid, ok
+}
+
+// GetUserRole lấy role mà Handler đã nhét vào context (0 = user thường).
+func GetUserRole(c *gin.Context) (int, bool) {
+	id, ok := c.Get(CtxUserRole)
+	if !ok {
+		return 0, false
+	}
+	role, ok := id.(int)
+	return role, ok
+}
+
+// RequireRole chặn request nếu user không đủ quyền (role < minRole). Phải
+// đặt SAU auth.Handler() trong chain (đọc CtxUserRole). Trả 401 nếu chưa
+// đăng nhập, 403 nếu đăng nhập nhưng không đủ quyền.
+func RequireRole(minRole int) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, ok := GetUserRole(c)
+		if !ok {
+			abortUnauthorized(c, "thiếu token xác thực")
+			return
+		}
+		if role < minRole {
+			c.AbortWithStatusJSON(http.StatusForbidden, dtos.ResponseResource{
+				Status:  false,
+				Code:    http.StatusForbidden,
+				Message: "không đủ quyền truy cập",
+			})
+			return
+		}
+		c.Next()
+	}
 }
 
 // abortUnauthorized trả envelope lỗi chuẩn của project với status 401.

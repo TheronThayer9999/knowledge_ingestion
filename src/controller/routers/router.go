@@ -4,6 +4,7 @@ import (
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/apis"
 	"knowledge_ingestion/src/controller/middlewares"
+	"knowledge_ingestion/src/domain"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -20,7 +21,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	adminAPI *apis.ArticleAdminAPI, embedCacheAPI *apis.EmbedCacheAdminAPI,
 	searchAPI *apis.SearchAPI, chatAPI *apis.ChatAPI,
 	cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
-	trace middlewares.ITraceMiddleware) *Router {
+	trace middlewares.ITraceMiddleware, rl middlewares.IRateLimiter) *Router {
 	if cfg.GetApp().Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -42,7 +43,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		v1.GET("/ping", api.Ping)
 		v1.GET("/pong", api.Pong)
 		v1.POST("/users", userAPI.Create)
-		v1.POST("/auth/login", userAPI.Login)
+		v1.POST("/auth/login", rl.Handler(), userAPI.Login)
 	}
 
 	// Route cần đăng nhập — Handler verify token với DB mỗi request
@@ -68,15 +69,19 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		authed.GET("/articles/:id", articleAPI.GetByID)
 		authed.PUT("/articles/:id", articleAPI.Update)
 		authed.DELETE("/articles/:id", articleAPI.Delete)
-		// Gate Role để sau — hiện sau auth thường như mọi route articles.
-		authed.POST("/admin/rebuild-vectors", adminAPI.Rebuild)
-		// Xoá trang đã trích → OCR lại (cải thiện chất lượng trích).
-		authed.POST("/admin/reset-extract", adminAPI.ResetExtract)
-		// Xem hàng đợi extract/index + bài chờ purge — read-only.
-		authed.GET("/admin/queue", adminAPI.Queue)
-		// Embed cache: monitor + janitor giữ bảng không phình.
-		authed.GET("/admin/embed-cache/stats", embedCacheAPI.Stats)
-		authed.POST("/admin/embed-cache/purge", embedCacheAPI.Purge)
+		// Admin endpoints — yêu cầu role admin (role >= 1). Gate Role đã bật.
+		admin := authed.Group("")
+		admin.Use(middlewares.RequireRole(domain.RoleAdmin))
+		{
+			admin.POST("/admin/rebuild-vectors", adminAPI.Rebuild)
+			// Xoá trang đã trích → OCR lại (cải thiện chất lượng trích).
+			admin.POST("/admin/reset-extract", adminAPI.ResetExtract)
+			// Xem hàng đợi extract/index + bài chờ purge — read-only.
+			admin.GET("/admin/queue", adminAPI.Queue)
+			// Embed cache: monitor + janitor giữ bảng không phình.
+			admin.GET("/admin/embed-cache/stats", embedCacheAPI.Stats)
+			admin.POST("/admin/embed-cache/purge", embedCacheAPI.Purge)
+		}
 		authed.POST("/search", searchAPI.Query)
 		authed.POST("/chat", chatAPI.Chat)
 	}

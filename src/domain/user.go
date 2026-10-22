@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+// Role constants — Role là int trong User; 0 = user thường, 1 = admin.
+// So sánh bằng >= để sau này thêm role cao hơn (moderator...) không phải
+// sửa middleware.
+const (
+	RoleUser  = 0
+	RoleAdmin = 1
+)
+
 type User struct {
 	BaseModel
 	UserName  string     `json:"user_name"`
