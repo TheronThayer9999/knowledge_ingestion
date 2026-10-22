@@ -35,7 +35,7 @@ Mỗi mục có mức ưu tiên: **P0** (làm ngay), **P1** (trung hạn), **P2*
 
 ### Giải pháp
 - **P1.2** ✅ Template-based chunking: DocType field + chunker template (laws qua SplitBlocks). Các loại khác delegate base.
-- **P1.3** Dual embedding (title + content) + full-text tokenization.
+- **P1.3** ✅ Dual embedding: named vectors content+title, RRF fusion trong Qdrant adapter. (Full-text tokenization còn lại là P1.3b.)
 
 ---
 
