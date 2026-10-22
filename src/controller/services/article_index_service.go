@@ -2,8 +2,6 @@ package services
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	stderrors "errors"
 	"fmt"
 	"maps"
@@ -426,33 +424,33 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 	for _, p := range batch {
 		texts = append(texts, p.Text)
 	}
-	cached, missIdx, missTexts, err := s.lookupCache(ctx, texts)
+	// Embed toàn bộ đợt (cache đã bỏ — hit rate 99.99% count=1 → vô dụng).
+	// Vector lưu trong Qdrant; rebuild dùng checkpoint index_done_chunks.
+	logs.Infow("ollama: gọi embed", "trace_id", traceID, "article_id", article.ID,
+		"texts", len(texts), "model", s.embedder.ModelName())
+	embedStart := time.Now()
+	vectors, err := s.embedder.EmbedBatch(ctx, texts)
 	if err != nil {
-		return err
+		// retry transient
+		if rerr := worker.WithRetry(ctx, constants.INDEX_CALL_ATTEMPTS, constants.INDEX_CALL_BASE_DELAY,
+			func(ctx context.Context) error {
+				var e error
+				vectors, e = s.embedder.EmbedBatch(ctx, texts)
+				return e
+			}); rerr != nil {
+			return fmt.Errorf("gọi embed: %w", rerr)
+		}
 	}
-	if len(missIdx) > 0 {
-		fresh, err := s.embedMissing(ctx, traceID, article, missIdx, missTexts)
-		if err != nil {
-			return err
-		}
-		// Nối kết quả mới vào cùng map tra cứu để chỉ còn MỘT vòng gán bên
-		// dưới, khỏi phải ráng nhớ "chunk nào lấy cache, chunk nào lấy mới".
-		for j, i := range missIdx {
-			cached[chunkHash(texts[i])] = fresh[j]
-		}
-		if err := s.storeCache(ctx, missTexts, fresh); err != nil {
-			return err
-		}
+	logs.Infow("ollama: embed xong", "trace_id", traceID, "article_id", article.ID,
+		"texts", len(texts), "elapsed_ms", time.Since(embedStart).Milliseconds())
+	if len(vectors) != len(texts) {
+		return fmt.Errorf("%w: embed trả %d vector cho %d text", errIndexContract, len(vectors), len(texts))
 	}
 	for i, p := range batch {
-		v, ok := cached[chunkHash(texts[i])]
-		if !ok || len(v) != s.embedder.Dimension() {
-			// Không xảy ra nếu embed trả đúng số vector — nhưng nếu đúng là
-			// phải chặn, vì vector nil lọt xuống Qdrant sẽ thành point hỏng
-			// im lặng thay vì job fail.
-			return fmt.Errorf("%w: không có vector cho chunk %d", errIndexContract, i)
+		if len(vectors[i]) != s.embedder.Dimension() {
+			return fmt.Errorf("%w: vector chunk %d sai dim", errIndexContract, i)
 		}
-		p.Vector = v
+		p.Vector = vectors[i]
 	}
 	if err := worker.WithRetry(ctx, constants.INDEX_CALL_ATTEMPTS, constants.INDEX_CALL_BASE_DELAY,
 		func(ctx context.Context) error {
@@ -470,59 +468,6 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 //
 // Cache không bắt buộc phải có: cache lỗi thì coi như toàn bộ miss và log,
 // job vẫn chạy được. Một bộ cache hỏng không được làm hỏng việc index.
-// lookupCache: embed cache đã bị loại bỏ (hit rate 99.99% count=1 → vô dụng),
-// nên luôn miss — embed toàn bộ. Vector lưu trong Qdrant, rebuild dùng
-// checkpoint index_done_chunks để resume. Giữ chữ ký (4 giá trị) để không
-// phải sửa upsertBatch.
-func (s *articleIndexService) lookupCache(ctx context.Context, texts []string) (map[string][]float32, []int, []string, error) {
-	idx := make([]int, len(texts))
-	for i := range idx {
-		idx[i] = i
-	}
-	return make(map[string][]float32, len(texts)), idx, texts, nil
-}
-
-// embedMissing gọi model cho phần miss. Trả vector đúng thứ tự với missIdx.
-func (s *articleIndexService) embedMissing(ctx context.Context, traceID string, article *domain.Article, missIdx []int, missTexts []string) ([][]float32, error) {
-	// Log trước/sau mỗi lần gọi để nhìn thấy nhịp Ollama trong log worker
-	// (1 dòng/lần gọi, không log từng chunk để khỏi spam).
-	logs.Infow("ollama: gọi embed", "trace_id", traceID, "article_id", article.ID,
-		"texts", len(missTexts), "model", s.embedder.ModelName())
-	embedStart := time.Now()
-	var vectors [][]float32
-	if err := worker.WithRetry(ctx, constants.INDEX_CALL_ATTEMPTS, constants.INDEX_CALL_BASE_DELAY,
-		func(ctx context.Context) error {
-			var err error
-			vectors, err = s.embedder.EmbedBatch(ctx, missTexts)
-			return err
-		}); err != nil {
-		return nil, fmt.Errorf("gọi embed: %w", err)
-	}
-	logs.Infow("ollama: embed xong", "trace_id", traceID, "article_id", article.ID,
-		"texts", len(missTexts), "elapsed_ms", time.Since(embedStart).Milliseconds())
-	// Contract EmbedBatch không đảm bảo số vector trả về — thiếu là lỗi
-	// embedder, không được index mù gây lỗi index mảng cả job.
-	if len(vectors) != len(missTexts) {
-		return nil, fmt.Errorf("%w: embed trả %d vector cho %d text", errIndexContract, len(vectors), len(missTexts))
-	}
-	return vectors, nil
-}
-
-// storeCache ghi vector mới xuống cache. Lỗi ghi cache chỉ log, KHÔNG làm
-// fail job — cache là tối ưu, thiếu nó thì chỉ tốn thêm lượt embed sau.
-func (s *articleIndexService) storeCache(ctx context.Context, texts []string, vectors [][]float32) error {
-	// Embed cache đã bị loại bỏ — không ghi gì.
-	return nil
-}
-
-// chunkHash là khoá cache — sha256 hex của text sẽ đưa vào model (đã kèm
-// header mục). Dùng sha256 chứ không phải hash yếu hơn vì trùng bằng nhiễu
-// sẽ trả SAI vector cho một chunk khác — hỏng im lặng, tệ hơn cache miss.
-func chunkHash(text string) string {
-	sum := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(sum[:])
-}
-
 // ensureAlive kiểm tra bài còn sống — bài chết thì dọn vector vừa làm rồi trả
 // (false, nil) để caller dừng mà không mark done. Lỗi DB (kể cả ctx hủy giữa
 // chừng) trả về error để indexClaimed xử lý đúng: cancellation → release
