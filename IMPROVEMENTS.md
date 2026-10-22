@@ -77,7 +77,7 @@ Mỗi mục có mức ưu tiên: **P0** (làm ngay), **P1** (trung hạn), **P2*
 - Data consistency verified (0 orphan, 0 cycle, 0 missing self-row).
 
 ### Còn có thể cải tiến
-- **P2.2** Thêm test unit (Go) cho cascade delete, move, cycle detection.
+- **P2.2** ✅ Unit test category (create/move/cycle/delete/cascade/cross-user).
 - **P2.3** Test E2E tự động cho category API.
 
 ---
