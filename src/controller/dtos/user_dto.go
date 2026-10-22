@@ -74,11 +74,49 @@ type LoginUserRequest struct {
 	Password string `json:"password" binding:"required" example:"secret123"`
 }
 
-// LoginUserResponse trả token + hạn + thông tin user (không bao giờ có password).
+// LoginUserResponse trả access token + refresh token + hạn của từng loại
+// (không bao giờ có password). refresh_token chỉ xuất hiện đúng 1 lần — DB
+// chỉ giữ hash nên không thể phát lại.
 type LoginUserResponse struct {
-	Token     string        `json:"token" example:"eyJhbGciOiJIUzI1NiIs..."`
-	ExpiresAt time.Time     `json:"expires_at" example:"2026-10-07T10:00:00+07:00"`
-	User      *UserResponse `json:"user"`
+	Token            string        `json:"token" example:"eyJhbGciOiJIUzI1NiIs..."`
+	ExpiresAt        time.Time     `json:"expires_at" example:"2026-10-07T10:00:00+07:00"`
+	RefreshToken     string        `json:"refresh_token" example:"8f3kQ2..."`
+	RefreshExpiresAt time.Time     `json:"refresh_expires_at" example:"2026-11-05T10:00:00+07:00"`
+	User             *UserResponse `json:"user"`
+}
+
+// RefreshTokenRequest là payload đổi access token mới. Refresh token là
+// opaque string, KHÔNG phải JWT — client chỉ cần lưu và gửi lại nguyên văn.
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required" example:"8f3kQ2..."`
+}
+
+// RefreshTokenResponse trả cặp token mới. Refresh token cũ đã bị đánh dấu
+// xoay và không dùng lại được — client phải thay bằng giá trị mới này.
+type RefreshTokenResponse struct {
+	Token            string    `json:"token" example:"eyJhbGciOiJIUzI1NiIs..."`
+	ExpiresAt        time.Time `json:"expires_at" example:"2026-10-22T10:15:00+07:00"`
+	RefreshToken     string    `json:"refresh_token" example:"V9x1mP..."`
+	RefreshExpiresAt time.Time `json:"refresh_expires_at" example:"2026-11-21T10:00:00+07:00"`
+}
+
+// LogoutRequest chỉ cần refresh token: chỉ người đang giữ token mới thu hồi
+// được phiên đó. Access token không cần gửi — nếu đã hết hạn vẫn logout được.
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required" example:"V9x1mP..."`
+}
+
+// LogoutResponse báo số token còn sống đã bị thu hồi (0 nếu token không tồn
+// tại hoặc đã chết — logout là idempotent).
+type LogoutResponse struct {
+	Revoked int64 `json:"revoked" example:"1"`
+}
+
+// SessionMeta là thông tin phục vụ audit, do controller lấy từ request chứ
+// client không gửi trong body — không phải DTO request nên không bind.
+type SessionMeta struct {
+	UserAgent string
+	IP        string
 }
 
 // ChangePasswordRequest đổi mật khẩu của chính mình — userId lấy từ token

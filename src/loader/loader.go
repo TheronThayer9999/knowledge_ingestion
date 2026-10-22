@@ -49,6 +49,7 @@ func loadAdapter() []fx.Option {
 		fx.Provide(rabbitmq.NewConnection),
 		//
 		fx.Provide(repository.NewUserRepository),
+		fx.Provide(repository.NewRefreshTokenRepository),
 		fx.Provide(repository.NewCategoryRepository),
 		fx.Provide(repository.NewArticleRepository),
 		// Bind vai ArticleAdminQueue → cùng 1 repo. fx chỉ tự bind khi kiểu

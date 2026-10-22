@@ -46,6 +46,10 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		v1.GET("/pong", api.Pong)
 		v1.POST("/users", userAPI.Create)
 		v1.POST("/auth/login", rl.Handler(), userAPI.Login)
+		// Refresh/logout xác thực bằng chính refresh token (không cần access
+		// token), nên để public: access hết hạn vẫn logout/refresh được.
+		v1.POST("/auth/refresh", userAPI.Refresh)
+		v1.POST("/auth/logout", userAPI.Logout)
 	}
 
 	// Route cần đăng nhập — Handler verify token với DB mỗi request
@@ -57,6 +61,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		authed.GET("/users", userAPI.GetAllUser)
 		authed.GET("/auth/profile", userAPI.Profile)
 		authed.POST("/auth/change-password", userAPI.ChangePassword)
+		authed.POST("/auth/logout-all", userAPI.LogoutAll)
 		authed.POST("/uploads/presign", fileAPI.PresignUpload)
 		authed.POST("/uploads/presign/batch", fileAPI.PresignUploads)
 		//

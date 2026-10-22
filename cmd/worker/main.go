@@ -41,9 +41,10 @@ func main() {
 		fx.Provide(services.NewArticleExtractService),
 		fx.Provide(services.NewArticleIndexService),
 		fx.Provide(services.NewArticleCompileService),
+		fx.Provide(services.NewRefreshTokenJanitor),
 		// Thêm job mới = inject service ở tham số + append 1 dòng Schedule:
 		// {Name: "...", Interval: ..., Run: asJob(svc.Method)}.
-		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, extract services.IArticleExtractService, index services.IArticleIndexService, compile services.IArticleCompileService, opts services.PurgeOptions) {
+		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, extract services.IArticleExtractService, index services.IArticleIndexService, compile services.IArticleCompileService, refreshJanitor services.IRefreshTokenJanitor, opts services.PurgeOptions) {
 			NewRunner([]Schedule{
 				{Name: "purge-articles", Interval: constants.PURGE_GRACE_PERIOD, Run: func(ctx context.Context) error {
 					_, err := purge.PurgeDeleted(ctx)
@@ -71,6 +72,12 @@ func main() {
 				// chậm; timeout riêng < lease để worker khác không reclaim oan.
 				{Name: "compile-articles", Interval: constants.COMPILE_INTERVAL, Timeout: constants.COMPILE_JOB_TIMEOUT, Run: func(ctx context.Context) error {
 					_, err := compile.CompilePending(ctx)
+					return err
+				}},
+				// Dọn refresh token hết hạn/bị thu hồi — bảng nhỏ nhưng không dọn
+				// thì phình mãi theo số lần login.
+				{Name: "purge-refresh-tokens", Interval: constants.REFRESH_TOKEN_JANITOR_INTERVAL, Run: func(ctx context.Context) error {
+					_, err := refreshJanitor.PurgeExpired(ctx)
 					return err
 				}},
 			}).Attach(lc)

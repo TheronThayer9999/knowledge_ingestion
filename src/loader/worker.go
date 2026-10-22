@@ -39,6 +39,7 @@ func LoadWorkerInfra() []fx.Option {
 		fx.Provide(embedding.NewEmbedder),
 		fx.Provide(qdrant.NewConnection),
 		fx.Provide(repository.NewArticleRepository),
+		fx.Provide(repository.NewRefreshTokenRepository),
 		fx.Provide(repository.NewArticlePageRepository),
 		fx.Provide(repository.NewArticleSectionRepository),
 		// Cache embed — tránh gọi lại model cho chunk đã tính. Ý tưởng lấy từ

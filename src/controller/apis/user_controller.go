@@ -65,7 +65,65 @@ func (a *UserAPI) Login(c *gin.Context) {
 	if !a.Bind(c, req) {
 		return
 	}
-	Render(c, a, a.svc.Login(c, req))
+	Render(c, a, a.svc.Login(c, req, sessionMeta(c)))
+}
+
+// Refresh godoc
+// @Summary Exchange a refresh token for a new token pair
+// @Description Rotates the refresh token. Each token is single-use; presenting an already rotated token revokes the whole session family.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body dtos.RefreshTokenRequest true "refresh token"
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 400 {object} dtos.ResponseResource
+// @Failure 401 {object} dtos.ResponseResource
+// @Router /api/v1/auth/refresh [post]
+func (a *UserAPI) Refresh(c *gin.Context) {
+	req := &dtos.RefreshTokenRequest{}
+	if !a.Bind(c, req) {
+		return
+	}
+	Render(c, a, a.svc.Refresh(c, req, sessionMeta(c)))
+}
+
+// Logout godoc
+// @Summary Revoke the current session
+// @Description Revokes every refresh token in the same session family. Idempotent: unknown tokens still return success.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body dtos.LogoutRequest true "refresh token"
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 400 {object} dtos.ResponseResource
+// @Router /api/v1/auth/logout [post]
+func (a *UserAPI) Logout(c *gin.Context) {
+	req := &dtos.LogoutRequest{}
+	if !a.Bind(c, req) {
+		return
+	}
+	Render(c, a, a.svc.Logout(c, req))
+}
+
+// LogoutAll godoc
+// @Summary Revoke every session of the current user
+// @Description Revokes all refresh tokens of the user in the JWT — use after suspected token theft.
+// @Tags auth
+// @Produce json
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 401 {object} dtos.ResponseResource
+// @Security BearerAuth
+// @Router /api/v1/auth/logout-all [post]
+func (a *UserAPI) LogoutAll(c *gin.Context) {
+	// Route đã qua RequiredAuth nên user_id chắc chắn có trong context.
+	userID, _ := middlewares.GetUserID(c)
+	Render(c, a, a.svc.LogoutAll(c, userID))
+}
+
+// sessionMeta gom thông tin audit của phiên (UA/IP) do server tự lấy từ
+// request — không nhận từ body để client không tự khai man.
+func sessionMeta(c *gin.Context) dtos.SessionMeta {
+	return dtos.SessionMeta{UserAgent: c.Request.UserAgent(), IP: c.ClientIP()}
 }
 
 // ChangePassword godoc

@@ -34,6 +34,7 @@ definitions:
       category_ids:
         items:
           type: integer
+        maxItems: 100
         type: array
       history:
         items:
@@ -165,6 +166,14 @@ definitions:
     - password
     - username
     type: object
+  dtos.LogoutRequest:
+    properties:
+      refresh_token:
+        example: V9x1mP...
+        type: string
+    required:
+    - refresh_token
+    type: object
   dtos.RebuildVectorsRequest:
     properties:
       article_ids:
@@ -174,6 +183,14 @@ definitions:
       category_id:
         example: 5
         type: integer
+    type: object
+  dtos.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        example: 8f3kQ2...
+        type: string
+    required:
+    - refresh_token
     type: object
   dtos.ResetScopeRequest:
     properties:
@@ -203,6 +220,7 @@ definitions:
       category_ids:
         items:
           type: integer
+        maxItems: 100
         type: array
       limit:
         minimum: 0
@@ -739,6 +757,53 @@ paths:
       summary: Login with username and password
       tags:
       - auth
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: 'Revokes every refresh token in the same session family. Idempotent:
+        unknown tokens still return success.'
+      parameters:
+      - description: refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      summary: Revoke the current session
+      tags:
+      - auth
+  /api/v1/auth/logout-all:
+    post:
+      description: Revokes all refresh tokens of the user in the JWT — use after suspected
+        token theft.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Revoke every session of the current user
+      tags:
+      - auth
   /api/v1/auth/profile:
     get:
       description: Returns the profile of the user identified by the JWT
@@ -756,6 +821,37 @@ paths:
       security:
       - BearerAuth: []
       summary: Get my profile
+      tags:
+      - auth
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Rotates the refresh token. Each token is single-use; presenting
+        an already rotated token revokes the whole session family.
+      parameters:
+      - description: refresh token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      summary: Exchange a refresh token for a new token pair
       tags:
       - auth
   /api/v1/categories:

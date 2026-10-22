@@ -212,11 +212,22 @@ type RabbitMQConfig struct {
 	Queue string `json:"queue"`
 }
 
-// JWTConfig giữ bí mật ký token và thời hạn sống (phút). Secret ưu tiên
-// lấy từ env JWT_SECRET để production không commit secret vào file.
+// JWTConfig giữ bí mật ký token và thời hạn sống. Secret ưu tiên lấy từ env
+// JWT_SECRET để production không commit secret vào file.
+//
+// ExpiryMinutes là hạn của ACCESS token. Muốn hạ xuống 15 phút thì FE phải
+// gọi /auth/refresh trước — nếu hạ khi FE chưa hỗ trợ, user bị đá ra giữa
+// phiên. Vì vậy mặc định vẫn 1440 (1 ngày) cho tới khi FE xong.
 type JWTConfig struct {
 	Secret        string `json:"secret"`
 	ExpiryMinutes int    `json:"expiry_minutes"`
+	// RefreshExpiryDays là hạn của MỘT refresh token (mỗi lần refresh lại
+	// được cấp token mới với hạn mới — sliding).
+	RefreshExpiryDays int `json:"refresh_expiry_days"`
+	// RefreshAbsoluteDays là hạn tuyệt đối của cả phiên (family): dù refresh
+	// liên tục, quá mốc này vẫn phải đăng nhập lại. Chặn trường hợp token bị
+	// đánh cắp sống mãi.
+	RefreshAbsoluteDays int `json:"refresh_absolute_days"`
 }
 
 // CorsConfig giữ danh sách origin được phép gọi API (Angular dev/prod).
@@ -233,8 +244,8 @@ type WorkerConfig struct {
 	// đệ quy, mặc định — rẻ, bulk), "semantic" (Eino splitter ngữ nghĩa qua
 	// Ollama embed, đắt — tài liệu ưu tiên/văn bản hành chính nhiều viết
 	// tắt), "manual" (Split thủ công cũ, giữ cho test/fallback).
-	Chunker          string `json:"chunker"`
-	EnhanceKeywords  bool   `json:"enhance_keywords"`
+	Chunker         string `json:"chunker"`
+	EnhanceKeywords bool   `json:"enhance_keywords"`
 }
 
 // AgentConfig giữ đường dẫn thư mục prompt LLM của agent (prompts/*.md) —
@@ -429,6 +440,23 @@ func Load(path string) (IConfig, error) {
 	}
 	if cfg.JWTCli.ExpiryMinutes <= 0 {
 		cfg.JWTCli.ExpiryMinutes = 1440 // mặc định 1 ngày
+	}
+	if cfg.JWTCli.RefreshExpiryDays <= 0 {
+		cfg.JWTCli.RefreshExpiryDays = 30
+	}
+	if cfg.JWTCli.RefreshExpiryDays > 365 {
+		cfg.JWTCli.RefreshExpiryDays = 365
+	}
+	if cfg.JWTCli.RefreshAbsoluteDays <= 0 {
+		cfg.JWTCli.RefreshAbsoluteDays = 90
+	}
+	// Hạn tuyệt đối không được ngắn hơn hạn 1 token, nếu không phiên chết
+	// ngay sau lần refresh đầu tiên.
+	if cfg.JWTCli.RefreshAbsoluteDays < cfg.JWTCli.RefreshExpiryDays {
+		cfg.JWTCli.RefreshAbsoluteDays = cfg.JWTCli.RefreshExpiryDays
+	}
+	if cfg.JWTCli.RefreshAbsoluteDays > 730 {
+		cfg.JWTCli.RefreshAbsoluteDays = 730
 	}
 	if len(cfg.Cors.AllowedOrigins) == 0 {
 		cfg.Cors.AllowedOrigins = []string{"http://localhost:4200"} // mặc định Angular dev

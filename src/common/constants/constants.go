@@ -183,6 +183,14 @@ const PURGE_GRACE_PERIOD = 5 * time.Minute
 // còn tồn thì kỳ sau dọn tiếp.
 const PURGE_BATCH_SIZE = 100
 
+// REFRESH_TOKEN_JANITOR_INTERVAL nhịp dọn refresh token chết — 1 ngày 1 lần
+// là đủ, bảng chỉ phình theo số lần đăng nhập chứ không theo lưu lượng đọc.
+const REFRESH_TOKEN_JANITOR_INTERVAL = 24 * time.Hour
+
+// REFRESH_TOKEN_RETENTION giữ token đã hết hạn/bị thu hồi thêm 7 ngày để còn
+// đối soát khi điều tra reuse detection, sau đó xoá cứng.
+const REFRESH_TOKEN_RETENTION = 7 * 24 * time.Hour
+
 // QDRANT_COLLECTION là collection duy nhất worker dùng — 1 collection cho mọi
 // article, phân biệt bằng payload article_id (filter + xóa theo bài).
 const QDRANT_COLLECTION = "article_chunks"

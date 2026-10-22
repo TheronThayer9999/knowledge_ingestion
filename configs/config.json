@@ -111,7 +111,9 @@
   },
   "jwt": {
     "secret": "dev-only-change-me-via-JWT_SECRET-env",
-    "expiry_minutes": 1440
+    "expiry_minutes": 1440,
+    "refresh_expiry_days": 30,
+    "refresh_absolute_days": 90
   },
   "cors": {
     "allowed_origins": ["http://localhost:4200"]
