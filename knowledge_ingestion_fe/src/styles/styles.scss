@@ -1,6 +1,16 @@
 // Entry style global — theme/material đặt ở src/styles/.
 @use './material-theme';
 @use './tokens/scales';
+@use './toast';
+
+// ===== Nền tảng toàn cục =====
+
+// Reset box-sizing — padding không cộng thêm vào 100vh (tránh scrollbar thừa).
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 html,
 body {

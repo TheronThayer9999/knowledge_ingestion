@@ -1,7 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { safeLocalStorage } from '../../../shared/browser';
-import { AuthState, LoginRequest, LoginResponse, User } from '../models/auth.model';
+import { MessageService } from '../../../shared/feedback/message.service';
+import { AuthState, LoginRequest, LoginResponse, RegisterRequest, User } from '../models/auth.model';
 import { AUTH_CHANNEL_NAME, AuthEvent } from '../models/auth-event.model';
 import { AUTH_SERVICE, IAuthService } from './auth.interface';
 
@@ -17,6 +18,7 @@ const USER_STORAGE_KEY = 'ki.auth.user';
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly api = inject<IAuthService>(AUTH_SERVICE);
+  private readonly messages = inject(MessageService);
   /** ID riêng của tab này, dùng để lọc message do chính tab gửi ra. */
   private readonly tabId = crypto.randomUUID();
   private readonly channel: BroadcastChannel | null =
@@ -35,7 +37,20 @@ export class AuthService {
   }
 
   login(request: LoginRequest): Observable<LoginResponse> {
-    return this.api.login(request).pipe(
+    return this.withSession(this.api.login(request));
+  }
+
+  loginWithGoogle(): Observable<LoginResponse> {
+    return this.withSession(this.api.loginWithGoogle());
+  }
+
+  register(request: RegisterRequest): Observable<LoginResponse> {
+    return this.withSession(this.api.register(request));
+  }
+
+  /** Mọi endpoint trả LoginResponse (login/google/register) đều dùng chung luồng phiên. */
+  private withSession(source: Observable<LoginResponse>): Observable<LoginResponse> {
+    return source.pipe(
       tap((response) => {
         this.applyState(response.token, response.user);
         this.persist(response.token, response.user);
@@ -60,6 +75,8 @@ export class AuthService {
     if (event.type === 'LOGOUT') {
       this.applyState(null, null);
       this.clearStorage();
+      // Tab phụ bị đăng xuất theo — bắn message cho user biết lý do.
+      this.messages.info('REMOTE_LOGOUT');
     } else if (event.type === 'LOGIN' && event.payload) {
       this.applyState(event.payload.token, event.payload.user);
       this.persist(event.payload.token, event.payload.user);

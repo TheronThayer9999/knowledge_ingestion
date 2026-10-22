@@ -6,15 +6,17 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/services/auth.service';
 import { AuthApiError, AuthErrorCode } from '../../core/auth/models/auth-error.model';
+import { MessageService } from '../../shared/feedback/message.service';
 import { LangService } from '../../shared/i18n/lang.service';
 import { TranslationKey } from '../../shared/i18n/lang.model';
 
 /** Mã lỗi auth → key i18n (SCREAMING_SNAKE trong vi.json/en.json). */
 const AUTH_ERROR_KEYS: Record<AuthErrorCode, TranslationKey> = {
   INVALID_CREDENTIALS: 'LOGIN_ERRORS_INVALID_CREDENTIALS',
+  USERNAME_TAKEN: 'LOGIN_ERRORS_USERNAME_TAKEN',
   GENERIC: 'LOGIN_ERRORS_GENERIC',
 };
 
@@ -23,6 +25,7 @@ const AUTH_ERROR_KEYS: Record<AuthErrorCode, TranslationKey> = {
   selector: 'app-login',
   imports: [
     ReactiveFormsModule,
+    RouterLink,
     MatCardModule,
     MatFormFieldModule,
     MatInputModule,
@@ -38,11 +41,11 @@ export class LoginComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly messages = inject(MessageService);
   protected readonly lang = inject(LangService);
 
-  /** Key i18n của lỗi gần nhất — hiển thị bằng lang.t(key). */
-  protected readonly errorKey = signal<TranslationKey | null>(null);
   protected readonly submitting = signal(false);
+  protected readonly googleLoading = signal(false);
   protected readonly hidePassword = signal(true);
 
   protected readonly form = this.fb.nonNullable.group({
@@ -56,20 +59,45 @@ export class LoginComponent {
       return;
     }
     this.submitting.set(true);
-    this.errorKey.set(null);
 
     this.auth.login(this.form.getRawValue()).subscribe({
       next: () => {
         this.submitting.set(false);
+        // Mọi message bắn ra từ trung tâm — không còn block inline trong form.
+        this.messages.success('LOGIN_SUCCESS');
         const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/dashboard';
         void this.router.navigateByUrl(returnUrl);
       },
       error: (err: unknown) => {
         this.submitting.set(false);
         const code: AuthErrorCode = err instanceof AuthApiError ? err.code : 'GENERIC';
-        this.errorKey.set(AUTH_ERROR_KEYS[code]);
+        this.messages.error(AUTH_ERROR_KEYS[code]);
       },
     });
+  }
+
+  /** Đăng nhập Google (mock OAuth) — cùng luồng phiên với form login. */
+  protected loginWithGoogle(): void {
+    if (this.googleLoading()) {
+      return;
+    }
+    this.googleLoading.set(true);
+    this.auth.loginWithGoogle().subscribe({
+      next: () => {
+        this.googleLoading.set(false);
+        this.messages.success('LOGIN_SUCCESS');
+        this.goToReturnUrl();
+      },
+      error: () => {
+        this.googleLoading.set(false);
+        this.messages.error(AUTH_ERROR_KEYS['GENERIC']);
+      },
+    });
+  }
+
+  private goToReturnUrl(): void {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/dashboard';
+    void this.router.navigateByUrl(returnUrl);
   }
 
   protected togglePasswordVisibility(): void {

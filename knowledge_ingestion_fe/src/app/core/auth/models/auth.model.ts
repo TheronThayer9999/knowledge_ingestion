@@ -15,6 +15,13 @@ export interface LoginRequest {
   password: string;
 }
 
+/** Body gửi lên endpoint tạo tài khoản. */
+export interface RegisterRequest {
+  username: string;
+  email: string;
+  password: string;
+}
+
 /** Response trả về từ endpoint login. */
 export interface LoginResponse {
   /** JWT access token (mock: chuỗi JWT giả lập). */

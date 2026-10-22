@@ -13,6 +13,9 @@
 
   --border-width: 1px;          // viền khi không focus
   --border-width-focus: 2px;    // viền khi focus
+
+  // Bóng đổ chuẩn — dựng từ --mat-sys-shadow của theme đang áp
+  --shadow-md: 0 8px 32px color-mix(in srgb, var(--mat-sys-shadow) 25%, transparent);
 }
 
 // 2) Alias ngữ nghĩa — trỏ về token của theme đang áp trên [data-theme]
@@ -21,6 +24,6 @@
   --color-primary: var(--app-primary);
   --color-danger: var(--app-error);
   --color-border: var(--app-outline);
-  --color-muted: var(--app-on-surface-variant);
+  --color-text-secondary: var(--app-on-surface-variant);
   --radius-md: var(--app-radius-md);
 }

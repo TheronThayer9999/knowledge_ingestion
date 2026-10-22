@@ -1,6 +1,6 @@
 import { InjectionToken } from '@angular/core';
 import { Observable } from 'rxjs';
-import { LoginRequest, LoginResponse } from '../models/auth.model';
+import { LoginRequest, LoginResponse, RegisterRequest } from '../models/auth.model';
 
 /**
  * Hợp đồng với backend auth. AuthService (store phía client) chỉ nói chuyện
@@ -9,6 +9,9 @@ import { LoginRequest, LoginResponse } from '../models/auth.model';
  */
 export interface IAuthService {
   login(request: LoginRequest): Observable<LoginResponse>;
+  /** Đăng nhập qua Google (API thật: exchange code/token; mock: trả user Google). */
+  loginWithGoogle(): Observable<LoginResponse>;
+  register(request: RegisterRequest): Observable<LoginResponse>;
   logout(): Observable<void>;
 }
 

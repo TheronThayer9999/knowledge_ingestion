@@ -4,8 +4,10 @@ import { MatIcon } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { Router } from '@angular/router';
+import { filter } from 'rxjs';
 import { AVAILABLE_THEMES, ThemeName } from '../../../../styles/tokens/theme.model';
 import { AuthService } from '../../../core/auth/services/auth.service';
+import { MessageService } from '../../feedback/message.service';
 import { LangService } from '../../i18n/lang.service';
 import { ThemeService } from '../../theme/theme.service';
 
@@ -25,13 +27,21 @@ export class TopBar {
   protected readonly lang = inject(LangService);
   protected readonly themes = AVAILABLE_THEMES;
   private readonly router = inject(Router);
+  private readonly messages = inject(MessageService);
 
   protected selectTheme(name: ThemeName): void {
     this.themeService.setTheme(name);
   }
 
+  /** Logout có popup xác nhận; message bắn ra từ trung tâm. */
   protected logout(): void {
-    this.auth.logout();
-    void this.router.navigate(['/login']);
+    this.messages
+      .confirm('LOGOUT_CONFIRM_TITLE', 'LOGOUT_CONFIRM_MESSAGE')
+      .pipe(filter(Boolean))
+      .subscribe(() => {
+        this.auth.logout();
+        this.messages.success('LOGOUT_SUCCESS');
+        void this.router.navigate(['/login']);
+      });
   }
 }

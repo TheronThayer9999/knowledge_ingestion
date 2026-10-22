@@ -1,0 +1,71 @@
+// Layout + styling trang đăng ký — dùng chung thang token với trang login.
+
+.register {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: var(--space-6);
+  background: var(--app-background);
+}
+
+.register__card {
+  width: 100%;
+  max-width: 400px;
+  border-radius: var(--radius-md);
+  background: var(--app-surface);
+  color: var(--app-on-surface);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-6);
+
+  mat-card-header,
+  mat-card-content {
+    padding: 0;
+  }
+
+  mat-card-header {
+    margin-bottom: var(--space-4);
+  }
+}
+
+.register__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4); // 16px giữa các field
+}
+
+// Viền do Material outline form-field vẽ — token bề dày/bo góc lấy từ design token.
+.register__form mat-form-field {
+  margin: 0;
+  --mat-form-field-outlined-container-shape: var(--radius-md);
+  --mat-form-field-outlined-outline-width: var(--border-width);
+  --mat-form-field-outlined-focus-outline-width: var(--border-width-focus);
+}
+
+.register__submit {
+  margin-top: var(--space-2); // gap 16 + 8 = 24px trước nút
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+}
+
+.register__aux-link {
+  text-align: center;
+
+  a {
+    vertical-align: middle;
+  }
+}
+
+// Responsive: dưới 480px card chiếm toàn bộ chiều rộng, padding 16px.
+@media (max-width: 480px) {
+  .register {
+    padding: var(--space-4);
+  }
+
+  .register__card {
+    max-width: 100%;
+    padding: var(--space-4);
+  }
+}

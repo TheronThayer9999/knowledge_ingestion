@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable, delay, map, of, throwError } from 'rxjs';
 import { AuthApiError } from '../models/auth-error.model';
-import { LoginRequest, LoginResponse, User } from '../models/auth.model';
+import { LoginRequest, LoginResponse, RegisterRequest, User } from '../models/auth.model';
 import { IAuthService } from './auth.interface';
 
 /** Tài khoản demo — chỉ dùng khi còn mock, xóa khi nối API thật. */
@@ -14,6 +14,9 @@ const DEMO_CREDENTIALS = { username: 'admin', password: 'admin123' };
  */
 @Injectable()
 export class MockAuthService implements IAuthService {
+  /** Bộ tên đăng nhập đã tồn tại — seed sẵn admin, register trùng thì báo lỗi. */
+  private readonly takenUsernames = new Set<string>([DEMO_CREDENTIALS.username]);
+
   login(request: LoginRequest): Observable<LoginResponse> {
     const valid =
       request.username === DEMO_CREDENTIALS.username &&
@@ -36,6 +39,34 @@ export class MockAuthService implements IAuthService {
       delay(500),
       map((u) => ({ token: this.fakeJwt(u), user: u })),
     );
+  }
+
+  /** Mock OAuth Google: giả lập OAuth đã thành công, trả user Google cố định. */
+  loginWithGoogle(): Observable<LoginResponse> {
+    const user: User = {
+      id: crypto.randomUUID(),
+      username: 'google.user',
+      displayName: 'Google User',
+      email: 'google.user@gmail.com',
+      roles: ['user'],
+    };
+    return of(user).pipe(delay(700), map((u) => ({ token: this.fakeJwt(u), user: u })));
+  }
+
+  register(request: RegisterRequest): Observable<LoginResponse> {
+    if (this.takenUsernames.has(request.username)) {
+      return throwError(() => new AuthApiError('USERNAME_TAKEN'));
+    }
+    this.takenUsernames.add(request.username);
+
+    const user: User = {
+      id: crypto.randomUUID(),
+      username: request.username,
+      displayName: request.username,
+      email: request.email,
+      roles: ['user'],
+    };
+    return of(user).pipe(delay(500), map((u) => ({ token: this.fakeJwt(u), user: u })));
   }
 
   logout(): Observable<void> {

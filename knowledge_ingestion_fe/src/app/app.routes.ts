@@ -13,5 +13,10 @@ export const routes: Routes = [
     canActivate: [guestGuard],
     loadComponent: () => import('./features/login/login-component').then((m) => m.LoginComponent),
   },
+  {
+    path: 'register',
+    canActivate: [guestGuard],
+    loadComponent: () => import('./features/register/register-component').then((m) => m.RegisterComponent),
+  },
   { path: '**', redirectTo: 'dashboard' },
 ];

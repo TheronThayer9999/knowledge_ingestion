@@ -1,7 +1,7 @@
 .login {
   display: grid;
   place-items: center;
-  min-height: 100vh;
+  min-height: 100dvh; // dvh — khớp chiều cao viewport thực (không thừa scroll như vh)
   // Gradient từ design token của theme — đổi theme là đổi màu nền theo.
   background:
     linear-gradient(
@@ -19,7 +19,18 @@
   border-radius: var(--radius-md);
   background: var(--app-surface);
   color: var(--app-on-surface);
-  box-shadow: 0 8px 32px color-mix(in srgb, var(--mat-sys-shadow) 25%, transparent);
+  box-shadow: var(--shadow-md);
+  // Padding do token kiểm soát — tự zero các section mặc định của mat-card.
+  padding: var(--space-6);
+
+  mat-card-header,
+  mat-card-content {
+    padding: 0;
+  }
+
+  mat-card-header {
+    margin-bottom: var(--space-4);
+  }
 }
 
 .login__lang-switch {
@@ -35,7 +46,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4); // 16px giữa các field
-  margin-top: var(--space-4);
 }
 
 // Viền input do CHÍNHNÓ là Material outline form-field vẽ (label nằm đúng trên
@@ -48,18 +58,11 @@
   --mat-form-field-outlined-focus-outline-width: var(--border-width-focus); // 2px focus
 }
 
-// Khối alert (lỗi cấp request) nằm giữa field cuối và nút —
-// cùng bo góc + cùng độ dày viền với input; lỗi cấp field dùng mat-error, không bo box riêng.
-.login__error {
-  color: var(--color-danger);
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-  border: var(--border-width) solid var(--color-danger);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  font-size: 14px;
-}
+// Alert lỗi cấp request đã chuyển sang toast (MessageService) — form không còn block inline;
+// lỗi cấp field dùng mat-error chuẩn của Material, không bo box riêng.
 
-// gap 16px + margin 8px = 24px trước nút; nút cùng bán kính bo góc với input/alert
+// Tổng khoảng cách trước nút = gap 16px + margin 8px = 24px (--space-5);
+// nút cùng bán kính bo góc với input.
 .login__submit {
   margin-top: var(--space-2);
   display: inline-flex;
@@ -69,8 +72,53 @@
   border-radius: var(--radius-md);
 }
 
-.login__demo-hint {
-  margin: 0;
-  color: var(--color-muted);
+// Divider "Hoặc" — 2 sợi viền từ token, không hardcode.
+.login__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-text-secondary);
   font-size: 13px;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: var(--border-width);
+    background: var(--color-border);
+  }
+}
+
+// Nút Google cùng bo góc/viền với input; logo giữ màu thương hiệu cố định (quy chuẩn Google).
+.login__google {
+  width: 100%;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.login__google-logo {
+  flex-shrink: 0;
+}
+
+.login__aux-link {
+  text-align: center;
+
+  a {
+    vertical-align: middle;
+  }
+}
+
+// Responsive: dưới 480px card chiếm toàn bộ chiều rộng, padding thu về 16px.
+@media (max-width: 480px) {
+  .login {
+    padding: var(--space-4);
+  }
+
+  .login__card {
+    max-width: 100%;
+    padding: var(--space-4);
+  }
 }
