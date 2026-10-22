@@ -19,7 +19,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	userAPI *apis.UserAPI, fileAPI *apis.FileAPI,
 	categoryAPI *apis.CategoryAPI, articleAPI *apis.ArticleAPI,
 	adminAPI *apis.ArticleAdminAPI, embedCacheAPI *apis.EmbedCacheAdminAPI,
-	consistencyAPI *apis.ConsistencyAPI,
+	consistencyAPI *apis.ConsistencyAPI, healthAPI *apis.HealthAPI,
 	searchAPI *apis.SearchAPI, chatAPI *apis.ChatAPI,
 	cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
 	trace middlewares.ITraceMiddleware, rl middlewares.IRateLimiter) *Router {
@@ -38,6 +38,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	engine.Use(middlewares.Global(cors, trace)...)
 
 	engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	engine.GET("/health", healthAPI.Check)
 
 	v1 := engine.Group("/api/v1")
 	{

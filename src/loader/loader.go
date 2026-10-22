@@ -82,6 +82,7 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewArticleAdminService),
 		fx.Provide(services.NewEmbedCacheAdminService),
 		fx.Provide(services.NewConsistencyService),
+		fx.Provide(services.NewHealthService),
 		// agent không import middlewares — loader nối ICurrentUser với IUserResolver.
 		fx.Provide(func(u middlewares.ICurrentUser) port.IUserResolver { return u }),
 		fx.Provide(newHybridSearcher),
@@ -123,6 +124,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewArticleAdminAPI),
 		fx.Provide(apis.NewEmbedCacheAdminAPI),
 		fx.Provide(apis.NewConsistencyAPI),
+		fx.Provide(apis.NewHealthAPI),
 		fx.Provide(apis.NewSearchAPI),
 		fx.Provide(apis.NewChatAPI),
 		fx.Provide(routers.NewRouter),
