@@ -34,7 +34,7 @@ Mỗi mục có mức ưu tiên: **P0** (làm ngay), **P1** (trung hạn), **P2*
 - **Full-text tokenization** (`content_ltks`, `content_sm_ltks`) song song với vector → hybrid search tốt hơn.
 
 ### Giải pháp
-- **P1.2** Thiết kế template-based chunking theo loại tài liệu (văn bản pháp luật, bảng biểu, báo cáo).
+- **P1.2** ✅ Template-based chunking: DocType field + chunker template (laws qua SplitBlocks). Các loại khác delegate base.
 - **P1.3** Dual embedding (title + content) + full-text tokenization.
 
 ---
