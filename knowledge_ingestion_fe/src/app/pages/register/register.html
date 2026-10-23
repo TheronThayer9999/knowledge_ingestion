@@ -1,0 +1,103 @@
+<div class="register-page">
+  <div class="register-switchers">
+    <app-language-switcher />
+    <app-theme-switcher />
+  </div>
+
+  <mat-card appearance="outlined" class="register-card">
+    <mat-card-header class="register-header">
+      <div matCardAvatar class="register-avatar">
+        <mat-icon>person_add</mat-icon>
+      </div>
+      <mat-card-title>{{ lang.t('AUTH_REGISTER_TITLE') }}</mat-card-title>
+      <mat-card-subtitle>{{ lang.t('AUTH_REGISTER_SUBTITLE') }}</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <form class="register-form" [formGroup]="form" (ngSubmit)="submit()">
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('AUTH_USERNAME') }}</mat-label>
+          <input matInput formControlName="username" autocomplete="username" />
+          @if (form.controls.username.touched && form.controls.username.invalid) {
+            @if (
+              form.controls.username.hasError('minlength') ||
+              form.controls.username.hasError('maxlength')
+            ) {
+              <mat-error>{{ lang.t('AUTH_USERNAME_LENGTH') }}</mat-error>
+            } @else {
+              <mat-error>{{ lang.t('AUTH_USERNAME_REQUIRED') }}</mat-error>
+            }
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('AUTH_EMAIL') }}</mat-label>
+          <input matInput type="email" formControlName="email" autocomplete="email" />
+          @if (form.controls.email.touched && form.controls.email.invalid) {
+            @if (form.controls.email.hasError('email')) {
+              <mat-error>{{ lang.t('AUTH_EMAIL_INVALID') }}</mat-error>
+            } @else {
+              <mat-error>{{ lang.t('AUTH_EMAIL_REQUIRED') }}</mat-error>
+            }
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('AUTH_PHONE_OPTIONAL') }}</mat-label>
+          <input
+            matInput
+            type="tel"
+            formControlName="phone"
+            autocomplete="tel"
+            placeholder="+84901234567"
+          />
+          @if (form.controls.phone.touched && form.controls.phone.invalid) {
+            <mat-error>{{ lang.t('AUTH_PHONE_INVALID') }}</mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('AUTH_PASSWORD') }}</mat-label>
+          <input matInput type="password" formControlName="password" autocomplete="new-password" />
+          @if (form.controls.password.touched && form.controls.password.invalid) {
+            @if (form.controls.password.hasError('minlength')) {
+              <mat-error>{{ lang.t('AUTH_PASSWORD_MIN') }}</mat-error>
+            } @else {
+              <mat-error>{{ lang.t('AUTH_PASSWORD_REQUIRED') }}</mat-error>
+            }
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('AUTH_CONFIRM_PASSWORD') }}</mat-label>
+          <input
+            matInput
+            type="password"
+            formControlName="confirmPassword"
+            autocomplete="new-password"
+          />
+          @if (form.controls.confirmPassword.touched && form.hasError('passwordsMismatch')) {
+            <mat-error>{{ lang.t('AUTH_CONFIRM_MISMATCH') }}</mat-error>
+          } @else if (
+            form.controls.confirmPassword.touched && form.controls.confirmPassword.invalid
+          ) {
+            <mat-error>{{ lang.t('AUTH_CONFIRM_REQUIRED') }}</mat-error>
+          }
+        </mat-form-field>
+
+        <button matButton="filled" type="submit" class="register-submit" [disabled]="loading()">
+          @if (loading()) {
+            <mat-spinner diameter="18" />
+          } @else {
+            {{ lang.t('AUTH_REGISTER_BUTTON') }}
+          }
+        </button>
+      </form>
+    </mat-card-content>
+
+    <mat-card-footer class="register-footer">
+      <span>{{ lang.t('AUTH_HAVE_ACCOUNT') }}</span>
+      <a matButton routerLink="/login">{{ lang.t('AUTH_LOGIN_LINK') }}</a>
+    </mat-card-footer>
+  </mat-card>
+</div>

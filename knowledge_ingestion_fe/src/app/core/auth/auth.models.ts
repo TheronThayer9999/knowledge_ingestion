@@ -18,6 +18,14 @@ export interface LoginCredentials {
   password: string;
 }
 
+/** Payload tạo user (POST /users công khai) — phone bỏ trống thì không gửi */
+export interface RegisterPayload {
+  username: string;
+  email: string;
+  password: string;
+  phone?: string;
+}
+
 /** Cặp token + hạn — luôn thay CẢ HAI khi refresh (refresh token dùng 1 lần) */
 export interface TokenPair {
   token: string;

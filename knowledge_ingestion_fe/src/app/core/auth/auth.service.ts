@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, firstValueFrom, map, Observable, of, tap } from 'rxjs';
+import { catchError, firstValueFrom, map, Observable, of, switchMap, tap } from 'rxjs';
 import { ApiService } from '../api/api.service';
 import { ApiError } from '../api/api.models';
 import {
@@ -14,6 +14,7 @@ import {
   type LoginCredentials,
   type LoginResponseDto,
   type RefreshResponseDto,
+  type RegisterPayload,
   type StoredSession,
   type UserDto,
 } from './auth.models';
@@ -64,6 +65,23 @@ export class AuthService {
       tap((dto) => this.applySession(toStoredSession(dto), true)),
       map((dto) => toAuthUser(dto.user)),
     );
+  }
+
+  /** Tạo user mới (endpoint công khai) rồi đăng nhập luôn bằng chính tài khoản đó */
+  register(payload: RegisterPayload): Observable<AuthUser> {
+    const body: Record<string, string> = {
+      username: payload.username,
+      email: payload.email,
+      password: payload.password,
+    };
+    if (payload.phone) {
+      body['phone'] = payload.phone;
+    }
+    return this.api
+      .post<UserDto>('/users', body)
+      .pipe(
+        switchMap(() => this.login({ username: payload.username, password: payload.password })),
+      );
   }
 
   /**

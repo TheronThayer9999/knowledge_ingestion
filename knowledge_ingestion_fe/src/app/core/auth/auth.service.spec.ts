@@ -108,6 +108,53 @@ describe('AuthService', () => {
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain('refresh-1');
   });
 
+  it('register tạo user rồi tự đăng nhập và lưu phiên', () => {
+    const service = setup();
+    api.post.mockImplementation((path: string) =>
+      path === '/users' ? of(userDto) : of(loginResponseFixture()),
+    );
+
+    let username = '';
+    service
+      .register({ username: 'newbie', email: 'new@example.com', password: 'secret123' })
+      .subscribe((user) => (username = user.username));
+
+    expect(api.post).toHaveBeenNthCalledWith(1, '/users', {
+      username: 'newbie',
+      email: 'new@example.com',
+      password: 'secret123',
+    });
+    expect(api.post).toHaveBeenNthCalledWith(2, '/auth/login', {
+      username: 'newbie',
+      password: 'secret123',
+    });
+    expect(username).toBe('demo');
+    expect(service.isAuthenticated()).toBe(true);
+  });
+
+  it('register chỉ gửi phone khi có giá trị', () => {
+    const service = setup();
+    api.post.mockImplementation((path: string) =>
+      path === '/users' ? of(userDto) : of(loginResponseFixture()),
+    );
+
+    service
+      .register({
+        username: 'newbie',
+        email: 'new@example.com',
+        password: 'secret123',
+        phone: '+84901234567',
+      })
+      .subscribe();
+
+    expect(api.post).toHaveBeenNthCalledWith(1, '/users', {
+      username: 'newbie',
+      email: 'new@example.com',
+      password: 'secret123',
+      phone: '+84901234567',
+    });
+  });
+
   it('refresh là single-flight: 2 lần gọi chỉ tạo 1 request', async () => {
     const service = setup(sessionFixture());
     const subject = new Subject<RefreshResponseDto>();

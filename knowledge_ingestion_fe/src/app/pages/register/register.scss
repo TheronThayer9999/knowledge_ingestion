@@ -1,0 +1,62 @@
+.register-page {
+  display: grid;
+  place-items: center;
+  min-height: calc(100dvh - var(--toolbar-height));
+  padding: var(--space-4);
+}
+
+.register-switchers {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.register-card {
+  width: 100%;
+  max-width: 400px;
+  padding: var(--space-6);
+  box-shadow: var(--shadow-2);
+}
+
+.register-header {
+  margin-bottom: var(--space-5);
+}
+
+.register-avatar {
+  display: grid;
+  place-items: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: 50%;
+  background: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
+}
+
+.register-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.register-submit {
+  min-height: 44px;
+  margin-top: var(--space-5);
+}
+
+.register-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  color: var(--color-muted);
+}
+
+@media (max-width: 480px) {
+  .register-card {
+    padding: var(--space-4);
+  }
+}
