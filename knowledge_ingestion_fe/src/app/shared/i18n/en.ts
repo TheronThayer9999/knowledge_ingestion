@@ -19,4 +19,8 @@ export const EN: typeof VI = {
   WELCOME_BODY_NEXT: 'Next: generate components, add routes and connect the backend API.',
   ACTION_COMPONENTS: 'Components',
   ACTION_THEMING_GUIDE: 'Theming guide',
+  COMMON_OK: 'OK',
+  COMMON_CANCEL: 'Cancel',
+  AUTH_ERROR_NETWORK: 'Cannot reach the server, please try again.',
+  AUTH_ERROR_GENERIC: 'Something went wrong, please try again.',
 };

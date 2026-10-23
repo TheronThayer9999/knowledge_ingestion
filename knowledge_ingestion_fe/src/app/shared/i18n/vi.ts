@@ -21,4 +21,8 @@ export const VI = {
   WELCOME_BODY_NEXT: 'Bước tiếp theo: sinh component, thêm route và nối vào API backend.',
   ACTION_COMPONENTS: 'Thành phần',
   ACTION_THEMING_GUIDE: 'Hướng dẫn theme',
+  COMMON_OK: 'Đồng ý',
+  COMMON_CANCEL: 'Hủy',
+  AUTH_ERROR_NETWORK: 'Không kết nối được máy chủ, vui lòng thử lại.',
+  AUTH_ERROR_GENERIC: 'Đã có lỗi xảy ra, vui lòng thử lại.',
 };
