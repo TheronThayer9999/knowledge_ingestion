@@ -90,11 +90,13 @@ func stripCitations(s string) string {
 
 // RunResult là output 1 lượt chat: câu trả lời markdown + hits đã gom qua các
 // lượt gọi tool (để dựng cites, khớp [^n] trong answer) + cờ đã đọc tài liệu
-// (để dán nhãn question_type, kể cả khi không gom được hit nào).
+// (để dán nhãn question_type, kể cả khi không gom được hit nào) + reasoning —
+// phần model tự nghĩ trước khi đáp, chỉ có khi backend bật `think`.
 type RunResult struct {
-	Answer   string
-	Hits     []*domain.ScoredChunk
-	Searched bool
+	Answer    string
+	Reasoning string
+	Hits      []*domain.ScoredChunk
+	Searched  bool
 }
 
 // Run chạy agent 1 lượt: history + câu hỏi hiện tại đi vào, loop tool lặp
@@ -121,6 +123,10 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 
 	iter := a.runner.Run(ctx, msgs, adk.WithChatModelOptions([]einomodel.Option{einomodel.WithModel(model)}))
 	var answer string
+	// Mỗi lượt trong loop có thể kèm reasoning riêng (nghĩ → gọi tool → nghĩ
+	// tiếp) nên gom theo thứ tự, không lấy mỗi lượt cuối — người đọc muốn thấy
+	// cả quá trình dẫn tới câu trả lời.
+	var reasonings []string
 	for {
 		ev, ok := iter.Next()
 		if !ok {
@@ -134,7 +140,11 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 		}
 		if out := ev.Output; out != nil && out.MessageOutput != nil &&
 			!out.MessageOutput.IsStreaming && out.MessageOutput.Message != nil {
-			answer = messageText(out.MessageOutput.Message)
+			msg := out.MessageOutput.Message
+			answer = messageText(msg)
+			if r := strings.TrimSpace(msg.ReasoningContent); r != "" {
+				reasonings = append(reasonings, r)
+			}
 		}
 	}
 	if strings.TrimSpace(answer) == "" {
@@ -147,5 +157,10 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 	if scope, ok := ScopeFrom(ctx); ok && scope.Collector != nil {
 		hits, searched = scope.Collector.Snapshot()
 	}
-	return RunResult{Answer: answer, Hits: hits, Searched: searched}, nil
+	return RunResult{
+		Answer:    answer,
+		Reasoning: strings.Join(reasonings, "\n\n"),
+		Hits:      hits,
+		Searched:  searched,
+	}, nil
 }

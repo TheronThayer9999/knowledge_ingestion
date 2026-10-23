@@ -232,6 +232,8 @@ export const EN_ENTRIES = [
   ['CHAT_THINKING', 'Searching your documents…'],
   ['CHAT_THINKING_TOGGLE', 'Deep thinking'],
   ['CHAT_THINKING_HINT', 'Ask the assistant to reason more carefully before answering'],
+  ['CHAT_THINKING_DEEP', 'Thinking it through before answering…'],
+  ['CHAT_REASONING', 'How the assistant reasoned'],
   ['CHAT_STOP', 'Stop'],
   ['CHAT_SOURCES', 'Sources'],
   ['CHAT_CITE_PAGE', 'Page'],

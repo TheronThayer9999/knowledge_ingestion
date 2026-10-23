@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	einomodel "github.com/cloudwego/eino/components/model"
 	ollamamodel "github.com/cloudwego/eino-ext/components/model/ollama"
 	openaiprovider "github.com/cloudwego/eino-ext/components/model/openai"
+	einomodel "github.com/cloudwego/eino/components/model"
 
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
@@ -37,7 +37,13 @@ const (
 // adk.WithChatModelOptions(model.WithModel(...)) lúc agent Run. Trả interface
 // ToolCallingChatModel để loader đổi backend mà không sửa agent, classifier
 // hay usecase.
-func NewChatModel(cfg config.LLMProviderConfig) (einomodel.ToolCallingChatModel, error) {
+//
+// thinking bật công tắc `think` của Ollama (model suy nghĩ trước khi đáp). Flag
+// này lib chỉ nhận LÚC DỰNG client — không có call option per-request — nên
+// request bật thinking phải dùng một client riêng dựng sẵn lúc startup (xem
+// ProviderAgents.ThinkingAgents). false thì payload y hệt trước (không gửi
+// field, server giữ hành vi mặc định của model).
+func NewChatModel(cfg config.LLMProviderConfig, thinking bool) (einomodel.ToolCallingChatModel, error) {
 	if strings.TrimSpace(cfg.BaseURL) == "" {
 		return nil, fmt.Errorf("eino ollama: base_url is required")
 	}
@@ -45,7 +51,7 @@ func NewChatModel(cfg config.LLMProviderConfig) (einomodel.ToolCallingChatModel,
 	if timeout <= 0 {
 		timeout = 120
 	}
-	return ollamamodel.NewChatModel(context.Background(), &ollamamodel.ChatModelConfig{
+	conf := &ollamamodel.ChatModelConfig{
 		BaseURL: trimAPIURL(cfg.BaseURL),
 		HTTPClient: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
@@ -61,7 +67,13 @@ func NewChatModel(cfg config.LLMProviderConfig) (einomodel.ToolCallingChatModel,
 			TopP:       float32(cfg.TopP),
 			NumPredict: cfg.MaxTokens,
 		},
-	})
+	}
+	if thinking {
+		// Con trỏ mới phân được "yêu cầu không nghĩ" (false) với "không nói gì"
+		// (nil) — bản thường để nil đúng như hành vi cũ.
+		conf.Thinking = &ollamamodel.ThinkValue{Value: true}
+	}
+	return ollamamodel.NewChatModel(context.Background(), conf)
 }
 
 // ProviderAgents là registry agent chat theo backend LLM — request chọn qua
@@ -70,6 +82,11 @@ func NewChatModel(cfg config.LLMProviderConfig) (einomodel.ToolCallingChatModel,
 // BuildProviderAgents; thêm backend mới không đụng tới struct này.
 type ProviderAgents struct {
 	Agents map[string]*ChatAgent
+	// ThinkingAgents là bản agent cùng provider nhưng client đã bật công tắc
+	// suy nghĩ của model — request có `thinking: true` đi đường này. Provider
+	// không có công tắc riêng thì trỏ đúng vào agent ở Agents (cờ thành "không
+	// có tác dụng", không phải lỗi).
+	ThinkingAgents map[string]*ChatAgent
 	// Models là client thô theo provider — classifier vòng 1 dùng chung client
 	// mặc định, khỏi tốn thêm lượt dựng.
 	Models map[string]einomodel.ToolCallingChatModel
@@ -80,9 +97,10 @@ type ProviderAgents struct {
 }
 
 // Resolve chọn agent + model cho 1 request: provider rỗng thì mặc
-// định, model rỗng thì model mặc định của provider đó. Provider chưa cấu
+// định, model rỗng thì model mặc định của provider đó, thinking bật thì lấy
+// bản agent đã bật suy nghĩ (nếu provider đó có). Provider chưa cấu
 // hình (vd openrouter thiếu key) thì lỗi rõ để caller map 400, không 500.
-func (p *ProviderAgents) Resolve(provider, model string) (*ChatAgent, string, error) {
+func (p *ProviderAgents) Resolve(provider, model string, thinking bool) (*ChatAgent, string, error) {
 	if p == nil {
 		return nil, "", fmt.Errorf("eino agent: chưa được dựng")
 	}
@@ -93,6 +111,11 @@ func (p *ProviderAgents) Resolve(provider, model string) (*ChatAgent, string, er
 	agent, ok := p.Agents[name]
 	if !ok {
 		return nil, "", fmt.Errorf("eino agent: provider %q chưa cấu hình (mới có: %s)", name, availableProviders(p.Agents))
+	}
+	if thinking {
+		if deep, has := p.ThinkingAgents[name]; has {
+			agent = deep
+		}
 	}
 	if strings.TrimSpace(model) == "" {
 		model = p.DefaultModel[name]
@@ -267,8 +290,8 @@ func NewOpenAIChatModel(slug string, cfg config.LLMProviderConfig) (einomodel.To
 			// retry bọc ngoài, rate limit làm base — mọi lượt thử lại cũng
 			// qua limiter, không vượt cap khi server đang chói 429.
 			Transport: &retryTransport{
-				name: slug,
-				base: newRateLimitTransport(cfg.RateLimitRPM, http.DefaultTransport),
+				name:       slug,
+				base:       newRateLimitTransport(cfg.RateLimitRPM, http.DefaultTransport),
 				maxRetries: 4, baseDelay: 2 * time.Second,
 			},
 		},

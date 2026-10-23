@@ -27,7 +27,8 @@ export class ChatService {
       body['category_ids'] = [categoryId];
     }
     // Bật suy luận sâu: chỉ gửi khi bật để payload mặc định không đổi. Backend
-    // chưa có field `thinking` thì ShouldBindJSON bỏ qua, không thành 400.
+    // đưa request sang bản agent đã bật `think` của model; provider nào không
+    // có công tắc đó thì cờ tự vô tác dụng, chat vẫn chạy.
     if (thinking) {
       body['thinking'] = true;
     }

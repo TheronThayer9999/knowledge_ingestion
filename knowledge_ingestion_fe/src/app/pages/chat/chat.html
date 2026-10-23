@@ -63,6 +63,16 @@
               @if (turn.role === 'user') {
                 <p class="user-text">{{ turn.content }}</p>
               } @else {
+                @if (turn.reasoning) {
+                  <details class="reasoning">
+                    <summary class="reasoning-summary">
+                      <mat-icon aria-hidden="true">psychology</mat-icon>
+                      <span class="reasoning-label">{{ lang.t('CHAT_REASONING') }}</span>
+                      <mat-icon class="reasoning-chevron" aria-hidden="true">expand_more</mat-icon>
+                    </summary>
+                    <p class="reasoning-body">{{ turn.reasoning }}</p>
+                  </details>
+                }
                 <div class="markdown-body" [innerHTML]="turn.content | markdown"></div>
 
                 @if (turn.cites && turn.cites.length > 0) {
@@ -97,7 +107,9 @@
               <span class="dot"></span>
               <span class="dot"></span>
               <span class="dot"></span>
-              <span class="thinking-text">{{ lang.t('CHAT_THINKING') }}</span>
+              <span class="thinking-text">{{
+                lang.t(thinking() ? 'CHAT_THINKING_DEEP' : 'CHAT_THINKING')
+              }}</span>
             </div>
           </div>
         }

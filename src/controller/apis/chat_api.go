@@ -20,7 +20,7 @@ func NewChatAPI(base *baseController, svc port.IChatter) *ChatAPI {
 
 // Chat godoc
 // @Summary Chat hỏi đáp tri thức (markdown)
-// @Description Classify câu hỏi → search tài liệu upload → LLM tổng hợp thành Markdown kèm cites để frontend ReactJS render. Cần đăng nhập, model LLM truyền theo request.
+// @Description Agent tự vòng [nghĩ → gọi tool tìm tài liệu → đọc → điều chỉnh] rồi trả Markdown kèm cites để frontend ReactJS render. Cần đăng nhập; provider/model chọn theo request, `thinking: true` bật suy luận sâu (model tự nghĩ trước khi đáp, đoạn nghĩ về theo field `reasoning`).
 // @Tags chat
 // @Accept json
 // @Produce json

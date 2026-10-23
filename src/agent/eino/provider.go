@@ -16,7 +16,8 @@ import (
 // configProvider (provider.go) cover cả "ollama" lẫn mọi backend
 // OpenAI-compatible qua type trong config; thêm protocol lạ hẳn mới cần
 // struct implement 3 method này. Không sửa usecase, prompt, Resolve hay
-// validation.
+// validation. Backend có công tắc "suy nghĩ" riêng thì triển khai thêm
+// thinkingModeler ở dưới — đó là năng lực TÙY CHỌN, không bắt buộc.
 type LLMProvider interface {
 	// Name là slug request chọn qua field `provider` (vd "ollama", "groq").
 	Name() string
@@ -25,6 +26,15 @@ type LLMProvider interface {
 	NewModel() (einomodel.ToolCallingChatModel, error)
 	// DefaultModel là model khi request không ép model.
 	DefaultModel() string
+}
+
+// thinkingModeler là năng lực tùy chọn: dựng thêm 1 client đã bật chế độ suy
+// nghĩ của model. Lý do để tách riêng thay vì sửa NewModel(): LLMProvider có
+// nơi dùng chẳng liên quan gì tới chat (worker compile lấy ISummarizer) — thêm
+// tham số vào interface chính sẽ lan sửa sang mọi caller vì một cờ chỉ
+// request chat mới quan tâm. Trả (nil, nil) = backend không có công tắc đó.
+type thinkingModeler interface {
+	NewThinkingModel() (einomodel.ToolCallingChatModel, error)
 }
 
 // configProvider bọc 1 entry llms.providers (config.LLMProviderConfig) thành
@@ -49,8 +59,20 @@ func (p configProvider) NewModel() (einomodel.ToolCallingChatModel, error) {
 	case config.LLMTypeOpenAI:
 		return NewOpenAIChatModel(p.slug, p.cfg)
 	default: // config.LLMTypeOllama — Load đã validate, default an toàn
-		return NewChatModel(p.cfg)
+		return NewChatModel(p.cfg, false)
 	}
+}
+
+// NewThinkingModel dựng bản client đã bật suy nghĩ. Chỉ Ollama có flag riêng
+// (`think` trong /api/chat); nhóm OpenAI-compatible không có công tắc chung —
+// model nào tự trả reasoning thì ReasoningContent vẫn về được FE, nên trả
+// nil để registry dùng lại agent thường thay vì dựng client thứ hai vô ích
+// (client thứ hai còn là một rate limiter thứ hai, dễ vượt cap rpm của backend).
+func (p configProvider) NewThinkingModel() (einomodel.ToolCallingChatModel, error) {
+	if p.cfg.Type != config.LLMTypeOllama {
+		return nil, nil
+	}
+	return NewChatModel(p.cfg, true)
 }
 
 func (p configProvider) DefaultModel() string { return p.cfg.Model }
@@ -62,6 +84,7 @@ func (p configProvider) DefaultModel() string { return p.cfg.Model }
 func BuildProviderAgents(system, defaultProvider string, tools []einotool.BaseTool, providers ...LLMProvider) (*ProviderAgents, error) {
 	out := &ProviderAgents{
 		Agents:          make(map[string]*ChatAgent),
+		ThinkingAgents:  make(map[string]*ChatAgent),
 		Models:          make(map[string]einomodel.ToolCallingChatModel),
 		DefaultProvider: strings.ToLower(strings.TrimSpace(defaultProvider)),
 		DefaultModel:    make(map[string]string),
@@ -89,6 +112,7 @@ func BuildProviderAgents(system, defaultProvider string, tools []einotool.BaseTo
 		out.Agents[name] = agent
 		out.Models[name] = model
 		out.DefaultModel[name] = p.DefaultModel()
+		out.ThinkingAgents[name] = buildThinkingAgent(name, p, system, tools, agent)
 	}
 	if len(out.Agents) == 0 {
 		return nil, fmt.Errorf("eino agent: không dựng được provider nào")
@@ -98,6 +122,34 @@ func BuildProviderAgents(system, defaultProvider string, tools []einotool.BaseTo
 			"default", out.DefaultProvider, "available", availableProviders(out.Agents))
 	}
 	return out, nil
+}
+
+// buildThinkingAgent dựng bản agent "suy nghĩ" cho 1 provider — provider không
+// triển khai thinkingModeler, không hỗ trợ, hoặc dựng lỗi thì trả về đúng agent
+// thường: cờ thinking của request khi đó chỉ thành "không có tác dụng ở backend
+// này", chat vẫn chạy chứ không chết lúc boot hay thành 500.
+func buildThinkingAgent(
+	name string, p LLMProvider, system string,
+	tools []einotool.BaseTool, fallback *ChatAgent,
+) *ChatAgent {
+	tm, ok := p.(thinkingModeler)
+	if !ok {
+		return fallback
+	}
+	model, err := tm.NewThinkingModel()
+	if err != nil {
+		logs.Warnw("agent: không dựng được bản suy nghĩ, dùng bản thường", "provider", name, "error", err)
+		return fallback
+	}
+	if model == nil {
+		return fallback
+	}
+	agent, err := NewChatAgent(model, system, tools...)
+	if err != nil {
+		logs.Warnw("agent: dựng agent suy nghĩ lỗi, dùng bản thường", "provider", name, "error", err)
+		return fallback
+	}
+	return agent
 }
 
 func availableProviders(m map[string]*ChatAgent) string {

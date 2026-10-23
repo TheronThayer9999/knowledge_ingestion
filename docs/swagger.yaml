@@ -60,6 +60,13 @@ definitions:
           không hardcode oneof ở tag để thêm backend không phải sửa DTO.
         example: openrouter
         type: string
+      thinking:
+        description: |-
+          Thinking bật chế độ suy luận sâu: request đi qua bản agent đã bật công
+          tắc `think` của backend. Provider không có công tắc đó thì cờ chỉ vô
+          tác dụng (vẫn chạy bản thường), nên không cần validate theo provider.
+        example: true
+        type: boolean
     required:
     - message
     type: object

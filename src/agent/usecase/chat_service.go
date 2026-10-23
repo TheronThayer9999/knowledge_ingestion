@@ -41,6 +41,19 @@ func snippet(text string) string {
 	return string([]rune(text)[:snippetLen]) + "…"
 }
 
+// reasoningLimit là trần độ dài reasoning trả về FE — model bật `think` có thể
+// nghĩ dài hơn cả câu trả lời, mà nó chỉ để người dùng mở ra đọc chứ không
+// phải dữ liệu để xử lý tiếp (history chỉ gửi role/content). Cắt theo rune để
+// không xé đôi ký tự Việt.
+const reasoningLimit = 8000
+
+func clipReasoning(text string) string {
+	if utf8.RuneCountInString(text) <= reasoningLimit {
+		return text
+	}
+	return string([]rune(text)[:reasoningLimit]) + "…"
+}
+
 // followUpMarkers là từ hồi chiếu báo hiệu câu nối tiếp không tự đứng được
 // ("con số đó", "vậy thì...", "trường hợp kia"...). Model đôi khi đáp thẳng
 // từ câu trả lời cũ mà không search (PD từng 0 cites, nhãn chitchat sai) nên
@@ -82,8 +95,10 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 		)
 	}
 	// Provider/model theo request, rỗng thì mặc định theo cấu hình — chọn
-	// sai provider (chưa cấu hình key) thì 400 rõ lý do, không 500.
-	agent, model, err := s.providers.Resolve(dto.Provider, dto.Model)
+	// sai provider (chưa cấu hình key) thì 400 rõ lý do, không 500. thinking
+	// bật thì đi bản agent đã dựng client có `think` (provider không hỗ trợ
+	// thì Resolve tự fallback bản thường).
+	agent, model, err := s.providers.Resolve(dto.Provider, dto.Model, dto.Thinking)
 	if err != nil {
 		return dtos.Fail[*dtos.ChatResponse](
 			errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, err.Error()),
@@ -133,7 +148,12 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 		})
 	}
 	qt := s.label(ctx, model, dto.Message, res.Searched)
-	return dtos.Ok(&dtos.ChatResponse{Answer: res.Answer, QuestionType: qt, Cites: cites})
+	return dtos.Ok(&dtos.ChatResponse{
+		Answer:       res.Answer,
+		QuestionType: qt,
+		Cites:        cites,
+		Reasoning:    clipReasoning(res.Reasoning),
+	})
 }
 
 // label dán nhãn question_type cho response — agent trong loop không bị ép

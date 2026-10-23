@@ -232,6 +232,8 @@ export const VI_ENTRIES = [
   ['CHAT_THINKING', 'Đang tìm trong tài liệu…'],
   ['CHAT_THINKING_TOGGLE', 'Suy nghĩ sâu'],
   ['CHAT_THINKING_HINT', 'Yêu cầu trợ lý suy nghĩ kỹ hơn trước khi trả lời'],
+  ['CHAT_THINKING_DEEP', 'Đang suy nghĩ kỹ trước khi trả lời…'],
+  ['CHAT_REASONING', 'Cách trợ lý suy nghĩ'],
   ['CHAT_STOP', 'Dừng'],
   ['CHAT_SOURCES', 'Nguồn trích dẫn'],
   ['CHAT_CITE_PAGE', 'Trang'],

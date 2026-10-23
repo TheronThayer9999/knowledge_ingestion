@@ -1503,6 +1503,11 @@
                     "description": "Provider chọn backend LLM (rỗng = mặc định cấu hình) — validate theo\nregistry lúc runtime (Resolve trả 400 kèm danh sách provider đang có),\nkhông hardcode oneof ở tag để thêm backend không phải sửa DTO.",
                     "type": "string",
                     "example": "openrouter"
+                },
+                "thinking": {
+                    "description": "Thinking bật chế độ suy luận sâu: request đi qua bản agent đã bật công\ntắc `think` của backend. Provider không có công tắc đó thì cờ chỉ vô\ntác dụng (vẫn chạy bản thường), nên không cần validate theo provider.",
+                    "type": "boolean",
+                    "example": true
                 }
             }
         },

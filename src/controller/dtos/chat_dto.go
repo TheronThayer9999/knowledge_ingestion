@@ -17,7 +17,11 @@ type ChatRequest struct {
 	// không hardcode oneof ở tag để thêm backend không phải sửa DTO.
 	Provider string `json:"provider,omitempty" example:"openrouter"`
 	// Model ép model trong provider đó (rỗng = model mặc định theo provider).
-	Model       string            `json:"model,omitempty" example:"apodex/apodex-1.1-mini:free"`
+	Model string `json:"model,omitempty" example:"apodex/apodex-1.1-mini:free"`
+	// Thinking bật chế độ suy luận sâu: request đi qua bản agent đã bật công
+	// tắc `think` của backend. Provider không có công tắc đó thì cờ chỉ vô
+	// tác dụng (vẫn chạy bản thường), nên không cần validate theo provider.
+	Thinking    bool              `json:"thinking,omitempty" example:"true"`
 	CategoryIDs []int64           `json:"category_ids,omitempty" binding:"omitempty,max=100,dive,gt=0"`
 	Limit       int               `json:"limit,omitempty" binding:"omitempty,gte=0"`
 	History     []ChatHistoryItem `json:"history,omitempty"`
@@ -39,4 +43,8 @@ type ChatResponse struct {
 	Answer       string      `json:"answer" example:"Mức phạt là **0.05%/ngày**[^1]."`
 	QuestionType string      `json:"question_type" example:"lookup"`
 	Cites        []*ChatCite `json:"cites"`
+	// Reasoning là đoạn model tự suy nghĩ trước khi đáp (chỉ có khi backend
+	// trả reasoning, vd Ollama bật `think`) — omitempty để mặc định response
+	// không đổi hình dạng với model không hỗ trợ.
+	Reasoning string `json:"reasoning,omitempty" example:"Cần đối chiếu Điều 13..."`
 }

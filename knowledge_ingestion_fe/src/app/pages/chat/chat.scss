@@ -196,6 +196,71 @@
   overflow-wrap: anywhere;
 }
 
+// ---- Suy nghĩ của model (suy luận sâu) ----
+// Đoạn reasoning chỉ hữu ích khi người đọc muốn kiểm chứng cách model đi tới
+// câu trả lời, nên mặc định gập lại (progressive disclosure) để không cướp
+// sự chú ý khỏi answer. details/summary là control native: có bàn phím và
+// trạng thái expanded cho screen reader sẵn, khỏi viết JS.
+.reasoning {
+  margin: 0 0 var(--space-2);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.reasoning-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  font: var(--mat-sys-label-medium);
+  cursor: pointer;
+  list-style: none; // bỏ marker mặc định, thay bằng chevron xoay được
+  user-select: none;
+}
+
+.reasoning-summary::-webkit-details-marker {
+  display: none;
+}
+
+.reasoning-summary:focus-visible {
+  outline: var(--border-width-strong) solid var(--color-primary);
+  outline-offset: var(--border-width);
+}
+
+.reasoning-summary mat-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+  line-height: 18px;
+  flex: 0 0 auto;
+}
+
+.reasoning-label {
+  flex: 1 1 auto;
+}
+
+.reasoning-chevron {
+  transition: transform var(--duration-fast) ease;
+}
+
+.reasoning[open] .reasoning-chevron {
+  transform: rotate(180deg);
+}
+
+// Reasoning là text thô model sinh (không phải markdown) nên giữ nguyên xuống
+// dòng và không render pipeline — khỏi lẫn với answer bên dưới.
+.reasoning-body {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-3);
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 // ---- Trích dẫn ----
 .cites {
   margin-top: var(--space-3);
@@ -366,6 +431,10 @@
   .dot {
     animation: none;
     opacity: 0.6;
+  }
+
+  .reasoning-chevron {
+    transition: none;
   }
 
   .messages {

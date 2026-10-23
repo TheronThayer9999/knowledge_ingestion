@@ -17,6 +17,8 @@ export interface ChatAnswer {
   answer: string;
   questionType: string;
   cites: ChatCite[];
+  /** Đoạn model tự suy nghĩ trước khi đáp — rỗng khi backend không trả reasoning */
+  reasoning: string;
 }
 
 export interface ChatTurn {
@@ -38,12 +40,14 @@ export interface ChatResponseDto {
   answer: string;
   question_type: string;
   cites?: ChatCiteDto[];
+  reasoning?: string;
 }
 
 export function toChatAnswer(dto: ChatResponseDto): ChatAnswer {
   return {
     answer: dto.answer,
     questionType: dto.question_type,
+    reasoning: dto.reasoning ?? '',
     cites: (dto.cites ?? []).map((cite) => ({
       n: cite.n,
       articleId: cite.article_id,

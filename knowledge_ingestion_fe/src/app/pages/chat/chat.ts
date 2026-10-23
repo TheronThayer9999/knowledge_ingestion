@@ -25,6 +25,8 @@ import { MarkdownPipe } from '../../shared/markdown/markdown.pipe';
 
 interface ChatMessage extends ChatTurn {
   cites?: ChatCite[];
+  /** Phần model suy nghĩ (chỉ có ở lượt bật suy luận sâu) — hiển thị dạng gập */
+  reasoning?: string;
 }
 
 const SUGGESTIONS: TranslationKey[] = ['CHAT_SUGGEST_1', 'CHAT_SUGGEST_2', 'CHAT_SUGGEST_3'];
@@ -152,7 +154,12 @@ export class Chat {
           this.pending = undefined;
           this.turns.update((list) => [
             ...list,
-            { role: 'assistant', content: answer.answer, cites: answer.cites },
+            {
+              role: 'assistant',
+              content: answer.answer,
+              cites: answer.cites,
+              reasoning: answer.reasoning,
+            },
           ]);
           this.sending.set(false);
           this.scrollToBottom();
