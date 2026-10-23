@@ -21,7 +21,7 @@ describe('ThemeSwitcher', () => {
 
     const theme = TestBed.inject(ThemeService);
     const button = fixture.nativeElement.querySelector(
-      'button[aria-label="Chuyển sang chế độ tối"]'
+      'button[aria-label="Chuyển sang chế độ tối"]',
     ) as HTMLButtonElement;
 
     button.click();

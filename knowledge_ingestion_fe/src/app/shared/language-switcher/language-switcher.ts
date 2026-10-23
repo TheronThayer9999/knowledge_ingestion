@@ -8,7 +8,7 @@ import { LANGS, LangService } from '../../core/i18n/lang.service';
   selector: 'app-language-switcher',
   imports: [MatButtonModule, MatIconModule, MatMenuModule],
   templateUrl: './language-switcher.html',
-  styleUrl: './language-switcher.scss'
+  styleUrl: './language-switcher.scss',
 })
 export class LanguageSwitcher {
   protected readonly lang = inject(LangService);

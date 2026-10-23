@@ -20,7 +20,7 @@ import { ThemeSwitcher } from './shared/theme-switcher/theme-switcher';
     LanguageSwitcher,
   ],
   templateUrl: './app.html',
-  styleUrl: './app.scss'
+  styleUrl: './app.scss',
 })
 export class App {
   protected readonly lang = inject(LangService);

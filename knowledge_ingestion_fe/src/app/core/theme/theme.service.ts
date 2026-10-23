@@ -68,12 +68,16 @@ function readStoredState(): ThemeState {
   const fallback: ThemeState = { palette: 'azure', mode: systemMode };
 
   try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<ThemeState> | null;
+    const stored = JSON.parse(
+      localStorage.getItem(STORAGE_KEY) ?? 'null',
+    ) as Partial<ThemeState> | null;
     if (!stored) {
       return fallback;
     }
     return {
-      palette: THEME_PALETTES.includes(stored.palette as ThemePalette) ? (stored.palette as ThemePalette) : fallback.palette,
+      palette: THEME_PALETTES.includes(stored.palette as ThemePalette)
+        ? (stored.palette as ThemePalette)
+        : fallback.palette,
       mode: stored.mode === 'dark' || stored.mode === 'light' ? stored.mode : fallback.mode,
     };
   } catch {

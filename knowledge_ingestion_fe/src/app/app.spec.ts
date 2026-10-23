@@ -22,7 +22,9 @@ describe('App', () => {
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
 
-    expect(compiled.querySelector('mat-card-title')?.textContent).toContain(lang.t('WELCOME_TITLE'));
+    expect(compiled.querySelector('mat-card-title')?.textContent).toContain(
+      lang.t('WELCOME_TITLE'),
+    );
     expect(compiled.querySelector('mat-card-title')?.textContent).toContain('Xin chào');
   });
 });

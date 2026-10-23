@@ -16,7 +16,7 @@ const PALETTE_KEYS: Record<ThemePalette, TranslationKey> = {
   selector: 'app-theme-switcher',
   imports: [MatButtonModule, MatIconModule, MatMenuModule],
   templateUrl: './theme-switcher.html',
-  styleUrl: './theme-switcher.scss'
+  styleUrl: './theme-switcher.scss',
 })
 export class ThemeSwitcher {
   protected readonly theme = inject(ThemeService);
