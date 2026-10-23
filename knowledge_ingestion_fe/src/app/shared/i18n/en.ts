@@ -237,6 +237,8 @@ export const EN_ENTRIES = [
   ['CHAT_STOP', 'Stop'],
   ['CHAT_SOURCES', 'Sources'],
   ['CHAT_CITE_PAGE', 'Page'],
+  ['CHAT_CITE_OPEN', 'Open source document'],
+  ['CHAT_PANEL_TOGGLE', 'Conversation options'],
   ['CHAT_CLEAR', 'New conversation'],
   ['CHAT_YOU', 'You'],
   ['CHAT_ASSISTANT', 'Assistant'],

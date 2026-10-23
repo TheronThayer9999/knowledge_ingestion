@@ -47,6 +47,9 @@ body {
 // HTML chèn động không mang attribute scope của component.
 .markdown-body {
   font: var(--mat-sys-body-medium);
+  // Câu trả lời của trợ lý dùng Times New Roman (shorthand `font` ở trên
+  // reset font-family về Roboto nên phải phủ lại sau nó)
+  font-family: var(--font-serif);
   color: var(--color-on-surface);
   overflow-wrap: anywhere;
 
@@ -68,6 +71,7 @@ body {
   h4 {
     margin: var(--space-3) 0 var(--space-2);
     font: var(--mat-sys-title-small);
+    font-family: var(--font-serif);
     color: var(--color-on-surface);
   }
 
@@ -114,6 +118,7 @@ body {
     margin-bottom: var(--space-2);
     border-collapse: collapse;
     font: var(--mat-sys-body-small);
+    font-family: var(--font-serif);
   }
 
   th,

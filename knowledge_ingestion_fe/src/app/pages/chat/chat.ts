@@ -10,6 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
@@ -22,6 +23,10 @@ import type { Category } from '../../core/knowledge/knowledge.models';
 import { KnowledgeService } from '../../core/knowledge/knowledge.service';
 import { MessageService } from '../../shared/feedback/message.service';
 import { MarkdownPipe } from '../../shared/markdown/markdown.pipe';
+import {
+  DocumentDetailDialog,
+  type DocumentDetailData,
+} from '../documents/dialogs/document-detail-dialog';
 
 interface ChatMessage extends ChatTurn {
   cites?: ChatCite[];
@@ -57,6 +62,7 @@ export class Chat {
   private readonly chat = inject(ChatService);
   private readonly knowledge = inject(KnowledgeService);
   private readonly messages = inject(MessageService);
+  private readonly dialog = inject(MatDialog);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -67,6 +73,8 @@ export class Chat {
   protected readonly sending = signal(false);
   /** Suy luận sâu: gửi `thinking: true` để model chịu khó nghĩ trước khi đáp */
   protected readonly thinking = signal(false);
+  /** Sidebar tiện ích (phạm vi + phiên mới) — ẩn đi để khung chat rộng hơn */
+  protected readonly panelOpen = signal(true);
   protected readonly suggestions = SUGGESTIONS;
 
   /** Request đang bay — giữ subscription để nút Dừng hủy được giữa chừng */
@@ -86,6 +94,10 @@ export class Chat {
 
   protected toggleThinking(): void {
     this.thinking.update((value) => !value);
+  }
+
+  protected togglePanel(): void {
+    this.panelOpen.update((value) => !value);
   }
 
   protected onInput(event: Event): void {
@@ -116,6 +128,26 @@ export class Chat {
   protected reset(): void {
     this.turns.set([]);
     this.draft.set('');
+  }
+
+  /**
+   * Bấm nguồn trích dẫn: tải metadata bài theo article_id (backend không
+   * gửi kèm trong cites) rồi mở dialog chi tiết như trong trang Tài liệu.
+   */
+  protected openCite(cite: ChatCite): void {
+    this.knowledge.getArticle(cite.articleId).subscribe({
+      next: (article) => {
+        const categoryName =
+          this.categories().find((category) => category.id === article.categoryId)?.name ?? '';
+        this.dialog.open<DocumentDetailDialog, DocumentDetailData>(DocumentDetailDialog, {
+          data: { article, categoryName },
+          maxWidth: '94vw',
+          autoFocus: 'dialog',
+        });
+      },
+      // Bài đã bị xóa từ lúc trả lời — báo lỗi nhẹ, không chặn hội thoại
+      error: (error: unknown) => this.messages.errorFromApi(error, 'AUTH_ERROR_GENERIC'),
+    });
   }
 
   /**

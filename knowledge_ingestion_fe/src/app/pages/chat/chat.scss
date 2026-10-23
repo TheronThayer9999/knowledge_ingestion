@@ -3,9 +3,11 @@
   display: block;
 }
 
+// Hàng ngang: card chat chiếm hết chiều cao (không còn header trên cùng),
+// tiện ích (phạm vi/phiên mới) sang sidebar phải gập được để trả lại chỗ.
 .page {
   display: flex;
-  flex-direction: column;
+  align-items: stretch;
   gap: var(--space-4);
   max-width: var(--content-max-width-page);
   margin: 0 auto;
@@ -13,47 +15,63 @@
   min-height: 0;
 }
 
-.page-head {
+// ---- Sidebar tiện ích ----
+.side-panel {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex: 0 0 280px;
+  flex-direction: column;
   gap: var(--space-4);
-  flex-wrap: wrap;
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow-y: auto;
 }
 
-.page-title {
+.panel-title {
   margin: 0;
-  font: var(--mat-sys-headline-small);
+  font: var(--mat-sys-title-small);
   color: var(--color-on-surface);
 }
 
-.page-subtitle {
+.panel-subtitle {
   margin: var(--space-1) 0 0;
-  font: var(--mat-sys-body-medium);
+  font: var(--mat-sys-body-small);
   color: var(--color-muted);
 }
 
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
+.scope-field {
+  width: 100%;
 }
 
-.scope-field {
-  min-width: 220px;
+.panel-action {
+  align-self: flex-start;
 }
 
 // ---- Khung chat ----
 .chat-card {
+  position: relative; // neo cho .panel-toggle
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   overflow: hidden;
+}
+
+// Nút gập sidebar nổi đè góc trên-phải card — không chiếm dòng nào trong
+// layout nên khung chat giữ nguyên chiều cao.
+.panel-toggle {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 1;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-container-high);
+  color: var(--color-muted);
 }
 
 .messages {
@@ -290,6 +308,27 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  // Nguồn trích dẫn là nút bấm được: reset nền/button mặc định, đủ chiều cao
+  // chạm 44px, có hover/focus rõ ràng
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.cite:hover {
+  background: var(--color-surface-container-high);
+}
+
+.cite:focus-visible {
+  outline: var(--border-width-strong) solid var(--color-primary);
+  outline-offset: var(--border-width);
 }
 
 .cite-n {
@@ -306,6 +345,7 @@
 
 .cite-page {
   font: var(--mat-sys-body-small);
+  font-family: var(--font-serif);
   color: var(--color-on-surface);
   white-space: nowrap;
   flex: 0 0 auto;
@@ -313,10 +353,28 @@
 
 .cite-snippet {
   font: var(--mat-sys-body-small);
+  font-family: var(--font-serif);
   color: var(--color-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+// Mồi nhấn "bấm được" — icon kẹp phải, chỉ hiện rõ khi hover/focus
+.cite-action {
+  margin-left: auto;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  font-size: var(--icon-size-sm);
+  line-height: var(--icon-size-sm);
+  color: var(--color-muted);
+  opacity: 0.6;
+  flex: 0 0 auto;
+}
+
+.cite:hover .cite-action,
+.cite:focus-visible .cite-action {
+  opacity: 1;
 }
 
 // ---- Đang trả lời ----
@@ -445,16 +503,25 @@
 // ---- Responsive ----
 @media (max-width: 1023px) {
   .page {
+    position: relative;
     height: calc(100dvh - var(--toolbar-height) - var(--space-4) * 2);
+  }
+
+  // Màn nhỏ mà chiếm 280px chiều ngang thì chat nghẹt — chuyển sidebar thành
+  // lớp phủ trượt vào từ phải, đóng bằng chính nút toggle.
+  .side-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-drawer);
+    flex-basis: auto;
+    width: min(280px, 80vw);
+    box-shadow: var(--shadow-2);
   }
 }
 
 @media (max-width: 767px) {
-  .page-head {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .bubble {
     max-width: calc(100% - var(--avatar-size));
   }

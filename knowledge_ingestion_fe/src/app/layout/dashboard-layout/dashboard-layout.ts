@@ -103,7 +103,10 @@ export class DashboardLayout {
   protected readonly rail = computed(() => this.collapsed() && !this.isHandset());
 
   private readonly shell = viewChild(MatSidenavContainer);
-  private readonly navElement = viewChild<ElementRef<HTMLElement>>('nav');
+  // `#nav` nằm trên component nên ref mặc định trỏ tới instance MatSidenav
+  // (không có nativeElement công khai) — phải đọc ElementRef tường minh,
+  // nếu không observer âm thầm không attach và content không kéo theo rail.
+  private readonly navElement = viewChild('nav', { read: ElementRef });
   private readonly destroyRef = inject(DestroyRef);
 
   constructor() {

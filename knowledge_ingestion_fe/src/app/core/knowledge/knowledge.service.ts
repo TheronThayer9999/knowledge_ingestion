@@ -113,6 +113,11 @@ export class KnowledgeService {
     return this.api.get<ArticleTreeDto>(`/articles/${id}/tree`).pipe(map(toArticleTree));
   }
 
+  /** Một tài liệu theo id (404 khi không tồn tại hoặc không thuộc owner) — chat dùng khi bấm nguồn trích dẫn */
+  getArticle(id: number): Observable<Article> {
+    return this.api.get<ArticleDto>(`/articles/${id}`).pipe(map(toArticle));
+  }
+
   deleteArticle(id: number): Observable<unknown> {
     return this.api.delete<unknown>(`/articles/${id}`);
   }

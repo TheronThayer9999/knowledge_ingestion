@@ -1,37 +1,18 @@
 <section class="page">
-  <header class="page-head">
-    <div>
-      <h2 class="page-title">{{ lang.t('CHAT_TITLE') }}</h2>
-      <p class="page-subtitle">{{ lang.t('CHAT_SUBTITLE') }}</p>
-    </div>
-    <div class="head-actions">
-      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="scope-field">
-        <mat-label>{{ lang.t('CHAT_SCOPE') }}</mat-label>
-        <mat-select
-          [value]="scope()"
-          (selectionChange)="onScopeChange($event.value)"
-          [disabled]="sending()"
-        >
-          <mat-option [value]="0">{{ lang.t('CHAT_SCOPE_ALL') }}</mat-option>
-          @for (category of categories(); track category.id) {
-            <mat-option [value]="category.id">{{ category.name }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-
-      <button
-        matButton="outlined"
-        type="button"
-        (click)="reset()"
-        [disabled]="turns().length === 0"
-      >
-        <mat-icon aria-hidden="true">refresh</mat-icon>
-        {{ lang.t('CHAT_CLEAR') }}
-      </button>
-    </div>
-  </header>
-
   <div class="chat-card">
+    <!-- Nút gập/mở sidebar tiện ích — nổi đè lên góc card để không chiếm
+         chiều cao của khung chat -->
+    <button
+      mat-icon-button
+      type="button"
+      class="panel-toggle"
+      [attr.aria-expanded]="panelOpen()"
+      [attr.aria-label]="lang.t('CHAT_PANEL_TOGGLE')"
+      [matTooltip]="lang.t('CHAT_PANEL_TOGGLE')"
+      (click)="togglePanel()"
+    >
+      <mat-icon aria-hidden="true">tune</mat-icon>
+    </button>
     <div class="messages" #scroller>
       @if (turns().length === 0) {
         <div class="chat-empty">
@@ -80,14 +61,22 @@
                     <p class="cites-title">{{ lang.t('CHAT_SOURCES') }}</p>
                     <ul class="cites-list">
                       @for (cite of turn.cites; track cite.n) {
-                        <li class="cite">
-                          <span class="cite-n">{{ cite.n }}</span>
-                          <span class="cite-page">
-                            {{ lang.t('CHAT_CITE_PAGE') }} {{ cite.pageNum }}
-                          </span>
-                          <span class="cite-snippet" [title]="cite.snippet">
-                            {{ cite.snippet }}
-                          </span>
+                        <li>
+                          <button
+                            type="button"
+                            class="cite"
+                            [attr.aria-label]="lang.t('CHAT_CITE_OPEN')"
+                            (click)="openCite(cite)"
+                          >
+                            <span class="cite-n">{{ cite.n }}</span>
+                            <span class="cite-page">
+                              {{ lang.t('CHAT_CITE_PAGE') }} {{ cite.pageNum }}
+                            </span>
+                            <span class="cite-snippet" [title]="cite.snippet">
+                              {{ cite.snippet }}
+                            </span>
+                            <mat-icon class="cite-action" aria-hidden="true">open_in_new</mat-icon>
+                          </button>
                         </li>
                       }
                     </ul>
@@ -165,4 +154,38 @@
 
     <p class="disclaimer">{{ lang.t('CHAT_ENTER_HINT') }} · {{ lang.t('CHAT_DISCLAIMER') }}</p>
   </div>
+
+  @if (panelOpen()) {
+    <aside class="side-panel">
+      <div class="panel-head">
+        <h2 class="panel-title">{{ lang.t('CHAT_TITLE') }}</h2>
+        <p class="panel-subtitle">{{ lang.t('CHAT_SUBTITLE') }}</p>
+      </div>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="scope-field">
+        <mat-label>{{ lang.t('CHAT_SCOPE') }}</mat-label>
+        <mat-select
+          [value]="scope()"
+          (selectionChange)="onScopeChange($event.value)"
+          [disabled]="sending()"
+        >
+          <mat-option [value]="0">{{ lang.t('CHAT_SCOPE_ALL') }}</mat-option>
+          @for (category of categories(); track category.id) {
+            <mat-option [value]="category.id">{{ category.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <button
+        matButton="outlined"
+        type="button"
+        class="panel-action"
+        (click)="reset()"
+        [disabled]="turns().length === 0"
+      >
+        <mat-icon aria-hidden="true">refresh</mat-icon>
+        {{ lang.t('CHAT_CLEAR') }}
+      </button>
+    </aside>
+  }
 </section>

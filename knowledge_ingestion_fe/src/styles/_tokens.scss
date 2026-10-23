@@ -22,6 +22,9 @@
   --border-width: 1px;
   --border-width-strong: 2px;
 
+  // Typography — font serif cho nội dung câu trả lời của trợ lý
+  --font-serif: 'Times New Roman', Times, serif;
+
   // Semantic colors (alias --mat-sys-* để theme sáng/tối + palette tự áp)
   --color-primary: var(--mat-sys-primary);
   --color-on-primary: var(--mat-sys-on-primary);
