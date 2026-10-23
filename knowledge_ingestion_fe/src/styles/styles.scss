@@ -1,9 +1,12 @@
 @use '@angular/material' as mat;
+@use './tokens';
+@use './reset';
 
 html {
+  // M3 theo color-scheme: sáng/tối tự áp từ token light-dark()
   color-scheme: light dark;
 
-  // M3 theme: azure palette (giống theme starter mặc định của Angular Material 21)
+  // Theme starter mặc định (azure); Feature 2 sẽ tách thành nhiều palette
   @include mat.theme(
     (
       color: (
@@ -17,8 +20,5 @@ html {
 }
 
 body {
-  margin: 0;
   font-family: Roboto, 'Helvetica Neue', sans-serif;
-  background: var(--mat-sys-surface);
-  color: var(--mat-sys-on-surface);
 }

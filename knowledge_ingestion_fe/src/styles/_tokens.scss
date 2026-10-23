@@ -1,0 +1,50 @@
+// Design tokens của app.
+// Quy ước: mọi style phải dùng token ở đây, KHÔNG hardcode hex/px rời rạc.
+// Màu/shape lấy alias từ token M3 (--mat-sys-*) nên đổi theme là tự đổi theo.
+
+:root {
+  // Spacing scale
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  // Shape (bám M3)
+  --radius-xs: var(--mat-sys-corner-extra-small);
+  --radius-sm: var(--mat-sys-corner-small);
+  --radius-md: var(--mat-sys-corner-medium);
+  --radius-lg: var(--mat-sys-corner-large);
+
+  // Border
+  --border-width: 1px;
+  --border-width-strong: 2px;
+
+  // Semantic colors (alias --mat-sys-* để theme sáng/tối + palette tự áp)
+  --color-primary: var(--mat-sys-primary);
+  --color-on-primary: var(--mat-sys-on-primary);
+  --color-surface: var(--mat-sys-surface);
+  --color-on-surface: var(--mat-sys-on-surface);
+  --color-muted: var(--mat-sys-on-surface-variant);
+  --color-border: var(--mat-sys-outline-variant);
+  --color-danger: var(--mat-sys-error);
+
+  // Elevation
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 8%);
+  --shadow-2: 0 2px 8px rgb(0 0 0 / 12%);
+
+  // Motion
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+
+  // Layout
+  --toolbar-height: 64px;
+  --content-max-width: 560px;
+
+  // Z-index
+  --z-toolbar: 10;
+  --z-drawer: 20;
+  --z-toast: 30;
+  --z-dialog: 40;
+}

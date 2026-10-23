@@ -1,0 +1,20 @@
+// Reset tối thiểu: box-sizing để padding không cộng vào kích thước,
+// bỏ margin mặc định của body và bật font smoothing.
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

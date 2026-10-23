@@ -1,0 +1,18 @@
+// Breakpoints + mixin media query.
+// Lưu ý: breakpoint dùng biến SCSS (không dùng CSS var) vì media query không nhận custom property.
+
+$bp-sm: 600px;
+$bp-md: 960px;
+$bp-lg: 1280px;
+
+@mixin mq-up($bp) {
+  @media (min-width: $bp) {
+    @content;
+  }
+}
+
+@mixin truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

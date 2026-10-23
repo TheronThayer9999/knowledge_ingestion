@@ -1,35 +1,36 @@
+// Layout shell dùng token từ src/styles/_tokens.scss — không hardcode px/hex.
 .app-toolbar {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--z-toolbar);
 }
 
 .app-logo {
-  margin-right: 8px;
+  margin-right: var(--space-2);
 }
 
 .app-spacer {
   flex: 1 1 auto;
 }
 
+// 100dvh (không phải 100vh) để không bị thanh địa chỉ mobile che
 .app-main {
   display: grid;
   place-items: center;
-  min-height: calc(100dvh - 64px);
-  padding: 24px;
-  box-sizing: border-box;
+  min-height: calc(100dvh - var(--toolbar-height));
+  padding: var(--space-5);
 }
 
 .welcome-card {
   width: 100%;
-  max-width: 560px;
+  max-width: var(--content-max-width);
 }
 
 .welcome-avatar {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: var(--space-6);
+  height: var(--space-6);
   border-radius: 50%;
   background: var(--mat-sys-primary-container);
   color: var(--mat-sys-on-primary-container);
@@ -38,6 +39,6 @@
 .welcome-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 0 16px 16px;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-4);
 }
