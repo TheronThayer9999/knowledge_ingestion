@@ -1,0 +1,78 @@
+<section class="page">
+  <header class="page-head">
+    <h2 class="page-title">{{ lang.t('SETTINGS_TITLE') }}</h2>
+    <p class="page-subtitle">{{ lang.t('SETTINGS_SUBTITLE') }}</p>
+  </header>
+
+  <mat-card appearance="outlined" class="card">
+    <div class="card-head">
+      <mat-icon aria-hidden="true">palette</mat-icon>
+      <div>
+        <h3 class="card-title">{{ lang.t('SETTINGS_APPEARANCE') }}</h3>
+        <p class="card-desc">{{ lang.t('SETTINGS_APPEARANCE_DESC') }}</p>
+      </div>
+    </div>
+
+    <div class="field">
+      <p class="field-label">{{ lang.t('SETTINGS_PALETTE') }}</p>
+      <div class="swatches" role="group" [attr.aria-label]="lang.t('SETTINGS_PALETTE')">
+        @for (palette of palettes; track palette) {
+          <button
+            type="button"
+            class="swatch"
+            [class.selected]="theme.palette() === palette"
+            [attr.aria-pressed]="theme.palette() === palette"
+            (click)="theme.setPalette(palette)"
+          >
+            <span class="swatch-dot" [class]="'swatch-dot theme-' + palette"></span>
+            <span class="swatch-label">{{ paletteKey(palette) }}</span>
+            @if (theme.palette() === palette) {
+              <mat-icon class="swatch-check" aria-hidden="true">check_circle</mat-icon>
+            }
+          </button>
+        }
+      </div>
+    </div>
+
+    <div class="field">
+      <p class="field-label">{{ lang.t('SETTINGS_MODE') }}</p>
+      <mat-button-toggle-group
+        [value]="theme.mode()"
+        hideSingleSelectionIndicator
+        [attr.aria-label]="lang.t('SETTINGS_MODE')"
+      >
+        <mat-button-toggle value="light" (click)="setMode('light')">
+          <mat-icon>light_mode</mat-icon>
+          {{ lang.t('SETTINGS_MODE_LIGHT') }}
+        </mat-button-toggle>
+        <mat-button-toggle value="dark" (click)="setMode('dark')">
+          <mat-icon>dark_mode</mat-icon>
+          {{ lang.t('SETTINGS_MODE_DARK') }}
+        </mat-button-toggle>
+      </mat-button-toggle-group>
+    </div>
+  </mat-card>
+
+  <mat-card appearance="outlined" class="card">
+    <div class="card-head">
+      <mat-icon aria-hidden="true">translate</mat-icon>
+      <div>
+        <h3 class="card-title">{{ lang.t('SETTINGS_LANGUAGE') }}</h3>
+        <p class="card-desc">{{ lang.t('SETTINGS_LANGUAGE_DESC') }}</p>
+      </div>
+    </div>
+
+    <mat-button-toggle-group
+      [value]="lang.lang()"
+      hideSingleSelectionIndicator
+      [attr.aria-label]="lang.t('SETTINGS_LANGUAGE')"
+    >
+      <mat-button-toggle value="vi" (click)="setLang('vi')">
+        {{ lang.t('SETTINGS_LANGUAGE_VI') }}
+      </mat-button-toggle>
+      <mat-button-toggle value="en" (click)="setLang('en')">
+        {{ lang.t('SETTINGS_LANGUAGE_EN') }}
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+  </mat-card>
+</section>

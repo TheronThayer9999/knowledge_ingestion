@@ -1,0 +1,280 @@
+<section class="page">
+  <header class="page-head">
+    <div>
+      <h2 class="page-title">{{ lang.t('DOC_TITLE') }}</h2>
+      <p class="page-subtitle">{{ lang.t('DOC_SUBTITLE') }}</p>
+    </div>
+    <div class="head-actions">
+      <button matButton="outlined" type="button" (click)="openFolderDialog(null)">
+        <mat-icon aria-hidden="true">create_new_folder</mat-icon>
+        {{ lang.t('DOC_NEW_FOLDER') }}
+      </button>
+      <button matButton="filled" type="button" (click)="openUpload()">
+        <mat-icon aria-hidden="true">upload</mat-icon>
+        {{ lang.t('DOC_UPLOAD') }}
+      </button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="folders" [attr.aria-label]="lang.t('DOC_FOLDERS_TITLE')">
+      <div class="folders-head">
+        <h3 class="panel-title">{{ lang.t('DOC_FOLDERS_TITLE') }}</h3>
+        <button
+          mat-icon-button
+          type="button"
+          (click)="openFolderDialog(null)"
+          [attr.aria-label]="lang.t('DOC_NEW_FOLDER')"
+          [matTooltip]="lang.t('DOC_NEW_FOLDER')"
+        >
+          <mat-icon>create_new_folder</mat-icon>
+        </button>
+      </div>
+
+      <button
+        type="button"
+        class="tree-all"
+        [class.active]="selected() === null"
+        (click)="select(null)"
+      >
+        <mat-icon aria-hidden="true">inventory_2</mat-icon>
+        <span class="tree-name">{{ lang.t('DOC_FOLDER_ALL') }}</span>
+        <span class="tree-count">{{ articles().length }}</span>
+      </button>
+
+      @if (loading() && folderViews().length === 0) {
+        <div class="tree-skeleton" aria-hidden="true">
+          <div class="skeleton row-skeleton"></div>
+          <div class="skeleton row-skeleton"></div>
+          <div class="skeleton row-skeleton"></div>
+        </div>
+      } @else if (folderViews().length === 0) {
+        <div class="folders-empty">
+          <p>{{ lang.t('DOC_FOLDER_EMPTY') }}</p>
+          <button matButton="outlined" type="button" (click)="openFolderDialog(null)">
+            {{ lang.t('DOC_NEW_FOLDER') }}
+          </button>
+        </div>
+      } @else {
+        <ng-container *ngTemplateOutlet="treeTpl; context: { $implicit: folderViews() }" />
+      }
+    </aside>
+
+    <div class="content">
+      <div class="content-toolbar">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field">
+          <mat-icon matPrefix aria-hidden="true">search</mat-icon>
+          <input
+            matInput
+            [value]="search()"
+            (input)="onSearch($event)"
+            [placeholder]="lang.t('DOC_SEARCH_PLACEHOLDER')"
+            autocomplete="off"
+          />
+          @if (search()) {
+            <button
+              mat-icon-button
+              matSuffix
+              type="button"
+              (click)="clearSearch()"
+              [attr.aria-label]="lang.t('DOC_CLEAR_SEARCH')"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+          }
+        </mat-form-field>
+
+        <span class="content-count" aria-live="polite">
+          {{ visible().length }} {{ lang.t('DOC_ITEMS') }}
+        </span>
+        <span class="toolbar-spacer"></span>
+
+        <mat-button-toggle-group [value]="view()" hideSingleSelectionIndicator>
+          <mat-button-toggle
+            value="list"
+            (click)="setView('list')"
+            [attr.aria-label]="lang.t('DOC_VIEW_LIST')"
+          >
+            <mat-icon>view_list</mat-icon>
+          </mat-button-toggle>
+          <mat-button-toggle
+            value="grid"
+            (click)="setView('grid')"
+            [attr.aria-label]="lang.t('DOC_VIEW_GRID')"
+          >
+            <mat-icon>grid_view</mat-icon>
+          </mat-button-toggle>
+        </mat-button-toggle-group>
+      </div>
+
+      @if (failed()) {
+        <mat-card appearance="outlined" class="state-card">
+          <mat-icon aria-hidden="true">cloud_off</mat-icon>
+          <p>{{ lang.t('DOC_LOAD_ERROR') }}</p>
+          <button matButton type="button" (click)="load()">{{ lang.t('COMMON_RETRY') }}</button>
+        </mat-card>
+      } @else if (loading()) {
+        <div class="list-skeleton" aria-hidden="true">
+          @for (row of skeletonRows; track row) {
+            <div class="row-skeleton skeleton"></div>
+          }
+        </div>
+      } @else if (visible().length === 0) {
+        <div class="empty">
+          <mat-icon aria-hidden="true">{{ search() ? 'search_off' : 'folder_open' }}</mat-icon>
+          @if (search()) {
+            <p>{{ lang.t('DOC_NO_RESULTS') }}</p>
+            <button matButton type="button" (click)="clearSearch()">
+              {{ lang.t('DOC_CLEAR_SEARCH') }}
+            </button>
+          } @else {
+            <p class="empty-title">{{ lang.t('DOC_EMPTY_TITLE') }}</p>
+            <p class="empty-body">{{ lang.t('DOC_EMPTY_BODY') }}</p>
+            <button matButton="filled" type="button" (click)="openUpload()">
+              <mat-icon aria-hidden="true">upload</mat-icon>
+              {{ lang.t('DOC_UPLOAD') }}
+            </button>
+          }
+        </div>
+      } @else if (view() === 'list') {
+        <div class="doc-table">
+          <div class="doc-head" aria-hidden="true">
+            <span>{{ lang.t('DOC_COL_NAME') }}</span>
+            <span class="col-folder">{{ lang.t('DOC_COL_FOLDER') }}</span>
+            <span class="col-type">{{ lang.t('DOC_COL_TYPE') }}</span>
+            <span class="col-updated">{{ lang.t('DOC_COL_UPDATED') }}</span>
+            <span class="col-actions"></span>
+          </div>
+
+          @for (article of visible(); track article.id) {
+            <div class="doc-row">
+              <button type="button" class="doc-open" (click)="openDetail(article)">
+                <span class="doc-icon">
+                  <mat-icon aria-hidden="true">description</mat-icon>
+                </span>
+                <span class="doc-name" [title]="article.name">{{ article.name }}</span>
+              </button>
+              <span class="col-folder doc-meta" [title]="categoryName(article.categoryId)">
+                {{ categoryName(article.categoryId) }}
+              </span>
+              <span class="col-type">
+                <span class="chip">{{ lang.t(docTypeKey(article.docType)) }}</span>
+              </span>
+              <span class="col-updated doc-meta">{{ article.updatedAt | date: 'dd/MM/yyyy' }}</span>
+              <span class="col-actions">
+                <button
+                  mat-icon-button
+                  type="button"
+                  (click)="openDetail(article)"
+                  [attr.aria-label]="lang.t('DOC_ACTION_VIEW')"
+                  [matTooltip]="lang.t('DOC_ACTION_VIEW')"
+                >
+                  <mat-icon>visibility</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  type="button"
+                  (click)="deleteArticle(article)"
+                  [attr.aria-label]="lang.t('DOC_ACTION_DELETE')"
+                  [matTooltip]="lang.t('DOC_ACTION_DELETE')"
+                >
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </span>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="doc-grid">
+          @for (article of visible(); track article.id) {
+            <mat-card appearance="outlined" class="doc-card">
+              <button type="button" class="card-open" (click)="openDetail(article)">
+                <span class="doc-icon">
+                  <mat-icon aria-hidden="true">description</mat-icon>
+                </span>
+                <span class="card-name" [title]="article.name">{{ article.name }}</span>
+                <span class="card-meta">
+                  {{ categoryName(article.categoryId) }} · {{ lang.t(docTypeKey(article.docType)) }}
+                </span>
+              </button>
+              <div class="card-foot">
+                <span class="doc-meta">{{ article.updatedAt | date: 'dd/MM/yyyy' }}</span>
+                <button
+                  mat-icon-button
+                  type="button"
+                  (click)="deleteArticle(article)"
+                  [attr.aria-label]="lang.t('DOC_ACTION_DELETE')"
+                  [matTooltip]="lang.t('DOC_ACTION_DELETE')"
+                >
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </div>
+            </mat-card>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</section>
+
+<!-- Cây thư mục đệ quy: mỗi node tự render con của nó -->
+<ng-template #treeTpl let-nodes>
+  <ul class="tree">
+    @for (node of nodes; track node.id) {
+      <li>
+        <div class="tree-row" [class.active]="selected() === node.id">
+          @if (node.children.length > 0) {
+            <button
+              mat-icon-button
+              type="button"
+              class="tree-toggle"
+              (click)="toggleExpand(node.id)"
+              [attr.aria-label]="
+                lang.t(isExpanded(node.id) ? 'DOC_TREE_COLLAPSE' : 'DOC_TREE_EXPAND')
+              "
+              [attr.aria-expanded]="isExpanded(node.id)"
+            >
+              <mat-icon>{{ isExpanded(node.id) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+            </button>
+          } @else {
+            <span class="tree-toggle-spacer" aria-hidden="true"></span>
+          }
+
+          <button type="button" class="tree-select" (click)="select(node.id)">
+            <mat-icon aria-hidden="true">
+              {{ selected() === node.id ? 'folder_open' : 'folder' }}
+            </mat-icon>
+            <span class="tree-name" [title]="node.name">{{ node.name }}</span>
+            <span class="tree-count">{{ node.count }}</span>
+          </button>
+
+          <button
+            mat-icon-button
+            type="button"
+            [matMenuTriggerFor]="folderMenu"
+            [attr.aria-label]="lang.t('DOC_FOLDER_MENU')"
+          >
+            <mat-icon>more_vert</mat-icon>
+          </button>
+
+          <mat-menu #folderMenu="matMenu">
+            <button mat-menu-item type="button" (click)="openFolderDialog(node.id)">
+              <mat-icon>create_new_folder</mat-icon>
+              <span>{{ lang.t('DOC_ACTION_SUBFOLDER') }}</span>
+            </button>
+            <button mat-menu-item type="button" (click)="deleteFolder(node)">
+              <mat-icon>delete</mat-icon>
+              <span>{{ lang.t('DOC_ACTION_DELETE_FOLDER') }}</span>
+            </button>
+          </mat-menu>
+        </div>
+
+        @if (node.children.length > 0 && isExpanded(node.id)) {
+          <div class="tree-children">
+            <ng-container *ngTemplateOutlet="treeTpl; context: { $implicit: node.children }" />
+          </div>
+        }
+      </li>
+    }
+  </ul>
+</ng-template>

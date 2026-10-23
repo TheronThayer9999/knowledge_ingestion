@@ -1,0 +1,122 @@
+<section class="page">
+  <header class="page-head">
+    <div>
+      <h2 class="page-title">{{ lang.t('DASH_GREETING') }}, {{ auth.user()?.username }}</h2>
+      <p class="page-subtitle">{{ lang.t('DASH_SUBTITLE') }}</p>
+    </div>
+    <button matButton="filled" type="button" (click)="openUpload()">
+      <mat-icon aria-hidden="true">upload</mat-icon>
+      {{ lang.t('DOC_UPLOAD') }}
+    </button>
+  </header>
+
+  @if (failed()) {
+    <mat-card appearance="outlined" class="state-card">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <p>{{ lang.t('DASH_LOAD_ERROR') }}</p>
+      <button matButton type="button" (click)="load()">{{ lang.t('COMMON_RETRY') }}</button>
+    </mat-card>
+  } @else {
+    <div class="stats">
+      @for (stat of stats(); track stat.label) {
+        @if (loading()) {
+          <div class="stat-card skeleton" aria-hidden="true"></div>
+        } @else {
+          <mat-card appearance="outlined" class="stat-card">
+            <span class="stat-icon">
+              <mat-icon aria-hidden="true">{{ stat.icon }}</mat-icon>
+            </span>
+            <div>
+              <p class="stat-value">{{ stat.value }}</p>
+              <p class="stat-label">{{ lang.t(stat.label) }}</p>
+              @if (stat.hint) {
+                <p class="stat-hint">{{ lang.t(stat.hint) }}</p>
+              }
+            </div>
+          </mat-card>
+        }
+      }
+    </div>
+
+    <div class="content-grid">
+      <mat-card appearance="outlined" class="panel">
+        <div class="panel-head">
+          <h3 class="panel-title">{{ lang.t('DASH_RECENT_TITLE') }}</h3>
+          <a matButton routerLink="/app/documents">{{ lang.t('DASH_VIEW_ALL') }}</a>
+        </div>
+
+        @if (loading()) {
+          <div class="recent-skeleton" aria-hidden="true">
+            <div class="row-skeleton skeleton"></div>
+            <div class="row-skeleton skeleton"></div>
+            <div class="row-skeleton skeleton"></div>
+          </div>
+        } @else if (recent().length === 0) {
+          <div class="empty">
+            <mat-icon aria-hidden="true">upload_file</mat-icon>
+            <p>{{ lang.t('DASH_RECENT_EMPTY') }}</p>
+            <button matButton="filled" type="button" (click)="openUpload()">
+              {{ lang.t('DOC_UPLOAD') }}
+            </button>
+          </div>
+        } @else {
+          <ul class="recent-list">
+            @for (article of recent(); track article.id) {
+              <li class="recent-row">
+                <span class="doc-icon">
+                  <mat-icon aria-hidden="true">description</mat-icon>
+                </span>
+                <div class="doc-main">
+                  <p class="doc-name">{{ article.name }}</p>
+                  <p class="doc-meta">
+                    {{ categoryName(article.categoryId) || lang.t('DOC_FOLDER_ALL') }}
+                    · {{ lang.t(docTypeKey(article.docType)) }}
+                  </p>
+                </div>
+                <span class="doc-date">{{ article.updatedAt | date: 'dd/MM/yyyy' }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </mat-card>
+
+      <div class="side-column">
+        <mat-card appearance="outlined" class="panel">
+          <h3 class="panel-title">{{ lang.t('DASH_QUICK_TITLE') }}</h3>
+          <button type="button" class="quick-action" (click)="openUpload()">
+            <span class="quick-icon"><mat-icon aria-hidden="true">upload_file</mat-icon></span>
+            <span class="quick-text">
+              <span class="quick-title">{{ lang.t('DASH_QUICK_UPLOAD') }}</span>
+              <span class="quick-desc">{{ lang.t('DASH_QUICK_UPLOAD_DESC') }}</span>
+            </span>
+            <mat-icon class="quick-chevron" aria-hidden="true">chevron_right</mat-icon>
+          </button>
+          <button type="button" class="quick-action" (click)="openNewFolder()">
+            <span class="quick-icon"><mat-icon aria-hidden="true">create_new_folder</mat-icon></span>
+            <span class="quick-text">
+              <span class="quick-title">{{ lang.t('DASH_QUICK_FOLDER') }}</span>
+              <span class="quick-desc">{{ lang.t('DASH_QUICK_FOLDER_DESC') }}</span>
+            </span>
+            <mat-icon class="quick-chevron" aria-hidden="true">chevron_right</mat-icon>
+          </button>
+          <a class="quick-action" routerLink="/app/chat">
+            <span class="quick-icon"><mat-icon aria-hidden="true">forum</mat-icon></span>
+            <span class="quick-text">
+              <span class="quick-title">{{ lang.t('DASH_QUICK_CHAT') }}</span>
+              <span class="quick-desc">{{ lang.t('DASH_QUICK_CHAT_DESC') }}</span>
+            </span>
+            <mat-icon class="quick-chevron" aria-hidden="true">chevron_right</mat-icon>
+          </a>
+        </mat-card>
+
+        <mat-card appearance="outlined" class="panel tip-card">
+          <div class="tip-head">
+            <mat-icon aria-hidden="true">lightbulb</mat-icon>
+            <h3 class="panel-title">{{ lang.t('DASH_TIP_TITLE') }}</h3>
+          </div>
+          <p class="tip-body">{{ lang.t('DASH_TIP_BODY') }}</p>
+        </mat-card>
+      </div>
+    </div>
+  }
+</section>

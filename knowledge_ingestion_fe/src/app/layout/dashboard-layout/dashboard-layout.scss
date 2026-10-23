@@ -1,0 +1,167 @@
+// Khung dashboard — chỉ dùng token từ src/styles/_tokens.scss.
+:host {
+  display: block;
+}
+
+.shell {
+  height: 100dvh;
+  background: var(--color-surface);
+}
+
+// ---- Sidenav ----
+.shell-nav {
+  width: var(--sidebar-width);
+  background: var(--color-surface-container);
+  border-right: var(--border-width) solid var(--color-border);
+  transition: width var(--duration-base) ease;
+}
+
+.shell-nav.rail {
+  width: var(--sidebar-width-rail);
+}
+
+.nav-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--toolbar-height);
+  padding: 0 var(--space-4);
+  color: var(--color-primary);
+}
+
+.brand-icon {
+  flex: 0 0 auto;
+}
+
+.brand-name {
+  font: var(--mat-sys-title-medium);
+  color: var(--color-on-surface);
+  white-space: nowrap;
+}
+
+.nav-groups {
+  flex: 1 1 auto;
+  padding-top: var(--space-2);
+  overflow-y: auto;
+}
+
+.nav-section {
+  margin: var(--space-3) var(--space-4) var(--space-1);
+  font: var(--mat-sys-label-small);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.nav-list {
+  padding: 0 var(--space-2) !important;
+}
+
+.nav-link {
+  margin-bottom: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--color-on-surface);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.nav-link:hover {
+  background: var(--color-surface-container-high);
+}
+
+.nav-link.is-active {
+  background: var(--color-secondary-container);
+  color: var(--color-on-secondary-container);
+}
+
+// Rail: chỉ còn icon — căn giữa để không lệch trái
+.shell-nav.rail .nav-link {
+  justify-content: center;
+}
+
+.shell-nav.rail .nav-section {
+  visibility: hidden;
+  height: var(--space-3);
+  margin: 0;
+}
+
+.nav-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-3);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.shell-nav.rail .nav-footer {
+  justify-content: center;
+}
+
+// ---- Topbar + nội dung ----
+.shell-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-toolbar);
+  gap: var(--space-2);
+  background: var(--color-surface);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.topbar-title {
+  margin: 0;
+  font: var(--mat-sys-title-large);
+  color: var(--color-on-surface);
+  white-space: nowrap;
+}
+
+.topbar-spacer {
+  flex: 1 1 auto;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: calc(var(--avatar-size) - var(--space-2));
+  height: calc(var(--avatar-size) - var(--space-2));
+  border-radius: var(--radius-full);
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+  font: var(--mat-sys-label-large);
+}
+
+.menu-user {
+  padding: var(--space-2) var(--space-4);
+  max-width: 260px;
+}
+
+.menu-user-name {
+  margin: 0;
+  font: var(--mat-sys-title-small);
+  color: var(--color-on-surface);
+}
+
+.menu-user-email {
+  margin: 0;
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-content {
+  min-height: calc(100dvh - var(--toolbar-height));
+  padding: var(--space-5);
+}
+
+@media (max-width: 1023px) {
+  .shell-content {
+    padding: var(--space-4);
+  }
+}

@@ -1,0 +1,125 @@
+<mat-sidenav-container class="shell" [hasBackdrop]="isHandset()">
+  <mat-sidenav
+    class="shell-nav"
+    [class.rail]="rail()"
+    [mode]="isHandset() ? 'over' : 'side'"
+    [opened]="isHandset() ? mobileOpen() : true"
+  >
+    <div class="nav-inner">
+      <div class="brand">
+        <mat-icon class="brand-icon" aria-hidden="true">school</mat-icon>
+        @if (!rail()) {
+          <span class="brand-name">{{ lang.t('APP_NAME') }}</span>
+        }
+      </div>
+
+      <nav class="nav-groups" aria-label="Main navigation">
+        <p class="nav-section">{{ lang.t('NAV_SECTION_WORKSPACE') }}</p>
+        <mat-nav-list class="nav-list">
+          @for (item of workspaceNav; track item.path) {
+            <a
+              mat-list-item
+              class="nav-link"
+              [routerLink]="item.path"
+              routerLinkActive="is-active"
+              [matTooltip]="rail() ? lang.t(item.label) : ''"
+              matTooltipPosition="right"
+              (click)="closeMobileNav()"
+            >
+              <mat-icon matListItemIcon aria-hidden="true">{{ item.icon }}</mat-icon>
+              @if (!rail()) {
+                <span matListItemTitle>{{ lang.t(item.label) }}</span>
+              }
+            </a>
+          }
+        </mat-nav-list>
+
+        <p class="nav-section">{{ lang.t('NAV_SECTION_ACCOUNT') }}</p>
+        <mat-nav-list class="nav-list">
+          @for (item of accountNav; track item.path) {
+            <a
+              mat-list-item
+              class="nav-link"
+              [routerLink]="item.path"
+              routerLinkActive="is-active"
+              [matTooltip]="rail() ? lang.t(item.label) : ''"
+              matTooltipPosition="right"
+              (click)="closeMobileNav()"
+            >
+              <mat-icon matListItemIcon aria-hidden="true">{{ item.icon }}</mat-icon>
+              @if (!rail()) {
+                <span matListItemTitle>{{ lang.t(item.label) }}</span>
+              }
+            </a>
+          }
+        </mat-nav-list>
+      </nav>
+
+      @if (!isHandset()) {
+        <div class="nav-footer">
+          <button
+            mat-icon-button
+            type="button"
+            (click)="toggleNav()"
+            [matTooltip]="collapsed() ? lang.t('NAV_EXPAND') : lang.t('NAV_COLLAPSE')"
+            [attr.aria-label]="collapsed() ? lang.t('NAV_EXPAND') : lang.t('NAV_COLLAPSE')"
+          >
+            <mat-icon aria-hidden="true">{{ collapsed() ? 'chevron_right' : 'chevron_left' }}</mat-icon>
+          </button>
+        </div>
+      }
+    </div>
+  </mat-sidenav>
+
+  <mat-sidenav-content class="shell-body">
+    <mat-toolbar class="shell-topbar">
+      @if (isHandset()) {
+        <button
+          mat-icon-button
+          type="button"
+          (click)="toggleNav()"
+          [attr.aria-label]="lang.t('NAV_OPEN_MENU')"
+        >
+          <mat-icon aria-hidden="true">menu</mat-icon>
+        </button>
+      }
+      <h1 class="topbar-title">{{ lang.t(pageTitle()) }}</h1>
+      <span class="topbar-spacer"></span>
+      <app-language-switcher />
+      <app-theme-switcher />
+      <button
+        mat-icon-button
+        type="button"
+        class="account-button"
+        [matMenuTriggerFor]="accountMenu"
+        [attr.aria-label]="lang.t('TOOLBAR_ACCOUNT_MENU')"
+      >
+        <span class="avatar">{{ initials() }}</span>
+      </button>
+      <mat-menu #accountMenu="matMenu" xPosition="before">
+        <div class="menu-user">
+          <p class="menu-user-name">{{ auth.user()?.username }}</p>
+          <p class="menu-user-email">{{ auth.user()?.email }}</p>
+        </div>
+        <mat-divider />
+        <a mat-menu-item routerLink="/app/profile">
+          <mat-icon aria-hidden="true">person</mat-icon>
+          <span>{{ lang.t('NAV_PROFILE') }}</span>
+        </a>
+        <a mat-menu-item routerLink="/app/settings">
+          <mat-icon aria-hidden="true">settings</mat-icon>
+          <span>{{ lang.t('NAV_SETTINGS') }}</span>
+        </a>
+        <mat-divider />
+        <button mat-menu-item type="button" (click)="logout()">
+          <mat-icon aria-hidden="true">logout</mat-icon>
+          <span>{{ lang.t('TOOLBAR_LOGOUT') }}</span>
+        </button>
+      </mat-menu>
+    </mat-toolbar>
+
+    <main class="shell-content">
+      <router-outlet />
+    </main>
+  </mat-sidenav-content>
+</mat-sidenav-container>

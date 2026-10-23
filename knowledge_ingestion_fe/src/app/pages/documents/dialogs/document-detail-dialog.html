@@ -1,0 +1,102 @@
+<h2 mat-dialog-title>{{ lang.t('DOC_DETAIL_TITLE') }}</h2>
+
+<mat-dialog-content class="dialog-body">
+  <header class="doc-head">
+    <span class="doc-icon">
+      <mat-icon aria-hidden="true">description</mat-icon>
+    </span>
+    <div class="doc-head-main">
+      <p class="doc-name">{{ data.article.name }}</p>
+      <p class="doc-sub">
+        {{ data.categoryName }} · {{ lang.t(docTypeKey(data.article.docType)) }}
+      </p>
+    </div>
+  </header>
+
+  <section class="info-grid">
+    <div class="info-item">
+      <span class="info-label">{{ lang.t('DOC_DETAIL_STATUS') }}</span>
+      <span class="info-value">
+        {{ lang.t(statusKey(tree()?.indexStatus ?? 'pending')) }}
+      </span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">{{ lang.t('DOC_DETAIL_SECTIONS') }}</span>
+      <span class="info-value">{{ tree()?.nodeCount ?? '—' }}</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">{{ lang.t('DOC_DETAIL_CREATED') }}</span>
+      <span class="info-value">{{ data.article.createdAt | date: 'dd/MM/yyyy HH:mm' }}</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">{{ lang.t('DOC_DETAIL_UPDATED') }}</span>
+      <span class="info-value">{{ data.article.updatedAt | date: 'dd/MM/yyyy HH:mm' }}</span>
+    </div>
+    @if (data.article.storageKey) {
+      <div class="info-item info-wide">
+        <span class="info-label">{{ lang.t('DOC_DETAIL_SOURCE_FILE') }}</span>
+        <span class="info-value mono" [title]="data.article.storageKey">
+          {{ data.article.storageKey }}
+        </span>
+      </div>
+    }
+    @if (data.article.url) {
+      <div class="info-item info-wide">
+        <span class="info-label">{{ lang.t('DOC_DETAIL_SOURCE_URL') }}</span>
+        <a class="info-value" [href]="data.article.url" target="_blank" rel="noopener">
+          {{ data.article.url }}
+        </a>
+      </div>
+    }
+  </section>
+
+  <section>
+    <h3 class="section-title">{{ lang.t('DOC_DETAIL_DESCRIPTION') }}</h3>
+    <p class="description">
+      {{ data.article.description || lang.t('DOC_DETAIL_NO_DESCRIPTION') }}
+    </p>
+  </section>
+
+  <section>
+    <h3 class="section-title">{{ lang.t('DOC_DETAIL_STRUCTURE') }}</h3>
+
+    @if (loading()) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else if (failed()) {
+      <div class="structure-error">
+        <p>{{ lang.t('DOC_DETAIL_LOAD_ERROR') }}</p>
+        <button matButton type="button" (click)="loadTree()">{{ lang.t('COMMON_RETRY') }}</button>
+      </div>
+    } @else if (tree(); as current) {
+      @if (current.roots.length === 0) {
+        <p class="description">{{ lang.t('DOC_DETAIL_STRUCTURE_EMPTY') }}</p>
+      } @else {
+        <ul class="structure">
+          <ng-container
+            *ngTemplateOutlet="nodeTpl; context: { $implicit: current.roots }"
+          />
+        </ul>
+      }
+    }
+  </section>
+
+  <ng-template #nodeTpl let-nodes>
+    @for (node of nodes; track node.name + node.from) {
+      <li class="node">
+        <span class="node-name">{{ node.name }}</span>
+        @if (node.summary) {
+          <p class="node-summary">{{ node.summary }}</p>
+        }
+        @if (node.children.length > 0) {
+          <ul class="node-children">
+            <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: node.children }" />
+          </ul>
+        }
+      </li>
+    }
+  </ng-template>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button matButton mat-dialog-close>{{ lang.t('COMMON_CLOSE') }}</button>
+</mat-dialog-actions>

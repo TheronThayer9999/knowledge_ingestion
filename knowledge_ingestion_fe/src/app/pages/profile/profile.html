@@ -1,0 +1,193 @@
+<section class="page">
+  <header class="page-head">
+    <h2 class="page-title">{{ lang.t('PROFILE_TITLE') }}</h2>
+    <p class="page-subtitle">{{ lang.t('PROFILE_SUBTITLE') }}</p>
+  </header>
+
+  <mat-card appearance="outlined" class="card hero">
+    <div class="hero-avatar" aria-hidden="true">{{ initials() }}</div>
+    <div class="hero-main">
+      <h3 class="hero-name">{{ user()?.username }}</h3>
+      <p class="hero-email">{{ user()?.email }}</p>
+      <div class="chips">
+        <span class="chip chip-role">
+          <mat-icon aria-hidden="true">verified_user</mat-icon>
+          {{ lang.t(roleKey()) }}
+        </span>
+        <span class="chip" [class.chip-off]="user()?.active === false">
+          <mat-icon aria-hidden="true">{{ user()?.active === false ? 'block' : 'check_circle' }}</mat-icon>
+          {{ lang.t(statusKey()) }}
+        </span>
+      </div>
+    </div>
+  </mat-card>
+
+  <div class="grid">
+    <mat-card appearance="outlined" class="card">
+      <div class="card-head">
+        <mat-icon aria-hidden="true">badge</mat-icon>
+        <div>
+          <h3 class="card-title">{{ lang.t('PROFILE_ACCOUNT_INFO') }}</h3>
+        </div>
+      </div>
+
+      <dl class="info-list">
+        <div class="info-row">
+          <dt>{{ lang.t('AUTH_USERNAME') }}</dt>
+          <dd>{{ user()?.username }}</dd>
+        </div>
+        <div class="info-row">
+          <dt>{{ lang.t('PROFILE_EMAIL') }}</dt>
+          <dd>{{ user()?.email || '—' }}</dd>
+        </div>
+        <div class="info-row">
+          <dt>{{ lang.t('PROFILE_PHONE') }}</dt>
+          <dd>
+            @if (user()?.phone) {
+              {{ user()?.phone }}
+            } @else {
+              <span class="muted">{{ lang.t('PROFILE_NOT_UPDATED') }}</span>
+            }
+          </dd>
+        </div>
+        <div class="info-row">
+          <dt>{{ lang.t('PROFILE_LAST_LOGIN') }}</dt>
+          <dd>
+            @if (user()?.lastLogin; as lastLogin) {
+              {{ lastLogin | date: 'medium' }}
+            } @else {
+              <span class="muted">{{ lang.t('PROFILE_NOT_UPDATED') }}</span>
+            }
+          </dd>
+        </div>
+      </dl>
+    </mat-card>
+
+    <mat-card appearance="outlined" class="card">
+      <div class="card-head">
+        <mat-icon aria-hidden="true">lock</mat-icon>
+        <div>
+          <h3 class="card-title">{{ lang.t('PROFILE_PASSWORD_TITLE') }}</h3>
+          <p class="card-desc">{{ lang.t('PROFILE_PASSWORD_DESC') }}</p>
+        </div>
+      </div>
+
+      <form class="form" [formGroup]="form" (ngSubmit)="submit()">
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('PROFILE_OLD_PASSWORD') }}</mat-label>
+          <input
+            matInput
+            [type]="isVisible('old') ? 'text' : 'password'"
+            formControlName="oldPassword"
+            autocomplete="current-password"
+          />
+          <button
+            mat-icon-button
+            matSuffix
+            type="button"
+            (click)="toggleVisibility('old')"
+            [attr.aria-label]="lang.t(isVisible('old') ? 'PROFILE_HIDE_PASSWORD' : 'PROFILE_SHOW_PASSWORD')"
+          >
+            <mat-icon aria-hidden="true">{{ isVisible('old') ? 'visibility_off' : 'visibility' }}</mat-icon>
+          </button>
+          @if (form.controls.oldPassword.touched && form.controls.oldPassword.invalid) {
+            <mat-error>{{ lang.t('PROFILE_PASSWORD_REQUIRED') }}</mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('PROFILE_NEW_PASSWORD') }}</mat-label>
+          <input
+            matInput
+            [type]="isVisible('new') ? 'text' : 'password'"
+            formControlName="newPassword"
+            autocomplete="new-password"
+          />
+          <button
+            mat-icon-button
+            matSuffix
+            type="button"
+            (click)="toggleVisibility('new')"
+            [attr.aria-label]="lang.t(isVisible('new') ? 'PROFILE_HIDE_PASSWORD' : 'PROFILE_SHOW_PASSWORD')"
+          >
+            <mat-icon aria-hidden="true">{{ isVisible('new') ? 'visibility_off' : 'visibility' }}</mat-icon>
+          </button>
+          @if (form.controls.newPassword.touched && form.controls.newPassword.invalid) {
+            <mat-error>
+              {{
+                lang.t(
+                  form.controls.newPassword.hasError('minlength')
+                    ? 'PROFILE_PASSWORD_MIN'
+                    : 'PROFILE_PASSWORD_REQUIRED'
+                )
+              }}
+            </mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('PROFILE_CONFIRM_PASSWORD') }}</mat-label>
+          <input
+            matInput
+            [type]="isVisible('confirm') ? 'text' : 'password'"
+            formControlName="confirmPassword"
+            autocomplete="new-password"
+          />
+          <button
+            mat-icon-button
+            matSuffix
+            type="button"
+            (click)="toggleVisibility('confirm')"
+            [attr.aria-label]="lang.t(isVisible('confirm') ? 'PROFILE_HIDE_PASSWORD' : 'PROFILE_SHOW_PASSWORD')"
+          >
+            <mat-icon aria-hidden="true">{{ isVisible('confirm') ? 'visibility_off' : 'visibility' }}</mat-icon>
+          </button>
+          @if (form.controls.confirmPassword.touched) {
+            @if (form.hasError('mismatch')) {
+              <mat-error>{{ lang.t('PROFILE_PASSWORD_MISMATCH') }}</mat-error>
+            } @else if (form.controls.confirmPassword.invalid) {
+              <mat-error>{{ lang.t('PROFILE_PASSWORD_REQUIRED') }}</mat-error>
+            }
+          }
+        </mat-form-field>
+
+        <div class="form-actions">
+          <button matButton="filled" type="submit" [disabled]="saving()">
+            @if (saving()) {
+              <mat-spinner diameter="18" />
+            } @else {
+              {{ lang.t('PROFILE_CHANGE_PASSWORD') }}
+            }
+          </button>
+        </div>
+      </form>
+    </mat-card>
+  </div>
+
+  <mat-card appearance="outlined" class="card danger-card">
+    <div class="card-head">
+      <mat-icon class="danger-icon" aria-hidden="true">devices</mat-icon>
+      <div>
+        <h3 class="card-title">{{ lang.t('PROFILE_DANGER_TITLE') }}</h3>
+        <p class="card-desc">{{ lang.t('PROFILE_DANGER_DESC') }}</p>
+      </div>
+    </div>
+
+    <div class="danger-actions">
+      <button
+        matButton="outlined"
+        type="button"
+        class="danger-button"
+        (click)="logoutAll()"
+        [disabled]="signingOut()"
+      >
+        <mat-icon aria-hidden="true">logout</mat-icon>
+        @if (signingOut()) {
+          <mat-spinner diameter="18" />
+        } @else {
+          {{ lang.t('PROFILE_LOGOUT_ALL') }}
+        }
+      </button>
+    </div>
+  </mat-card>
+</section>

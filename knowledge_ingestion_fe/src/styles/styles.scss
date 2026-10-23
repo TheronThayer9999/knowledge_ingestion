@@ -42,3 +42,92 @@ html {
 body {
   font-family: Roboto, 'Helvetica Neue', sans-serif;
 }
+
+// Nội dung markdown do AI sinh (bind [innerHTML]) — style phải global vì
+// HTML chèn động không mang attribute scope của component.
+.markdown-body {
+  font: var(--mat-sys-body-medium);
+  color: var(--color-on-surface);
+  overflow-wrap: anywhere;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  p {
+    margin: 0 0 var(--space-2);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: var(--space-3) 0 var(--space-2);
+    font: var(--mat-sys-title-small);
+    color: var(--color-on-surface);
+  }
+
+  ul,
+  ol {
+    margin: 0 0 var(--space-2);
+    padding-left: var(--space-5);
+  }
+
+  li {
+    margin-bottom: var(--space-1);
+  }
+
+  code {
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-xs);
+    background: var(--color-surface-container-high);
+    font-family: monospace;
+    font-size: 0.85em;
+  }
+
+  pre {
+    margin: 0 0 var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-container-high);
+    overflow-x: auto;
+  }
+
+  pre code {
+    padding: 0;
+    background: transparent;
+  }
+
+  blockquote {
+    margin: 0 0 var(--space-2);
+    padding-left: var(--space-3);
+    border-left: var(--border-width-strong) solid var(--color-border);
+    color: var(--color-muted);
+  }
+
+  table {
+    width: 100%;
+    margin-bottom: var(--space-2);
+    border-collapse: collapse;
+    font: var(--mat-sys-body-small);
+  }
+
+  th,
+  td {
+    padding: var(--space-1) var(--space-2);
+    border: var(--border-width) solid var(--color-border);
+    text-align: left;
+  }
+
+  th {
+    background: var(--color-surface-container);
+  }
+
+  a {
+    color: var(--color-primary);
+  }
+}

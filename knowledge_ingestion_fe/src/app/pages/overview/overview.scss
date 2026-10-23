@@ -1,0 +1,337 @@
+// Trang tổng quan — chỉ dùng token, không hardcode màu/kích thước rời.
+:host {
+  display: block;
+}
+
+.page {
+  max-width: var(--content-max-width-page);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.page-title {
+  margin: 0;
+  font: var(--mat-sys-headline-small);
+  color: var(--color-on-surface);
+}
+
+.page-subtitle {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--color-muted);
+}
+
+// ---- Trạng thái lỗi ----
+.state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--color-muted);
+}
+
+// ---- KPI ----
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  min-height: 96px;
+}
+
+.stat-icon {
+  display: grid;
+  place-items: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-sm);
+  background: var(--color-secondary-container);
+  color: var(--color-on-secondary-container);
+  flex: 0 0 auto;
+}
+
+.stat-value {
+  margin: 0;
+  font: var(--mat-sys-headline-small);
+  color: var(--color-on-surface);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.stat-label {
+  margin: 0;
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+}
+
+.stat-hint {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-label-small);
+  color: var(--color-muted);
+}
+
+// ---- Bố cục nội dung ----
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.panel {
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.panel-title {
+  margin: 0;
+  font: var(--mat-sys-title-small);
+  color: var(--color-on-surface);
+}
+
+// ---- Danh sách tài liệu gần đây ----
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--list-row-height);
+  padding: var(--space-2) var(--space-1);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.recent-row:last-child {
+  border-bottom: none;
+}
+
+.doc-icon {
+  display: grid;
+  place-items: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container-high);
+  color: var(--color-primary);
+  flex: 0 0 auto;
+}
+
+.doc-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.doc-name {
+  margin: 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--color-on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-meta {
+  margin: 0;
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-date {
+  font: var(--mat-sys-label-small);
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+// ---- Cột phụ ----
+.side-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.quick-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--list-row-height);
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.quick-action:hover {
+  background: var(--color-surface-container-high);
+}
+
+.quick-icon {
+  display: grid;
+  place-items: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+  flex: 0 0 auto;
+}
+
+.quick-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.quick-title {
+  font: var(--mat-sys-body-medium);
+  color: var(--color-on-surface);
+}
+
+.quick-desc {
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+}
+
+.quick-chevron {
+  color: var(--color-muted);
+  flex: 0 0 auto;
+}
+
+.tip-card {
+  background: var(--color-surface-container);
+}
+
+.tip-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-primary);
+}
+
+.tip-body {
+  margin: var(--space-2) 0 0;
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+}
+
+// ---- Trạng thái rỗng ----
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.empty p {
+  margin: 0;
+  font: var(--mat-sys-body-medium);
+}
+
+// ---- Skeleton ----
+.recent-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.row-skeleton {
+  height: var(--list-row-height);
+}
+
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-container) 25%,
+    var(--color-surface-container-high) 50%,
+    var(--color-surface-container) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+// ---- Responsive ----
+@media (max-width: 1023px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 599px) {
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .doc-date {
+    display: none;
+  }
+}

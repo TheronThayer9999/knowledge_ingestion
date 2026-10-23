@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { LangService } from './core/i18n/lang.service';
+import { provideRouter } from '@angular/router';
 import { App } from './app';
 
 describe('App', () => {
@@ -7,21 +7,20 @@ describe('App', () => {
     localStorage.clear();
     await TestBed.configureTestingModule({
       imports: [App],
+      providers: [provideRouter([])],
     }).compileComponents();
   });
 
   it('should create the app', () => {
     const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    expect(app).toBeTruthy();
+    expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('should render the translated app name in the toolbar', async () => {
+  it('should render a single router outlet as the app shell', async () => {
     const fixture = TestBed.createComponent(App);
-    const lang = TestBed.inject(LangService);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
 
-    expect(compiled.querySelector('mat-toolbar')?.textContent).toContain(lang.t('APP_NAME'));
+    expect(compiled.querySelectorAll('router-outlet')).toHaveLength(1);
   });
 });

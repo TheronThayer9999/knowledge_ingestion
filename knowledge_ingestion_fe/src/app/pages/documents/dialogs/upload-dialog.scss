@@ -1,0 +1,137 @@
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+  min-width: min(var(--dialog-width-md), 84vw);
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+// ---- Chọn file ----
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  border: var(--border-width-strong) dashed var(--color-outline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container);
+  color: var(--color-muted);
+  text-align: center;
+  transition:
+    border-color var(--duration-fast) ease,
+    background-color var(--duration-fast) ease;
+}
+
+.drop-zone.dragging {
+  border-color: var(--color-primary);
+  background: var(--color-secondary-container);
+}
+
+.drop-title {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-title-small);
+  color: var(--color-on-surface);
+}
+
+.drop-hint {
+  margin: 0 0 var(--space-2);
+  font: var(--mat-sys-body-small);
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container);
+}
+
+.file-icon {
+  color: var(--color-primary);
+}
+
+.file-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.file-name {
+  margin: 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--color-on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  margin: 0;
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.file-error {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-body-small);
+  color: var(--color-danger);
+}
+
+// ---- Hai cột loại + thư mục ----
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+@media (max-width: 599px) {
+  .field-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+// ---- Tiến trình 3 bước ----
+.stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+}
+
+.stage.active {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.stage.done {
+  color: var(--color-on-surface);
+}
+
+.stage.done mat-icon {
+  color: var(--color-primary);
+}
+
+.stage mat-icon {
+  font-size: var(--icon-size-sm);
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}

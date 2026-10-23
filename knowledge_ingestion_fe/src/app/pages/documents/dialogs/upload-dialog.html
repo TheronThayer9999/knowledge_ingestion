@@ -1,0 +1,110 @@
+<h2 mat-dialog-title>{{ lang.t('DOC_UPLOAD_DIALOG_TITLE') }}</h2>
+
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <mat-dialog-content class="dialog-body">
+    <div class="file-section">
+      @if (file(); as picked) {
+        <div class="file-row">
+          <mat-icon class="file-icon" aria-hidden="true">description</mat-icon>
+          <div class="file-main">
+            <p class="file-name">{{ picked.name }}</p>
+            <p class="file-size">{{ formatSize(picked.size) }}</p>
+          </div>
+          <button matButton type="button" (click)="fileInput.click()" [disabled]="submitting()">
+            {{ lang.t('DOC_UPLOAD_CHANGE_FILE') }}
+          </button>
+        </div>
+      } @else {
+        <div
+          class="drop-zone"
+          [class.dragging]="dragging()"
+          (dragover)="onDragOver($event)"
+          (dragleave)="onDragLeave($event)"
+          (drop)="onDrop($event)"
+        >
+          <mat-icon aria-hidden="true">upload_file</mat-icon>
+          <p class="drop-title">{{ lang.t('DOC_UPLOAD_DROP_TITLE') }}</p>
+          <p class="drop-hint">{{ lang.t('DOC_UPLOAD_DROP_HINT') }}</p>
+          <button matButton="outlined" type="button" (click)="fileInput.click()">
+            {{ lang.t('DOC_UPLOAD_CHOOSE') }}
+          </button>
+        </div>
+      }
+
+      @if (fileError(); as errorKey) {
+        <p class="file-error" role="alert">{{ lang.t(errorKey) }}</p>
+      }
+
+      <input
+        #fileInput
+        type="file"
+        class="file-input"
+        [accept]="accept"
+        (change)="onPick($event)"
+      />
+    </div>
+
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>{{ lang.t('DOC_UPLOAD_NAME') }}</mat-label>
+      <input matInput formControlName="name" maxlength="255" autocomplete="off" required />
+      @if (form.controls.name.hasError('required')) {
+        <mat-error>{{ lang.t('DOC_UPLOAD_REQUIRED_NAME') }}</mat-error>
+      }
+    </mat-form-field>
+
+    <div class="field-row">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>{{ lang.t('DOC_UPLOAD_TYPE') }}</mat-label>
+        <mat-select formControlName="docType">
+          @for (option of docTypes; track option.value) {
+            <mat-option [value]="option.value">{{ lang.t(option.key) }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>{{ lang.t('DOC_UPLOAD_FOLDER') }}</mat-label>
+        <mat-select formControlName="categoryId">
+          @for (category of data.categories; track category.id) {
+            <mat-option [value]="category.id">{{ category.name }}</mat-option>
+          }
+        </mat-select>
+        @if (form.controls.categoryId.hasError('min')) {
+          <mat-error>{{ lang.t('DOC_UPLOAD_REQUIRED_FOLDER') }}</mat-error>
+        }
+      </mat-form-field>
+    </div>
+
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>{{ lang.t('DOC_UPLOAD_DESC') }}</mat-label>
+      <textarea matInput formControlName="description" rows="2" maxlength="1000"></textarea>
+    </mat-form-field>
+
+    @if (submitting()) {
+      <div class="stages" role="status">
+        @for (item of stages; track item.stage) {
+          <div
+            class="stage"
+            [class.active]="stageState(item.stage) === 'active'"
+            [class.done]="stageState(item.stage) === 'done'"
+          >
+            <mat-icon aria-hidden="true">
+              {{ stageState(item.stage) === 'done' ? 'check_circle' : 'radio_button_unchecked' }}
+            </mat-icon>
+            <span>{{ lang.t(item.key) }}</span>
+          </div>
+        }
+      </div>
+      <mat-progress-bar mode="indeterminate" />
+    }
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button matButton type="button" mat-dialog-close [disabled]="submitting()">
+      {{ lang.t('COMMON_CANCEL') }}
+    </button>
+    <button matButton="filled" type="submit" [disabled]="submitting()">
+      {{ lang.t('DOC_UPLOAD') }}
+    </button>
+  </mat-dialog-actions>
+</form>

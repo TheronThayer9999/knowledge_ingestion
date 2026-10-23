@@ -1,0 +1,261 @@
+// Trang hồ sơ — chỉ dùng token, bố cục 2 cột trên desktop.
+:host {
+  display: block;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: var(--content-max-width-page);
+  margin: 0 auto;
+}
+
+.page-head {
+  display: flex;
+  flex-direction: column;
+}
+
+.page-title {
+  margin: 0;
+  font: var(--mat-sys-headline-small);
+  color: var(--color-on-surface);
+}
+
+.page-subtitle {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--color-muted);
+}
+
+// ---- Thẻ chung ----
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.card-head > mat-icon {
+  display: grid;
+  place-items: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-sm);
+  background: var(--color-secondary-container);
+  color: var(--color-on-secondary-container);
+  flex: 0 0 auto;
+}
+
+.card-title {
+  margin: 0;
+  font: var(--mat-sys-title-medium);
+  color: var(--color-on-surface);
+}
+
+.card-desc {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+}
+
+// ---- Thẻ danh tính ----
+.hero {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.hero-avatar {
+  display: grid;
+  place-items: center;
+  width: calc(var(--avatar-size) + var(--space-5));
+  height: calc(var(--avatar-size) + var(--space-5));
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font: var(--mat-sys-title-large);
+  flex: 0 0 auto;
+}
+
+.hero-main {
+  min-width: 0;
+}
+
+.hero-name {
+  margin: 0;
+  font: var(--mat-sys-title-large);
+  color: var(--color-on-surface);
+  overflow-wrap: anywhere;
+}
+
+.hero-email {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-secondary-container);
+  color: var(--color-on-secondary-container);
+  font: var(--mat-sys-label-medium);
+}
+
+.chip mat-icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  font-size: var(--icon-size-sm);
+}
+
+.chip-role {
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+}
+
+.chip-off {
+  background: var(--color-error-container);
+  color: var(--color-danger);
+}
+
+// ---- Bố cục 2 cột ----
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+// ---- Bảng thông tin ----
+.info-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.info-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.info-row dt {
+  font: var(--mat-sys-body-medium);
+  color: var(--color-muted);
+  flex: 0 0 auto;
+}
+
+.info-row dd {
+  margin: 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--color-on-surface);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+// ---- Form đổi mật khẩu ----
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.form mat-form-field {
+  width: 100%;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-1);
+}
+
+// ---- Thẻ phiên đăng nhập ----
+.danger-card {
+  border-color: var(--color-error-container);
+}
+
+.card-head > .danger-icon {
+  color: var(--color-danger);
+  background: var(--color-error-container);
+}
+
+.danger-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.danger-button {
+  color: var(--color-danger);
+  --mat-button-outlined-label-text-color: var(--color-danger);
+  --mat-button-outlined-outline-color: var(--color-danger);
+  --mat-button-outlined-state-layer-color: var(--color-danger);
+}
+
+// ---- Responsive ----
+@media (max-width: 1023px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .card {
+    padding: var(--space-4);
+  }
+
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .info-row dd {
+    text-align: left;
+  }
+
+  .form-actions,
+  .danger-actions {
+    justify-content: stretch;
+  }
+
+  .form-actions button,
+  .danger-actions button {
+    width: 100%;
+  }
+}

@@ -1,0 +1,167 @@
+// Trang cài đặt — chỉ dùng token, thẻ cấu hình dạng danh sách dọc.
+:host {
+  display: block;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: var(--content-max-width-page);
+  margin: 0 auto;
+}
+
+.page-head {
+  display: flex;
+  flex-direction: column;
+}
+
+.page-title {
+  margin: 0;
+  font: var(--mat-sys-headline-small);
+  color: var(--color-on-surface);
+}
+
+.page-subtitle {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--color-muted);
+}
+
+// ---- Thẻ cấu hình ----
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.card-head > mat-icon {
+  display: grid;
+  place-items: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-sm);
+  background: var(--color-secondary-container);
+  color: var(--color-on-secondary-container);
+  flex: 0 0 auto;
+}
+
+.card-title {
+  margin: 0;
+  font: var(--mat-sys-title-medium);
+  color: var(--color-on-surface);
+}
+
+.card-desc {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field-label {
+  margin: 0;
+  font: var(--mat-sys-label-large);
+  color: var(--color-on-surface);
+}
+
+// ---- Bảng màu ----
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-2);
+}
+
+.swatch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+  font: var(--mat-sys-body-medium);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) ease,
+    background-color var(--duration-fast) ease;
+}
+
+.swatch:hover {
+  background: var(--color-surface-container);
+  border-color: var(--color-outline);
+}
+
+.swatch:focus-visible {
+  outline: var(--border-width-strong) solid var(--color-primary);
+  outline-offset: var(--border-width);
+}
+
+.swatch.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+}
+
+// Chấm màu lấy token của class theme-<palette> đặt ngay trên phần tử
+.swatch-dot {
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  box-shadow: inset 0 0 0 var(--border-width) var(--color-border);
+  flex: 0 0 auto;
+}
+
+.swatch-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.swatch-check {
+  margin-left: auto;
+  color: var(--color-primary);
+  flex: 0 0 auto;
+}
+
+// ---- Responsive ----
+@media (max-width: 767px) {
+  .card {
+    padding: var(--space-4);
+  }
+
+  .swatches {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .swatch {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .swatch-check {
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+    margin-left: 0;
+  }
+}

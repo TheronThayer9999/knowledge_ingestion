@@ -16,6 +16,7 @@
   --radius-sm: var(--mat-sys-corner-small);
   --radius-md: var(--mat-sys-corner-medium);
   --radius-lg: var(--mat-sys-corner-large);
+  --radius-full: var(--mat-sys-corner-full);
 
   // Border
   --border-width: 1px;
@@ -30,6 +31,17 @@
   --color-border: var(--mat-sys-outline-variant);
   --color-danger: var(--mat-sys-error);
 
+  // Surfaces phân tầng cho card/panel/sidebar
+  --color-surface-container: var(--mat-sys-surface-container);
+  --color-surface-container-high: var(--mat-sys-surface-container-high);
+  --color-outline: var(--mat-sys-outline);
+  --color-primary-container: var(--mat-sys-primary-container);
+  --color-on-primary-container: var(--mat-sys-on-primary-container);
+  --color-secondary-container: var(--mat-sys-secondary-container);
+  --color-on-secondary-container: var(--mat-sys-on-secondary-container);
+  --color-error-container: var(--mat-sys-error-container);
+  --color-on-error-container: var(--mat-sys-on-error-container);
+
   // Elevation
   --shadow-1: 0 1px 2px rgb(0 0 0 / 8%);
   --shadow-2: 0 2px 8px rgb(0 0 0 / 12%);
@@ -41,9 +53,21 @@
   // Layout
   --toolbar-height: 64px;
   --content-max-width: 560px;
+  --content-max-width-page: 1280px;
+  --sidebar-width: 264px;
+  --sidebar-width-rail: 76px;
+  --avatar-size: 40px;
+  --list-row-height: 56px;
+  --icon-size-sm: 18px;
+
+  // Dialog theo cỡ nội dung
+  --dialog-width-sm: 420px;
+  --dialog-width-md: 560px;
+  --dialog-width-lg: 720px;
 
   // Z-index
   --z-toolbar: 10;
+  --z-sidenav: 15;
   --z-drawer: 20;
   --z-toast: 30;
   --z-dialog: 40;

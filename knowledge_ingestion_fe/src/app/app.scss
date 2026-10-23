@@ -1,19 +1,5 @@
-// Layout shell dùng token từ src/styles/_tokens.scss — không hardcode px/hex.
-.app-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-toolbar);
-}
-
-.app-logo {
-  margin-right: var(--space-2);
-}
-
-.app-spacer {
-  flex: 1 1 auto;
-}
-
-// 100dvh (không phải 100vh) để không bị thanh địa chỉ mobile che
-.app-main {
-  min-height: calc(100dvh - var(--toolbar-height));
+// Vỏ ứng dụng chỉ là điểm gắn router-outlet — không tạo thêm khung.
+:host {
+  display: block;
+  min-height: 100dvh;
 }
