@@ -50,6 +50,9 @@
   flex: 1 1 auto;
   padding-top: var(--space-2);
   overflow-y: auto;
+  // overflow-y:auto kéo overflow-x thành auto theo spec, mà nhãn/rail có
+  // white-space:nowrap → rail co lại sinh scrollbar ngang rác trong sidebar.
+  overflow-x: hidden;
 }
 
 .nav-section {

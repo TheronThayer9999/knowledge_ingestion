@@ -305,16 +305,23 @@
   background: var(--color-surface-container);
 }
 
+// CDK autosize đo riêng chiều cao PHẦN CHỮ (nó tạm bỏ padding/border lúc
+// đo) rồi gán thẳng vào style.height — nên textarea phải là content-box.
+// Để border-box (reset toàn cục) thì padding + border bị tính chồng lên
+// chiều cao đó, chữ cụt nửa và textarea tự hiện scrollbar rác.
 .composer-input {
+  box-sizing: content-box;
   flex: 1 1 auto;
   min-width: 0;
-  padding: var(--space-2) var(--space-3);
+  // 12px chữ + padding 12+12 + border => ~46px, đủ chuẩn target chạm 44px
+  padding: var(--space-3) var(--space-4);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
   color: var(--color-on-surface);
   font: var(--mat-sys-body-medium);
   resize: none;
+  overflow-y: auto;
 }
 
 .composer-input:focus-visible {
@@ -326,9 +333,12 @@
   flex: 0 0 auto;
 }
 
+// Gạch ngang trên composer tách vùng chat khỏi footer; giữ cùng nền để
+// composer + dòng gợi ý thành một khối liền, không bị "dính" mép dưới.
 .disclaimer {
   margin: 0;
-  padding: 0 var(--space-3) var(--space-2);
+  padding: 0 var(--space-3) var(--space-3);
+  background: var(--color-surface-container);
   font: var(--mat-sys-label-small);
   color: var(--color-muted);
   text-align: center;

@@ -1,12 +1,21 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { Component, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  afterNextRender,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatSidenavModule } from '@angular/material/sidenav';
+import { MatSidenavContainer, MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
@@ -92,6 +101,29 @@ export class DashboardLayout {
   });
 
   protected readonly rail = computed(() => this.collapsed() && !this.isHandset());
+
+  private readonly shell = viewChild(MatSidenavContainer);
+  private readonly navElement = viewChild<ElementRef<HTMLElement>>('nav');
+  private readonly destroyRef = inject(DestroyRef);
+
+  constructor() {
+    // MatSidenav chỉ đo width của drawer lúc mở/đóng hoặc resize cửa sổ; thu
+    // rail bằng class đổi mỗi width nên nó không đo lại, nội dung giữ margin
+    // cũ và mất khoảng trống vừa giải phóng. Bám kích thước thật của drawer
+    // để ép container tính lại margin (kể cả giữa lúc transition).
+    afterNextRender(() => this.watchNavWidth());
+  }
+
+  private watchNavWidth(): void {
+    const drawer = this.navElement()?.nativeElement;
+    const shell = this.shell();
+    if (!drawer || !shell) {
+      return;
+    }
+    const observer = new ResizeObserver(() => shell.updateContentMargins());
+    observer.observe(drawer);
+    this.destroyRef.onDestroy(() => observer.disconnect());
+  }
 
   protected toggleNav(): void {
     if (this.isHandset()) {

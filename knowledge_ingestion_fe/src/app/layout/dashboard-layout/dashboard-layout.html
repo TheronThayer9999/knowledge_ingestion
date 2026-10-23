@@ -1,5 +1,6 @@
 <mat-sidenav-container class="shell" [hasBackdrop]="isHandset()">
   <mat-sidenav
+    #nav
     class="shell-nav"
     [class.rail]="rail()"
     [mode]="isHandset() ? 'over' : 'side'"
