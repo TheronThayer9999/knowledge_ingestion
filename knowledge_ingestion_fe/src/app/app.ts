@@ -1,6 +1,4 @@
 import { Component, inject } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { RouterOutlet } from '@angular/router';
@@ -10,15 +8,7 @@ import { ThemeSwitcher } from './shared/theme-switcher/theme-switcher';
 
 @Component({
   selector: 'app-root',
-  imports: [
-    RouterOutlet,
-    MatToolbarModule,
-    MatCardModule,
-    MatButtonModule,
-    MatIconModule,
-    ThemeSwitcher,
-    LanguageSwitcher,
-  ],
+  imports: [RouterOutlet, MatToolbarModule, MatIconModule, ThemeSwitcher, LanguageSwitcher],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })

@@ -1,0 +1,33 @@
+<div class="home-page">
+  <mat-card appearance="outlined" class="welcome-card">
+    <mat-card-header>
+      <div matCardAvatar class="welcome-avatar">
+        <mat-icon>auto_awesome</mat-icon>
+      </div>
+      <mat-card-title>{{ lang.t('WELCOME_TITLE') }}</mat-card-title>
+      <mat-card-subtitle>{{ lang.t('WELCOME_SUBTITLE') }}</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <p>{{ lang.t('WELCOME_BODY_READY') }}</p>
+      <p>{{ lang.t('WELCOME_BODY_NEXT') }}</p>
+    </mat-card-content>
+    <mat-card-footer class="welcome-actions">
+      <a
+        matButton
+        href="https://material.angular.dev/components/categories"
+        target="_blank"
+        rel="noreferrer"
+      >
+        {{ lang.t('ACTION_COMPONENTS') }}
+      </a>
+      <a
+        matButton="filled"
+        href="https://material.angular.dev/guide/theming"
+        target="_blank"
+        rel="noreferrer"
+      >
+        {{ lang.t('ACTION_THEMING_GUIDE') }}
+      </a>
+    </mat-card-footer>
+  </mat-card>
+</div>

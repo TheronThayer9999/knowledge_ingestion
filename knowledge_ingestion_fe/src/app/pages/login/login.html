@@ -1,0 +1,54 @@
+<div class="login-page">
+  <div class="login-switchers">
+    <app-language-switcher />
+    <app-theme-switcher />
+  </div>
+
+  <mat-card appearance="outlined" class="login-card">
+    <mat-card-header class="login-header">
+      <div matCardAvatar class="login-avatar">
+        <mat-icon>school</mat-icon>
+      </div>
+      <mat-card-title>{{ lang.t('AUTH_LOGIN_TITLE') }}</mat-card-title>
+      <mat-card-subtitle>{{ lang.t('AUTH_LOGIN_SUBTITLE') }}</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <form class="login-form" [formGroup]="form" (ngSubmit)="submit()">
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('AUTH_USERNAME') }}</mat-label>
+          <input matInput formControlName="username" autocomplete="username" />
+          @if (form.controls.username.touched && form.controls.username.invalid) {
+            <mat-error>{{ lang.t('AUTH_USERNAME_REQUIRED') }}</mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>{{ lang.t('AUTH_PASSWORD') }}</mat-label>
+          <input
+            matInput
+            type="password"
+            formControlName="password"
+            autocomplete="current-password"
+          />
+          @if (form.controls.password.touched && form.controls.password.invalid) {
+            <mat-error>{{ lang.t('AUTH_PASSWORD_REQUIRED') }}</mat-error>
+          }
+        </mat-form-field>
+
+        <button matButton="filled" type="submit" class="login-submit" [disabled]="loading()">
+          @if (loading()) {
+            <mat-spinner diameter="18" />
+          } @else {
+            {{ lang.t('AUTH_LOGIN_BUTTON') }}
+          }
+        </button>
+      </form>
+    </mat-card-content>
+
+    <mat-card-footer class="login-footer">
+      <span>{{ lang.t('AUTH_NO_ACCOUNT') }}</span>
+      <a matButton routerLink="/register">{{ lang.t('AUTH_REGISTER_LINK') }}</a>
+    </mat-card-footer>
+  </mat-card>
+</div>

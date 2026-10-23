@@ -15,30 +15,5 @@
 
 // 100dvh (không phải 100vh) để không bị thanh địa chỉ mobile che
 .app-main {
-  display: grid;
-  place-items: center;
   min-height: calc(100dvh - var(--toolbar-height));
-  padding: var(--space-5);
-}
-
-.welcome-card {
-  width: 100%;
-  max-width: var(--content-max-width);
-}
-
-.welcome-avatar {
-  display: grid;
-  place-items: center;
-  width: var(--space-6);
-  height: var(--space-6);
-  border-radius: 50%;
-  background: var(--mat-sys-primary-container);
-  color: var(--mat-sys-on-primary-container);
-}
-
-.welcome-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding: 0 var(--space-4) var(--space-4);
 }

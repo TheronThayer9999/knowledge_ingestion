@@ -16,15 +16,12 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render the translated welcome title', async () => {
+  it('should render the translated app name in the toolbar', async () => {
     const fixture = TestBed.createComponent(App);
     const lang = TestBed.inject(LangService);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
 
-    expect(compiled.querySelector('mat-card-title')?.textContent).toContain(
-      lang.t('WELCOME_TITLE'),
-    );
-    expect(compiled.querySelector('mat-card-title')?.textContent).toContain('Xin chào');
+    expect(compiled.querySelector('mat-toolbar')?.textContent).toContain(lang.t('APP_NAME'));
   });
 });
