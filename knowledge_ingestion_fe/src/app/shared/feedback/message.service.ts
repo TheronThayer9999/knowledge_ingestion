@@ -19,7 +19,7 @@ const DURATION_MS: Record<MessageType, number> = {
 /**
  * Lớp feedback dùng chung: mọi thông báo đi qua đây (MatSnackBar) và
  * xác nhận thao tác nguy hiểm đi qua confirm (MatDialog). Convention:
- * toast hiển thị bên trái (`horizontalPosition: 'start'`).
+ * toast hiển thị ở góc trên bên phải (`verticalPosition: 'top'`, `horizontalPosition: 'end'`).
  */
 @Injectable({ providedIn: 'root' })
 export class MessageService {
@@ -91,7 +91,8 @@ export class MessageService {
     this.items.update((list) => [...list.slice(-(MAX_HISTORY - 1)), message]);
     this.snackBar.open(text, undefined, {
       duration: DURATION_MS[type],
-      horizontalPosition: 'start',
+      verticalPosition: 'top',
+      horizontalPosition: 'end',
     });
   }
 }

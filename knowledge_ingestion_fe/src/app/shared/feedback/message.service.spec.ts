@@ -26,7 +26,7 @@ describe('MessageService', () => {
     dialog.open.mockReturnValue({ afterClosed: () => of(true) });
   });
 
-  it('hiển thị toast bên trái và ghi vào history', () => {
+  it('hiển thị toast ở góc trên bên phải và ghi vào history', () => {
     const service = setup();
 
     service.success('COMMON_OK');
@@ -34,7 +34,7 @@ describe('MessageService', () => {
     expect(snackBar.open).toHaveBeenCalledWith(
       'Đồng ý',
       undefined,
-      expect.objectContaining({ horizontalPosition: 'start' }),
+      expect.objectContaining({ verticalPosition: 'top', horizontalPosition: 'end' }),
     );
     expect(service.history()).toHaveLength(1);
     expect(service.history()[0]).toMatchObject({
