@@ -23,7 +23,7 @@ describe('Login page', () => {
   const auth = { login: vi.fn() };
   const messages = { success: vi.fn(), errorFromApi: vi.fn() };
   const router = { navigateByUrl: vi.fn(() => Promise.resolve(true)) };
-  const queryParamMap = { get: vi.fn((_key: string): string | null => null) };
+  const queryParamMap = { get: vi.fn((): string | null => null) };
   const route = { snapshot: { queryParamMap } };
 
   function setup() {

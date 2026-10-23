@@ -2,14 +2,14 @@
 // jsdom của Angular unit-test builder không expose localStorage ra global —
 // bơm từ window nếu có, không thì polyfill in-memory để service dùng được.
 
-type StorageLike = {
+interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
   clear(): void;
   key(index: number): string | null;
   readonly length: number;
-};
+}
 
 function memoryStorage(): StorageLike {
   const store = new Map<string, string>();
