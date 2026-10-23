@@ -1,0 +1,40 @@
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+  min-width: min(var(--dialog-width-md), 84vw);
+}
+
+// ---- Hai cột loại + thư mục ----
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+@media (max-width: 599px) {
+  .field-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+// ---- Ghi chú nguồn không sửa được ----
+.source-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+}
+
+.source-hint mat-icon {
+  flex: 0 0 auto;
+  font-size: var(--icon-size-sm);
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}

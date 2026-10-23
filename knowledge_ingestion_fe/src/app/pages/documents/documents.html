@@ -174,12 +174,22 @@
                 <button
                   mat-icon-button
                   type="button"
-                  (click)="deleteArticle(article)"
-                  [attr.aria-label]="lang.t('DOC_ACTION_DELETE')"
-                  [matTooltip]="lang.t('DOC_ACTION_DELETE')"
+                  [matMenuTriggerFor]="docMenu"
+                  [attr.aria-label]="lang.t('DOC_COL_ACTIONS')"
+                  [matTooltip]="lang.t('DOC_COL_ACTIONS')"
                 >
-                  <mat-icon>delete</mat-icon>
+                  <mat-icon>more_vert</mat-icon>
                 </button>
+                <mat-menu #docMenu="matMenu">
+                  <button mat-menu-item type="button" (click)="editArticle(article)">
+                    <mat-icon>edit</mat-icon>
+                    <span>{{ lang.t('DOC_ACTION_EDIT') }}</span>
+                  </button>
+                  <button mat-menu-item type="button" (click)="deleteArticle(article)">
+                    <mat-icon>delete</mat-icon>
+                    <span>{{ lang.t('DOC_ACTION_DELETE') }}</span>
+                  </button>
+                </mat-menu>
               </span>
             </div>
           }
@@ -202,12 +212,22 @@
                 <button
                   mat-icon-button
                   type="button"
-                  (click)="deleteArticle(article)"
-                  [attr.aria-label]="lang.t('DOC_ACTION_DELETE')"
-                  [matTooltip]="lang.t('DOC_ACTION_DELETE')"
+                  [matMenuTriggerFor]="cardMenu"
+                  [attr.aria-label]="lang.t('DOC_COL_ACTIONS')"
+                  [matTooltip]="lang.t('DOC_COL_ACTIONS')"
                 >
-                  <mat-icon>delete</mat-icon>
+                  <mat-icon>more_vert</mat-icon>
                 </button>
+                <mat-menu #cardMenu="matMenu">
+                  <button mat-menu-item type="button" (click)="editArticle(article)">
+                    <mat-icon>edit</mat-icon>
+                    <span>{{ lang.t('DOC_ACTION_EDIT') }}</span>
+                  </button>
+                  <button mat-menu-item type="button" (click)="deleteArticle(article)">
+                    <mat-icon>delete</mat-icon>
+                    <span>{{ lang.t('DOC_ACTION_DELETE') }}</span>
+                  </button>
+                </mat-menu>
               </div>
             </mat-card>
           }
@@ -258,6 +278,10 @@
           </button>
 
           <mat-menu #folderMenu="matMenu">
+            <button mat-menu-item type="button" (click)="editFolder(node)">
+              <mat-icon>edit</mat-icon>
+              <span>{{ lang.t('DOC_ACTION_EDIT_FOLDER') }}</span>
+            </button>
             <button mat-menu-item type="button" (click)="openFolderDialog(node.id)">
               <mat-icon>create_new_folder</mat-icon>
               <span>{{ lang.t('DOC_ACTION_SUBFOLDER') }}</span>

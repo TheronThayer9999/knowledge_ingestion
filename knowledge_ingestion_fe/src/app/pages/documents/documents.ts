@@ -23,6 +23,10 @@ import {
 import { KnowledgeService } from '../../core/knowledge/knowledge.service';
 import { MessageService } from '../../shared/feedback/message.service';
 import { DocumentDetailDialog, type DocumentDetailData } from './dialogs/document-detail-dialog';
+import {
+  DocumentEditDialog,
+  type DocumentEditDialogData,
+} from './dialogs/document-edit-dialog';
 import { FolderDialog, type FolderDialogData } from './dialogs/folder-dialog';
 import { UploadDialog, type UploadDialogData } from './dialogs/upload-dialog';
 
@@ -203,26 +207,76 @@ export class Documents {
   }
 
   /** `autoUpload`: tạo thư mục đầu tiên xong mở luôn hộp thoại upload */
-  protected openFolderDialog(parentId: number | null, autoUpload = false): void {
+  protected openFolderDialog(
+    parentId: number | null,
+    autoUpload = false,
+    folder?: Category,
+  ): void {
     const ref = this.dialog.open<FolderDialog, FolderDialogData, Category>(FolderDialog, {
-      data: { categories: this.categories(), parentId },
+      data: { categories: this.categories(), parentId, folder },
       maxWidth: '94vw',
       autoFocus: 'first-tabbable',
     });
-    ref.afterClosed().subscribe((created) => {
-      if (!created) {
+    ref.afterClosed().subscribe((result) => {
+      if (!result) {
+        return;
+      }
+      if (folder) {
+        // Sửa: thay tại chỗ + mở nhánh đích để thấy ngay thư mục vừa di chuyển
+        this.messages.success('DOC_FOLDER_UPDATED');
+        this.categories.update((list) =>
+          list.map((item) => (item.id === result.id ? result : item)),
+        );
+        this.expanded.update((set) => {
+          const next = new Set(set).add(result.id);
+          if (result.parentId !== null) {
+            next.add(result.parentId);
+          }
+          return next;
+        });
+        this.load();
         return;
       }
       this.messages.success('DOC_FOLDER_CREATED');
-      this.categories.update((list) => [...list, created]);
-      this.selected.set(created.id);
-      if (created.parentId !== null) {
-        this.expanded.update((set) => new Set(set).add(created.parentId as number));
+      this.categories.update((list) => [...list, result]);
+      this.selected.set(result.id);
+      if (result.parentId !== null) {
+        this.expanded.update((set) => new Set(set).add(result.parentId as number));
       }
       this.load();
       if (autoUpload) {
         this.openUpload();
       }
+    });
+  }
+
+  /** Mở dialog sửa thư mục từ menu cây (FolderView không giữ parent_id) */
+  protected editFolder(folder: FolderView): void {
+    const category = this.categories().find((item) => item.id === folder.id);
+    if (category) {
+      this.openFolderDialog(category.parentId, false, category);
+    }
+  }
+
+  /** Sửa tên/thư mục/loại/mô tả — nguồn file/URL là identity, giữ nguyên */
+  protected editArticle(article: Article): void {
+    const ref = this.dialog.open<DocumentEditDialog, DocumentEditDialogData, Article>(
+      DocumentEditDialog,
+      {
+        data: { article, categories: this.categories() },
+        maxWidth: '94vw',
+        autoFocus: 'first-tabbable',
+      },
+    );
+    ref.afterClosed().subscribe((updated) => {
+      if (!updated) {
+        return;
+      }
+      this.messages.success('DOC_UPDATED');
+      // Thay tại chỗ, khỏi tải lại cả danh sách
+      this.articles.update((list) =>
+        list.map((item) => (item.id === updated.id ? updated : item)),
+      );
     });
   }
 

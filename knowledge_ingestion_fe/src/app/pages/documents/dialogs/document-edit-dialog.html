@@ -1,0 +1,59 @@
+<h2 mat-dialog-title>{{ lang.t('DOC_EDIT_TITLE') }}</h2>
+
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <mat-dialog-content class="dialog-body">
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>{{ lang.t('DOC_UPLOAD_NAME') }}</mat-label>
+      <input matInput formControlName="name" maxlength="255" autocomplete="off" required />
+      @if (form.controls.name.hasError('required')) {
+        <mat-error>{{ lang.t('DOC_UPLOAD_REQUIRED_NAME') }}</mat-error>
+      }
+    </mat-form-field>
+
+    <div class="field-row">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>{{ lang.t('DOC_UPLOAD_TYPE') }}</mat-label>
+        <mat-select formControlName="docType">
+          @for (option of docTypes; track option.value) {
+            <mat-option [value]="option.value">{{ lang.t(option.key) }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>{{ lang.t('DOC_UPLOAD_FOLDER') }}</mat-label>
+        <mat-select formControlName="categoryId">
+          @for (option of options; track option.id) {
+            <mat-option [value]="option.id">{{ option.label }}</mat-option>
+          }
+        </mat-select>
+        @if (form.controls.categoryId.hasError('min')) {
+          <mat-error>{{ lang.t('DOC_UPLOAD_REQUIRED_FOLDER') }}</mat-error>
+        }
+      </mat-form-field>
+    </div>
+
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>{{ lang.t('DOC_UPLOAD_DESC') }}</mat-label>
+      <textarea matInput formControlName="description" rows="2" maxlength="1000"></textarea>
+    </mat-form-field>
+
+    <p class="source-hint">
+      <mat-icon aria-hidden="true">lock</mat-icon>
+      <span>{{ lang.t('DOC_EDIT_SOURCE_HINT') }}</span>
+    </p>
+
+    @if (saving()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button matButton type="button" mat-dialog-close [disabled]="saving()">
+      {{ lang.t('COMMON_CANCEL') }}
+    </button>
+    <button matButton="filled" type="submit" [disabled]="saving()">
+      {{ lang.t('COMMON_SAVE') }}
+    </button>
+  </mat-dialog-actions>
+</form>

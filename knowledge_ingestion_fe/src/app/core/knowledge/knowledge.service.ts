@@ -19,6 +19,8 @@ import {
   type CreateArticlePayload,
   type CreateCategoryPayload,
   type DocType,
+  type UpdateArticlePayload,
+  type UpdateCategoryPayload,
   type UploadTicket,
   type UploadTicketDto,
 } from './knowledge.models';
@@ -60,6 +62,26 @@ export class KnowledgeService {
     return this.api.delete<unknown>(`/categories/${id}`);
   }
 
+  /**
+   * Sửa thư mục từng phần. Backend không nhận `parent_id: null` để "bỏ cha"
+   * nên đổi về gốc phải gửi cờ `move_to_root` (gửi kèm parent_id là 400).
+   */
+  updateCategory(id: number, payload: UpdateCategoryPayload): Observable<Category> {
+    const body: Record<string, unknown> = {};
+    if (payload.name !== undefined) {
+      body['name'] = payload.name;
+    }
+    if (payload.description !== undefined) {
+      body['description'] = payload.description;
+    }
+    if (payload.moveToRoot) {
+      body['move_to_root'] = true;
+    } else if (payload.parentId) {
+      body['parent_id'] = payload.parentId;
+    }
+    return this.api.put<CategoryDto>(`/categories/${id}`, body).pipe(map(toCategory));
+  }
+
   /** Backend bắt buộc lọc đúng 1 danh mục — muốn xem tất cả thì dùng listAllArticles */
   listArticles(categoryId: number, limit = PAGE_SIZE, offset = 0): Observable<ArticleList> {
     return this.api
@@ -93,6 +115,24 @@ export class KnowledgeService {
 
   deleteArticle(id: number): Observable<unknown> {
     return this.api.delete<unknown>(`/articles/${id}`);
+  }
+
+  /** Sửa tên/mô tả/loại và chuyển thư mục — nguồn file giữ nguyên */
+  updateArticle(id: number, payload: UpdateArticlePayload): Observable<Article> {
+    const body: Record<string, unknown> = {};
+    if (payload.name !== undefined) {
+      body['name'] = payload.name;
+    }
+    if (payload.categoryId !== undefined) {
+      body['category_id'] = payload.categoryId;
+    }
+    if (payload.docType !== undefined) {
+      body['doc_type'] = payload.docType;
+    }
+    if (payload.description !== undefined) {
+      body['description'] = payload.description;
+    }
+    return this.api.put<ArticleDto>(`/articles/${id}`, body).pipe(map(toArticle));
   }
 
   /** Upload trọn luồng: presign → PUT thẳng kho → tạo article trỏ tới storage_key */

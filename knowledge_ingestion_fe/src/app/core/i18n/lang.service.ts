@@ -1,15 +1,15 @@
 import { DOCUMENT } from '@angular/common';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { EN } from '../../shared/i18n/en';
-import { VI } from '../../shared/i18n/vi';
+import { VI, type TranslationKey } from '../../shared/i18n/vi';
 
 export const LANGS = ['vi', 'en'] as const;
 export type LangName = (typeof LANGS)[number];
 
-/** Key canonical lấy từ vi.ts — thêm key mới vào vi.ts trước, en.ts thiếu key là lỗi build */
-export type TranslationKey = keyof typeof VI;
+/** Key canonical lấy từ vi.ts — thêm key mới vào vi.ts trước, en.ts thiếu key là lỗi khi nạp */
+export type { TranslationKey };
 
-const MAPS: Record<LangName, typeof VI> = { vi: VI, en: EN };
+const MAPS: Record<LangName, ReadonlyMap<TranslationKey, string>> = { vi: VI, en: EN };
 
 const STORAGE_KEY = 'ki.lang';
 const DEFAULT_LANG: LangName = 'vi';
@@ -28,7 +28,8 @@ export class LangService {
 
   /** Dịch theo key; đọc signal bên trong nên template tự cập nhật khi đổi ngôn ngữ */
   t(key: TranslationKey): string {
-    return this.map()[key];
+    // buildMessages đã bảo đảm đủ key lúc nạp — fallback chỉ để phòng thủ
+    return this.map().get(key) ?? key;
   }
 
   setLang(lang: LangName): void {

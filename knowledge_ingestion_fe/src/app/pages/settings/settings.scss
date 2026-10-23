@@ -119,12 +119,13 @@
   color: var(--color-on-primary-container);
 }
 
-// Chấm màu lấy token của class theme-<palette> đặt ngay trên phần tử
+// Chấm màu lấy token của class theme-<palette> đặt ngay trên phần tử —
+// phải dùng --mat-sys-* (không phải --color-*) vì --color-* đã chốt giá trị ở :root
 .swatch-dot {
   width: var(--avatar-size);
   height: var(--avatar-size);
   border-radius: var(--radius-full);
-  background: var(--color-primary);
+  background: var(--mat-sys-primary);
   box-shadow: inset 0 0 0 var(--border-width) var(--color-border);
   flex: 0 0 auto;
 }

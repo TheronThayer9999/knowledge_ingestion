@@ -91,6 +91,22 @@ export interface CreateArticlePayload {
   description?: string;
 }
 
+/** Field bỏ trống = giữ nguyên; muốn bỏ cha thư mục thì dùng `moveToRoot` */
+export interface UpdateCategoryPayload {
+  name?: string;
+  description?: string;
+  parentId?: number;
+  moveToRoot?: boolean;
+}
+
+/** Sửa từng phần tài liệu — nguồn (url/storage_key) là identity, không sửa được */
+export interface UpdateArticlePayload {
+  name?: string;
+  categoryId?: number;
+  docType?: DocType;
+  description?: string;
+}
+
 // ---- DTO khớp JSON backend (snake_case) ----
 
 export interface CategoryDto {
@@ -261,4 +277,35 @@ export function subtreeIds(categories: Category[], rootId: number): Set<number> 
     stack.push(...(childrenOf.get(id) ?? []));
   }
   return result;
+}
+
+/** 1 mục trong select thư mục (label đã thụt lề theo cấp) */
+export interface CategoryOption {
+  id: number;
+  label: string;
+}
+
+/**
+ * Danh sách thư mục phẳng theo đúng thứ tự cây, thụt lề theo cấp bằng NBSP.
+ * `blocked` dùng khi sửa thư mục: loại chính nó + nhánh con khỏi lựa chọn cha.
+ */
+export function flattenCategories(
+  categories: Category[],
+  blocked?: Set<number>,
+): CategoryOption[] {
+  const visible = blocked
+    ? categories.filter((category) => !blocked.has(category.id))
+    : categories;
+  const out: CategoryOption[] = [];
+  const walk = (nodes: FolderNode[], level: number): void => {
+    for (const node of nodes) {
+      out.push({
+        id: node.category.id,
+        label: `${'\u00A0\u00A0\u00A0'.repeat(level)}${node.category.name}`,
+      });
+      walk(node.children, level + 1);
+    }
+  };
+  walk(buildFolderTree(visible), 0);
+  return out;
 }
