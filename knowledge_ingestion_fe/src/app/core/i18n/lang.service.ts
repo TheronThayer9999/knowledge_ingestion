@@ -1,16 +1,15 @@
 import { DOCUMENT } from '@angular/common';
 import { computed, inject, Injectable, signal } from '@angular/core';
-import EN from '../../shared/i18n/en.json';
-import VI from '../../shared/i18n/vi.json';
+import { EN } from '../../shared/i18n/en';
+import { VI } from '../../shared/i18n/vi';
 
 export const LANGS = ['vi', 'en'] as const;
 export type LangName = (typeof LANGS)[number];
 
-/** Key canonical lấy từ vi.json — thêm key mới vào vi.json trước, en.json thiếu key là lỗi build */
+/** Key canonical lấy từ vi.ts — thêm key mới vào vi.ts trước, en.ts thiếu key là lỗi build */
 export type TranslationKey = keyof typeof VI;
 
-// en.json được kiểm tra cấu trúc: thiếu key nào so với vi.json là TypeScript báo lỗi
-const MAPS: Record<LangName, Record<TranslationKey, string>> = { vi: VI, en: EN };
+const MAPS: Record<LangName, typeof VI> = { vi: VI, en: EN };
 
 const STORAGE_KEY = 'ki.lang';
 const DEFAULT_LANG: LangName = 'vi';
