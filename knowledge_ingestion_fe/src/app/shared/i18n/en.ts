@@ -23,4 +23,5 @@ export const EN: typeof VI = {
   COMMON_CANCEL: 'Cancel',
   AUTH_ERROR_NETWORK: 'Cannot reach the server, please try again.',
   AUTH_ERROR_GENERIC: 'Something went wrong, please try again.',
+  AUTH_SESSION_EXPIRED: 'Your session has expired, please sign in again.',
 };
