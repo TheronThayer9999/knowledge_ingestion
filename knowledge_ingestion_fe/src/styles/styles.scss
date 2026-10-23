@@ -2,21 +2,41 @@
 @use './tokens';
 @use './reset';
 
-html {
-  // M3 theo color-scheme: sáng/tối tự áp từ token light-dark()
-  color-scheme: light dark;
-
-  // Theme starter mặc định (azure); Feature 2 sẽ tách thành nhiều palette
+@mixin app-theme($primary, $tertiary) {
   @include mat.theme(
     (
       color: (
-        primary: mat.$azure-palette,
-        tertiary: mat.$blue-palette,
+        primary: $primary,
+        tertiary: $tertiary,
       ),
       typography: Roboto,
       density: 0,
     )
   );
+}
+
+html {
+  // M3 theo color-scheme: sáng/tối tự áp từ token light-dark()
+  color-scheme: light dark;
+}
+
+// Mỗi palette sinh trọn bộ token --mat-sys-* dưới class tương ứng;
+// ThemeService gắn class lên <html>. :root giữ azure làm mặc định (tránh FOUC).
+:root,
+.theme-azure {
+  @include app-theme(mat.$azure-palette, mat.$blue-palette);
+}
+
+.theme-rose-red {
+  @include app-theme(mat.$rose-palette, mat.$red-palette);
+}
+
+.theme-magenta-violet {
+  @include app-theme(mat.$magenta-palette, mat.$violet-palette);
+}
+
+.theme-cyan-orange {
+  @include app-theme(mat.$cyan-palette, mat.$orange-palette);
 }
 
 body {

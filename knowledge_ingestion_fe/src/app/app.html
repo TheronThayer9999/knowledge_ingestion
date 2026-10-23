@@ -2,9 +2,7 @@
   <mat-icon class="app-logo">school</mat-icon>
   <span>Knowledge Ingestion</span>
   <span class="app-spacer"></span>
-  <button matIconButton (click)="toggleTheme()" aria-label="Toggle dark mode">
-    <mat-icon>{{ isDark() ? 'light_mode' : 'dark_mode' }}</mat-icon>
-  </button>
+  <app-theme-switcher />
 </mat-toolbar>
 
 <main class="app-main">

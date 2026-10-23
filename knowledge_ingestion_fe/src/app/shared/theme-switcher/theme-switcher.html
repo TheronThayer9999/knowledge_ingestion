@@ -1,0 +1,20 @@
+<button matIconButton [matMenuTriggerFor]="paletteMenu" aria-label="Change color palette">
+  <mat-icon>palette</mat-icon>
+</button>
+
+<mat-menu #paletteMenu="matMenu">
+  @for (palette of palettes; track palette) {
+    <button mat-menu-item (click)="theme.setPalette(palette)">
+      <mat-icon [class.invisible]="theme.palette() !== palette">check</mat-icon>
+      <span>{{ palette }}</span>
+    </button>
+  }
+</mat-menu>
+
+<button
+  matIconButton
+  (click)="theme.toggleMode()"
+  [attr.aria-label]="theme.mode() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+>
+  <mat-icon>{{ theme.mode() === 'dark' ? 'light_mode' : 'dark_mode' }}</mat-icon>
+</button>
