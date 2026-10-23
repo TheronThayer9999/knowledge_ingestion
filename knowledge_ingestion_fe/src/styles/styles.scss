@@ -40,13 +40,13 @@ html {
 }
 
 body {
-  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--font-ui);
 }
 
 // Nội dung markdown do AI sinh (bind [innerHTML]) — style phải global vì
 // HTML chèn động không mang attribute scope của component.
 .markdown-body {
-  font: var(--mat-sys-body-medium);
+  font: var(--text-style-sm);
   // Câu trả lời của trợ lý dùng Times New Roman (shorthand `font` ở trên
   // reset font-family về Roboto nên phải phủ lại sau nó)
   font-family: var(--font-serif);
@@ -70,7 +70,7 @@ body {
   h3,
   h4 {
     margin: var(--space-3) 0 var(--space-2);
-    font: var(--mat-sys-title-small);
+    font: var(--text-style-lg);
     font-family: var(--font-serif);
     color: var(--color-on-surface);
   }
@@ -117,7 +117,7 @@ body {
     width: 100%;
     margin-bottom: var(--space-2);
     border-collapse: collapse;
-    font: var(--mat-sys-body-small);
+    font: var(--text-style-xs);
     font-family: var(--font-serif);
   }
 

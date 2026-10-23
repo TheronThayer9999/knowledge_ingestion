@@ -41,7 +41,7 @@
 }
 
 .brand-name {
-  font: var(--mat-sys-title-medium);
+  font: var(--text-style-base-strong);
   color: var(--color-on-surface);
   white-space: nowrap;
 }
@@ -55,9 +55,10 @@
   overflow-x: hidden;
 }
 
+// Tiêu đề nhóm: 12px xám nhạt, khoảng cách trên/dưới đều nhau
 .nav-section {
-  margin: var(--space-3) var(--space-4) var(--space-1);
-  font: var(--mat-sys-label-small);
+  margin: var(--space-4) var(--space-4);
+  font: var(--text-style-xs-strong);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-muted);
@@ -70,7 +71,7 @@
 
 .nav-link {
   margin-bottom: var(--space-1);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   color: var(--color-on-surface);
   cursor: pointer;
   transition: background-color var(--duration-fast) ease;
@@ -80,9 +81,16 @@
   background: var(--color-surface-container-high);
 }
 
+// Mục đang chọn: nền teal nhạt, bo 8px, cao bằng mọi mục khác (không đổi
+// dimension) — chỉ khác màu icon/chữ
 .nav-link.is-active {
-  background: var(--color-secondary-container);
-  color: var(--color-on-secondary-container);
+  background: var(--color-accent-soft);
+  color: var(--color-on-surface);
+  font-weight: 600;
+}
+
+.nav-link.is-active mat-icon {
+  color: var(--color-primary);
 }
 
 // Rail: chỉ còn icon — căn giữa để không lệch trái
@@ -112,14 +120,16 @@
   position: sticky;
   top: 0;
   z-index: var(--z-toolbar);
-  gap: var(--space-2);
+  // icon dịch/bảng màu/sáng-tối cách đều 16px, cùng màu xám trung tính
+  gap: var(--space-4);
+  color: var(--color-muted);
   background: var(--color-surface);
   border-bottom: var(--border-width) solid var(--color-border);
 }
 
 .topbar-title {
   margin: 0;
-  font: var(--mat-sys-title-large);
+  font: var(--text-style-base-strong);
   color: var(--color-on-surface);
   white-space: nowrap;
 }
@@ -128,15 +138,16 @@
   flex: 1 1 auto;
 }
 
+// Avatar 36px, tông teal chủ đạo đặc — không dùng cyan nhạt
 .avatar {
   display: grid;
   place-items: center;
-  width: calc(var(--avatar-size) - var(--space-2));
-  height: calc(var(--avatar-size) - var(--space-2));
-  border-radius: var(--radius-full);
-  background: var(--color-primary-container);
-  color: var(--color-on-primary-container);
-  font: var(--mat-sys-label-large);
+  width: var(--avatar-size-toolbar);
+  height: var(--avatar-size-toolbar);
+  border-radius: var(--radius-round);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font: var(--text-style-xs-strong);
 }
 
 .menu-user {
@@ -146,13 +157,13 @@
 
 .menu-user-name {
   margin: 0;
-  font: var(--mat-sys-title-small);
+  font: var(--text-style-sm-strong);
   color: var(--color-on-surface);
 }
 
 .menu-user-email {
   margin: 0;
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -160,11 +171,6 @@
 
 .shell-content {
   min-height: calc(100dvh - var(--toolbar-height));
+  // lề trang thống nhất 24px mọi breakpoint
   padding: var(--space-5);
-}
-
-@media (max-width: 1023px) {
-  .shell-content {
-    padding: var(--space-4);
-  }
 }

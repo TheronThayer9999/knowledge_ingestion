@@ -11,12 +11,34 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  // Shape (bám M3)
-  --radius-xs: var(--mat-sys-corner-extra-small);
-  --radius-sm: var(--mat-sys-corner-small);
-  --radius-md: var(--mat-sys-corner-medium);
-  --radius-lg: var(--mat-sys-corner-large);
-  --radius-full: var(--mat-sys-corner-full);
+  // Shape — 3 mức duy nhất: control (chip/nút/input) 8px, card 16px,
+  // round 999px CHỈ cho avatar & badge. Alias cũ giữ tên để mọi component
+  // đang dùng tự quy về đúng 3 thang này.
+  --radius-control: 8px;
+  --radius-card: 16px;
+  --radius-round: 999px;
+  --radius-xs: var(--radius-control);
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-card);
+  --radius-lg: var(--radius-card);
+  --radius-full: var(--radius-round);
+
+  // Typography — tối đa 4 cỡ (12/14/16/20) × 2 độ đậm (400/600), đóng gói
+  // thành style hoàn chỉnh dùng với shorthand `font:`
+  --font-ui: Roboto, 'Helvetica Neue', sans-serif;
+  --text-size-xs: 12px;
+  --text-size-sm: 14px;
+  --text-size-base: 16px;
+  --text-size-lg: 20px;
+  --text-style-xs: 400 var(--text-size-xs)/16px var(--font-ui);
+  --text-style-xs-strong: 600 var(--text-size-xs)/16px var(--font-ui);
+  --text-style-sm: 400 var(--text-size-sm)/20px var(--font-ui);
+  --text-style-sm-strong: 600 var(--text-size-sm)/20px var(--font-ui);
+  --text-style-base: 400 var(--text-size-base)/24px var(--font-ui);
+  --text-style-base-strong: 600 var(--text-size-base)/24px var(--font-ui);
+  --text-style-lg: 600 var(--text-size-lg)/28px var(--font-ui);
+  // riêng ô soạn chat: line-height 22px để cao đúng 48px (22 + 12*2 + 1*2)
+  --text-style-input: 400 var(--text-size-sm)/22px var(--font-ui);
 
   // Border
   --border-width: 1px;
@@ -45,6 +67,11 @@
   --color-error-container: var(--mat-sys-error-container);
   --color-on-error-container: var(--mat-sys-on-error-container);
 
+  // Điểm nhấn teal nhạt: mục nav đang chọn, hover chip, badge số — thay cho
+  // secondary-container (cyan chói) để mọi accent quy về đúng tông primary
+  --color-accent-soft: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+  --color-accent-faint: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
+
   // Elevation
   --shadow-1: 0 1px 2px rgb(0 0 0 / 8%);
   --shadow-2: 0 2px 8px rgb(0 0 0 / 12%);
@@ -55,13 +82,21 @@
 
   // Layout
   --toolbar-height: 64px;
+  // chiều cao chuẩn của control soạn thảo (ô nhập chat, dropdown phạm vi, nút Gửi)
+  --control-height: 48px;
   --content-max-width: 560px;
   --content-max-width-page: 1280px;
   --sidebar-width: 264px;
   --sidebar-width-rail: 76px;
+  // panel tiện ích trang chat (phạm vi/phiên mới) — hẹp để card chat rộng
+  --utility-panel-width: 280px;
+  // cụm empty state + chip gợi ý của chat
+  --suggestions-max-width: 480px;
   --avatar-size: 40px;
+  --avatar-size-toolbar: 36px;
   --list-row-height: 56px;
   --icon-size-sm: 18px;
+  --icon-size-md: 20px;
 
   // Dialog theo cỡ nội dung
   --dialog-width-sm: 420px;

@@ -4,51 +4,78 @@
 }
 
 // Hàng ngang: card chat chiếm hết chiều cao (không còn header trên cùng),
-// tiện ích (phạm vi/phiên mới) sang sidebar phải gập được để trả lại chỗ.
+// tiện ích (phạm vi/phiên mới) sang panel phải 280px gập được để trả lại chỗ.
+// Khoảng cách card ↔ card và card ↔ lề đều 24px (space-5).
 .page {
   display: flex;
   align-items: stretch;
-  gap: var(--space-4);
+  gap: var(--space-5);
   max-width: var(--content-max-width-page);
   margin: 0 auto;
   height: calc(100dvh - var(--toolbar-height) - var(--space-5) * 2);
   min-height: 0;
 }
 
-// ---- Sidebar tiện ích ----
+// ---- Panel tiện ích (bên phải card chat) ----
+// Card cùng bo góc/độ cao với card chat; nền trắng + 1 mức shadow rất nhẹ,
+// KHÔNG viền + shadow cùng lúc
 .side-panel {
   display: flex;
-  flex: 0 0 280px;
+  flex: 0 0 var(--utility-panel-width);
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
   background: var(--color-surface);
+  box-shadow: var(--shadow-1);
   overflow-y: auto;
 }
 
 .panel-title {
   margin: 0;
-  font: var(--mat-sys-title-small);
+  font: var(--text-style-lg);
   color: var(--color-on-surface);
 }
 
 .panel-subtitle {
   margin: var(--space-1) 0 0;
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
 }
 
+// Dropdown "Phạm vi": viền theo token (không đen đậm), cao 48px, bo 8px.
+// Custom property thừa hưởng xuyên biên giới component nên không cần ng-deep.
 .scope-field {
   width: 100%;
+  --mat-form-field-outlined-container-shape: var(--radius-control);
+  --mat-form-field-outlined-outline-color: var(--color-border);
+  --mat-form-field-outlined-hover-outline-color: var(--color-outline);
+  --mat-form-field-outlined-focus-outline-color: var(--color-primary);
+  --mat-form-field-outlined-focus-label-text-color: var(--color-primary);
+  --mat-form-field-outlined-caret-color: var(--color-primary);
+  // Nhãn nổi nhỏ 12px, nhãn tĩnh 14px — đúng thang typography 4 cỡ
+  --mat-form-field-outlined-label-text-size: var(--text-size-sm);
+  --mat-form-field-outlined-focus-label-text-size: var(--text-size-xs);
+  // 12px trên/dưới + phần chữ 24px = control cao đúng --control-height (48px)
+  --mat-form-field-container-vertical-padding: var(--space-3);
+  --mat-form-field-container-height: var(--control-height);
 }
 
+// Nút "Cuộc trò chuyện mới": outlined, bo 8px, full chiều ngang panel;
+// disabled chỉ mờ nhẹ (muted vẫn tương phản đủ đọc)
 .panel-action {
-  align-self: flex-start;
+  width: 100%;
+  --mat-button-outlined-container-shape: var(--radius-control);
+  --mat-button-outlined-label-text-weight: 600;
+  --mat-button-outlined-outline-color: var(--color-border);
+  --mat-button-outlined-hover-outline-color: var(--color-outline);
+  --mat-button-outlined-label-text-color: var(--color-on-surface);
+  --mat-button-outlined-disabled-outline-color: var(--color-border);
+  --mat-button-outlined-disabled-label-text-color: var(--color-muted);
 }
 
 // ---- Khung chat ----
+// Nền trắng toàn card; 1 mức shadow nhẹ thay cho viền (không viền + shadow)
 .chat-card {
   position: relative; // neo cho .panel-toggle
   display: flex;
@@ -56,20 +83,21 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-card);
   background: var(--color-surface);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
 }
 
-// Nút gập sidebar nổi đè góc trên-phải card — không chiếm dòng nào trong
-// layout nên khung chat giữ nguyên chiều cao.
+// Nút gập panel nổi đè góc trên-phải card (phía giáp panel tiện ích) — không
+// chiếm dòng nào trong layout nên khung chat giữ nguyên chiều cao.
+// Bo 8px theo thang control (999px chỉ dành cho avatar/badge).
 .panel-toggle {
   position: absolute;
   top: var(--space-2);
   right: var(--space-2);
   z-index: 1;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-control);
   background: var(--color-surface-container-high);
   color: var(--color-muted);
 }
@@ -86,13 +114,14 @@
 }
 
 // ---- Trạng thái rỗng ----
+// Căn giữa ngang+dọc (margin:auto trong .messages); nhịp 16/8/24:
+// icon → tiêu đề → mô tả → chip. Gộp cụm chip rộng tối đa 480px.
 .chat-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
   margin: auto;
-  max-width: 520px;
+  max-width: var(--suggestions-max-width);
   text-align: center;
 }
 
@@ -102,19 +131,19 @@
   width: calc(var(--avatar-size) + var(--space-5));
   height: calc(var(--avatar-size) + var(--space-5));
   border-radius: var(--radius-full);
-  background: var(--color-secondary-container);
-  color: var(--color-on-secondary-container);
+  background: var(--color-accent-soft);
+  color: var(--color-primary);
 }
 
 .empty-title {
-  margin: var(--space-2) 0 0;
-  font: var(--mat-sys-title-medium);
+  margin: var(--space-4) 0 0;
+  font: var(--text-style-base-strong);
   color: var(--color-on-surface);
 }
 
 .empty-body {
-  margin: 0;
-  font: var(--mat-sys-body-medium);
+  margin: var(--space-2) 0 0;
+  font: var(--text-style-sm);
   color: var(--color-muted);
 }
 
@@ -123,19 +152,22 @@
   flex-direction: column;
   gap: var(--space-2);
   width: 100%;
-  margin-top: var(--space-3);
+  margin-top: var(--space-5);
 }
 
+// 3 chip cùng chiều rộng (stretch trong cụm 480px), nền trắng, viền token,
+// bo 8px; icon bóng đèn 20px, chữ căn trái, cách icon 12px.
 .suggestion {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  width: 100%;
   padding: var(--space-3);
   border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-container);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
   color: var(--color-on-surface);
-  font: var(--mat-sys-body-medium);
+  font: var(--text-style-sm);
   text-align: left;
   cursor: pointer;
   transition:
@@ -144,11 +176,15 @@
 }
 
 .suggestion:hover {
-  background: var(--color-surface-container-high);
+  background: var(--color-accent-faint);
   border-color: var(--color-outline);
 }
 
 .suggestion mat-icon {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+  font-size: var(--icon-size-md);
+  line-height: var(--icon-size-md);
   color: var(--color-primary);
   flex: 0 0 auto;
 }
@@ -196,7 +232,7 @@
 
 .turn-role {
   margin: 0 0 var(--space-1);
-  font: var(--mat-sys-label-small);
+  font: var(--text-style-xs-strong);
   color: var(--color-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -209,7 +245,7 @@
 
 .user-text {
   margin: 0;
-  font: var(--mat-sys-body-medium);
+  font: var(--text-style-sm);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -233,7 +269,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--color-muted);
-  font: var(--mat-sys-label-medium);
+  font: var(--text-style-xs-strong);
   cursor: pointer;
   list-style: none; // bỏ marker mặc định, thay bằng chevron xoay được
   user-select: none;
@@ -249,10 +285,10 @@
 }
 
 .reasoning-summary mat-icon {
-  width: 18px;
-  height: 18px;
-  font-size: 18px;
-  line-height: 18px;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  font-size: var(--icon-size-sm);
+  line-height: var(--icon-size-sm);
   flex: 0 0 auto;
 }
 
@@ -273,7 +309,7 @@
 .reasoning-body {
   margin: 0;
   padding: 0 var(--space-3) var(--space-3);
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -288,7 +324,7 @@
 
 .cites-title {
   margin: 0 0 var(--space-2);
-  font: var(--mat-sys-label-small);
+  font: var(--text-style-xs-strong);
   color: var(--color-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -337,14 +373,14 @@
   width: var(--space-5);
   height: var(--space-5);
   border-radius: var(--radius-full);
-  background: var(--color-secondary-container);
-  color: var(--color-on-secondary-container);
-  font: var(--mat-sys-label-small);
+  background: var(--color-accent-soft);
+  color: var(--color-primary);
+  font: var(--text-style-xs);
   flex: 0 0 auto;
 }
 
 .cite-page {
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   font-family: var(--font-serif);
   color: var(--color-on-surface);
   white-space: nowrap;
@@ -352,7 +388,7 @@
 }
 
 .cite-snippet {
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   font-family: var(--font-serif);
   color: var(--color-muted);
   overflow: hidden;
@@ -386,7 +422,7 @@
 
 .thinking-text {
   margin-left: var(--space-2);
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
 }
 
@@ -419,13 +455,14 @@
 }
 
 // ---- Ô soạn ----
+// Cùng nền trắng với toàn card — chỉ tách bằng đường kẻ mảnh phía trên,
+// KHÔNG tô nền xám khác.
 .composer {
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
   padding: var(--space-3);
   border-top: var(--border-width) solid var(--color-border);
-  background: var(--color-surface-container);
 }
 
 // CDK autosize đo riêng chiều cao PHẦN CHỮ (nó tạm bỏ padding/border lúc
@@ -436,31 +473,51 @@
   box-sizing: content-box;
   flex: 1 1 auto;
   min-width: 0;
-  // 12px chữ + padding 12+12 + border => ~46px, đủ chuẩn target chạm 44px
+  // chữ 22px + padding 12+12 + border 1+1 = cao đúng --control-height (48px)
+  min-height: var(--control-height);
   padding: var(--space-3) var(--space-4);
   border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
   background: var(--color-surface);
   color: var(--color-on-surface);
-  font: var(--mat-sys-body-medium);
+  font: var(--text-style-input);
   resize: none;
   overflow-y: auto;
+  transition: border-color var(--duration-fast) ease;
 }
 
+// Focus: viền chuyển sang màu chủ đạo (teal) — đủ rõ cho bàn phím, không
+// cần vòng outline dày.
 .composer-input:focus-visible {
-  outline: var(--border-width-strong) solid var(--color-primary);
-  outline-offset: var(--border-width);
+  outline: none;
+  border-color: var(--color-primary);
 }
 
+// Icon phụ cạnh ô nhập gộp cùng hàng, đồng nhất 20px (đã có tooltip +
+// aria-label trên từng nút).
 .composer-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   flex: 0 0 auto;
 }
 
+.composer-actions mat-icon {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
+  font-size: var(--icon-size-md);
+  line-height: var(--icon-size-md);
+}
+
+// Nút Gửi/Dừng: bo 8px, cao bằng ô nhập (48px); disabled dùng teal nhạt
+// (--color-accent-soft) với chữ vẫn là màu primary — tương phản ≥ 3:1.
 .send-button {
   flex: 0 0 auto;
+  height: var(--control-height);
+  --mat-button-filled-container-shape: var(--radius-control);
+  --mat-button-filled-disabled-container-color: var(--color-accent-soft);
+  --mat-button-filled-disabled-label-text-color: var(--color-primary);
+  --mat-button-outlined-container-shape: var(--radius-control);
 }
 
 // Trạng thái bật suy luận sâu phải đọc được bằng màu + nền (icon đơn thuần
@@ -470,17 +527,16 @@
 }
 
 .thinking-toggle.is-active {
-  color: var(--color-on-secondary-container);
-  background: var(--color-secondary-container);
+  color: var(--color-primary);
+  background: var(--color-accent-soft);
 }
 
-// Gạch ngang trên composer tách vùng chat khỏi footer; giữ cùng nền để
-// composer + dòng gợi ý thành một khối liền, không bị "dính" mép dưới.
+// Dòng hướng dẫn cuối: 12px xám trung tính, căn giữa, một dòng — liền mạch
+// với composer trên nền trắng chung của card.
 .disclaimer {
   margin: 0;
   padding: 0 var(--space-3) var(--space-3);
-  background: var(--color-surface-container);
-  font: var(--mat-sys-label-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
   text-align: center;
 }
@@ -501,29 +557,55 @@
 }
 
 // ---- Responsive ----
+// Dưới 1024px: panel tiện ích bỏ sang ngang, thả thành thanh nằm phía trên
+// khu vực chat (vẫn gập được bằng nút toggle).
 @media (max-width: 1023px) {
   .page {
-    position: relative;
-    height: calc(100dvh - var(--toolbar-height) - var(--space-4) * 2);
+    flex-direction: column;
   }
 
-  // Màn nhỏ mà chiếm 280px chiều ngang thì chat nghẹt — chuyển sidebar thành
-  // lớp phủ trượt vào từ phải, đóng bằng chính nút toggle.
   .side-panel {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: var(--z-drawer);
-    flex-basis: auto;
-    width: min(280px, 80vw);
-    box-shadow: var(--shadow-2);
+    order: -1; // DOM thứ tự là chat → panel, kéo panel lên đầu hàng dọc
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+  }
+
+  // Trong thanh ngang chỉ cần tiêu đề, bỏ mô tả phụ cho gọn
+  .panel-subtitle {
+    display: none;
+  }
+
+  .scope-field {
+    flex: 1 1 auto;
+    max-width: var(--utility-panel-width);
+  }
+
+  .panel-action {
+    width: auto;
+    margin-left: auto;
   }
 }
 
 @media (max-width: 767px) {
   .bubble {
     max-width: calc(100% - var(--avatar-size));
+  }
+
+  // Màn rất hẹp: thanh panel xếp thành 2 dòng (tiêu đề + control full ngang)
+  .side-panel {
+    flex-wrap: wrap;
+  }
+
+  .scope-field {
+    max-width: none;
+  }
+
+  .panel-action {
+    width: 100%;
+    margin-left: 0;
   }
 }
 

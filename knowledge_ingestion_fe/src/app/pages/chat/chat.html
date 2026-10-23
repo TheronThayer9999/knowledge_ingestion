@@ -155,6 +155,8 @@
     <p class="disclaimer">{{ lang.t('CHAT_ENTER_HINT') }} · {{ lang.t('CHAT_DISCLAIMER') }}</p>
   </div>
 
+  <!-- Panel tiện ích đặt SAU card chat → nằm bên phải trên desktop;
+       dưới 1024px CSS order kéo lên đầu trang thành thanh thả ngang -->
   @if (panelOpen()) {
     <aside class="side-panel">
       <div class="panel-head">
