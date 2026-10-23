@@ -459,7 +459,9 @@ func Load(path string) (IConfig, error) {
 		cfg.JWTCli.RefreshAbsoluteDays = 730
 	}
 	if len(cfg.Cors.AllowedOrigins) == 0 {
-		cfg.Cors.AllowedOrigins = []string{"http://localhost:4200"} // mặc định Angular dev
+		// Mặc định Angular dev — FE gọi thẳng API (không qua dev-server proxy)
+		// nên cả hai cách mở dev server phải nằm trong allow list.
+		cfg.Cors.AllowedOrigins = []string{"http://localhost:4200", "http://127.0.0.1:4200"}
 	}
 	if cfg.Worker.TrimIntervalHours <= 0 {
 		cfg.Worker.TrimIntervalHours = 24 // mặc định mỗi ngày

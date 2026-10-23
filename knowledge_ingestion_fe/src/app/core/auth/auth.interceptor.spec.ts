@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { environment } from '../../../environments/environment';
 import { MessageService } from '../../shared/feedback/message.service';
 import type { StoredSession } from './auth.models';
 import { AuthService } from './auth.service';
@@ -10,6 +11,11 @@ import { authInterceptor } from './auth.interceptor';
 import { AUTH_STORAGE_KEY } from './auth-storage.service';
 
 const future = () => new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+
+// Request do chính test gửi (client.get('/api/v1/...')) giữ nguyên chuỗi, còn
+// lượt refresh đi qua ApiService nên URL của nó ghép từ environment.apiBaseUrl
+// (tương đối ở prod, tuyệt đối ở dev) — hardcode sẽ fail khi đổi env.
+const api = (path: string): string => `${environment.apiBaseUrl}${path}`;
 
 function sessionFixture(): StoredSession {
   return {
@@ -100,7 +106,7 @@ describe('authInterceptor', () => {
       statusText: 'Unauthorized',
     });
 
-    const refresh = http.expectOne('/api/v1/auth/refresh');
+    const refresh = http.expectOne(api('/auth/refresh'));
     expect(refresh.request.body).toEqual({ refresh_token: 'refresh-1' });
     refresh.flush({
       status: true,
@@ -125,7 +131,7 @@ describe('authInterceptor', () => {
     expect(auth.session()?.token).toBe('access-2');
     expect(auth.session()?.refreshToken).toBe('refresh-2');
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain('refresh-2');
-    http.expectNone('/api/v1/auth/refresh');
+    http.expectNone(api('/auth/refresh'));
   });
 
   it('refresh thất bại → xoá phiên, báo hết hạn và về /login', async () => {
@@ -138,7 +144,7 @@ describe('authInterceptor', () => {
     await tick();
 
     http
-      .expectOne('/api/v1/auth/refresh')
+      .expectOne(api('/auth/refresh'))
       .flush(envelope(401, 'phiên không hợp lệ'), { status: 401, statusText: 'Unauthorized' });
     await tick();
 
@@ -158,7 +164,7 @@ describe('authInterceptor', () => {
     });
     await tick();
 
-    http.expectNone('/api/v1/auth/refresh');
+    http.expectNone(api('/auth/refresh'));
     expect(messages.error).not.toHaveBeenCalled();
     expect(router.navigate).not.toHaveBeenCalled();
   });
@@ -172,7 +178,7 @@ describe('authInterceptor', () => {
     });
     await tick();
 
-    http.expectNone('/api/v1/auth/refresh');
+    http.expectNone(api('/auth/refresh'));
     expect(router.navigate).not.toHaveBeenCalled();
   });
 });

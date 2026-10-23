@@ -1,7 +1,11 @@
 /**
- * Cấu hình runtime của FE. `apiBaseUrl` dùng đường dẫn tương đối để:
- * - dev: Angular dev-server proxy `/api` → backend :9001 (không phụ thuộc CORS)
- * - prod: cùng origin với API khi deploy
+ * Cấu hình runtime của FE. Đây là bản mặc định (dùng cho build production và
+ * unit test): `apiBaseUrl` tương đối nghĩa là API nằm cùng origin với app khi
+ * deploy — khỏi đổi code, khỏi lo CORS.
+ *
+ * Bản dev (`environment.development.ts`) ghi đè bằng URL tuyệt đối của backend
+ * để `ng serve` gọi thẳng :9001, không qua dev-server proxy nữa. Việc thay file
+ * do `fileReplacements` trong angular.json lo theo build configuration.
  */
 export const environment = {
   apiBaseUrl: '/api/v1',

@@ -34,8 +34,9 @@ func NewSearchService(
 // Search chạy đúng 2 vòng agentic (§8 AGENT_LLM_INSTRUCTIONS.md). Vòng 1:
 // phân loại câu hỏi bằng LLM (có dto.Model) rồi router chọn params — không
 // model thì default lookup, không tốn lượt LLM. Vòng 2: pipeline hybrid,
-// trừ chitchat skip luôn (khỏi tốn embed+Qdrant). Lỗi hạ tầng trả 500 (không
-// phải lỗi client); query rỗng/whitespace thì 400.
+// trừ chitchat skip luôn (khỏi tốn embed+Qdrant). Dịch vụ AI phía dưới không
+// kết nối được (Ollama local chưa chạy, Qdrant tắt) → 503 kèm hướng kiểm tra;
+// lỗi hạ tầng khác vẫn 500 như cũ; query rỗng/whitespace thì 400.
 func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dtos.Result[*dtos.SearchResponse] {
 	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
 	userID, _ := s.currentUser.UserID(ctx)
@@ -69,6 +70,12 @@ func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dto
 		ScoreThreshold: dto.ScoreThreshold,
 	})
 	if err != nil {
+		// searchService gọi thẳng pipeline nên không đi qua providerError — bắt
+		// riêng lỗi không kết nối được dịch vụ để người dùng biết đường mở
+		// Ollama/container lên, thay vì nhận 500 mù.
+		if dep := dependencyError(err); dep != nil {
+			return dtos.Fail[*dtos.SearchResponse](dep)
+		}
 		return dtos.Fail[*dtos.SearchResponse](err)
 	}
 	res := &dtos.SearchResponse{Hits: toHitResponses(hits), QuestionType: qtype.String()}

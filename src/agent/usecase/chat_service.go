@@ -112,8 +112,9 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 
 	res, err := agent.Run(ctx, model, dto.History, dto.Message)
 	if err != nil {
-		// Lỗi HTTP của provider (model sai, hết quota...) trả mã đọc được
-		// thay vì 500 chung chung — xem providerError.
+		// Lỗi HTTP của provider (model sai, hết quota...) trả mã đọc được, lỗi
+		// không kết nối được dịch vụ AI phía dưới (chưa bật Ollama local cho
+		// embedding, Qdrant tắt) trả 503 — xem providerError.
 		return dtos.Fail[*dtos.ChatResponse](providerError(err, model))
 	}
 	// Chốt chặn lượt retry: câu nối tiếp 0 hit thì ép search; agent trả
