@@ -1,0 +1,36 @@
+<mat-toolbar class="app-toolbar">
+  <mat-icon class="app-logo">school</mat-icon>
+  <span>Knowledge Ingestion</span>
+  <span class="app-spacer"></span>
+  <button matIconButton (click)="toggleTheme()" aria-label="Toggle dark mode">
+    <mat-icon>{{ isDark() ? 'light_mode' : 'dark_mode' }}</mat-icon>
+  </button>
+</mat-toolbar>
+
+<main class="app-main">
+  <mat-card appearance="outlined" class="welcome-card">
+    <mat-card-header>
+      <div matCardAvatar class="welcome-avatar">
+        <mat-icon>auto_awesome</mat-icon>
+      </div>
+      <mat-card-title>Hello, {{ title() }}</mat-card-title>
+      <mat-card-subtitle>Angular 21 · Material 21 · zoneless</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <p>
+        Scaffold đã sẵn sàng: routing, theme M3 (azure) và typography Roboto đã được bật
+        trong <code>styles.scss</code>.
+      </p>
+      <p>Bước tiếp theo: sinh component, thêm route, cấu hình i18n và nối vào API backend.</p>
+    </mat-card-content>
+    <mat-card-footer class="welcome-actions">
+      <a matButton href="https://material.angular.dev/components/categories" target="_blank" rel="noreferrer">
+        Components
+      </a>
+      <a matButton="filled" href="https://material.angular.dev/guide/theming" target="_blank" rel="noreferrer">
+        Theming guide
+      </a>
+    </mat-card-footer>
+  </mat-card>
+  <router-outlet />
+</main>

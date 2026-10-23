@@ -1,0 +1,43 @@
+.app-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-logo {
+  margin-right: 8px;
+}
+
+.app-spacer {
+  flex: 1 1 auto;
+}
+
+.app-main {
+  display: grid;
+  place-items: center;
+  min-height: calc(100dvh - 64px);
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.welcome-card {
+  width: 100%;
+  max-width: 560px;
+}
+
+.welcome-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
+}
+
+.welcome-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
