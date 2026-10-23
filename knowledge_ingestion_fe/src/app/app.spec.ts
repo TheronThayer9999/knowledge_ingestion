@@ -1,8 +1,10 @@
 import { TestBed } from '@angular/core/testing';
+import { LangService } from './core/i18n/lang.service';
 import { App } from './app';
 
 describe('App', () => {
   beforeEach(async () => {
+    localStorage.clear();
     await TestBed.configureTestingModule({
       imports: [App],
     }).compileComponents();
@@ -14,10 +16,13 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render title', async () => {
+  it('should render the translated welcome title', async () => {
     const fixture = TestBed.createComponent(App);
+    const lang = TestBed.inject(LangService);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('mat-card-title')?.textContent).toContain('Hello, Knowledge Ingestion');
+
+    expect(compiled.querySelector('mat-card-title')?.textContent).toContain(lang.t('WELCOME_TITLE'));
+    expect(compiled.querySelector('mat-card-title')?.textContent).toContain('Xin chào');
   });
 });

@@ -1,4 +1,4 @@
-<button matIconButton [matMenuTriggerFor]="paletteMenu" aria-label="Change color palette">
+<button matIconButton [matMenuTriggerFor]="paletteMenu" [attr.aria-label]="lang.t('TOOLBAR_CHANGE_PALETTE')">
   <mat-icon>palette</mat-icon>
 </button>
 
@@ -6,15 +6,11 @@
   @for (palette of palettes; track palette) {
     <button mat-menu-item (click)="theme.setPalette(palette)">
       <mat-icon [class.invisible]="theme.palette() !== palette">check</mat-icon>
-      <span>{{ palette }}</span>
+      <span>{{ lang.t(paletteKey(palette)) }}</span>
     </button>
   }
 </mat-menu>
 
-<button
-  matIconButton
-  (click)="theme.toggleMode()"
-  [attr.aria-label]="theme.mode() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
->
+<button matIconButton (click)="theme.toggleMode()" [attr.aria-label]="lang.t(modeLabelKey())">
   <mat-icon>{{ theme.mode() === 'dark' ? 'light_mode' : 'dark_mode' }}</mat-icon>
 </button>

@@ -1,0 +1,10 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+// Giữ chỗ icon check để các dòng menu không nhảy khi đổi ngôn ngữ
+.invisible {
+  visibility: hidden;
+}

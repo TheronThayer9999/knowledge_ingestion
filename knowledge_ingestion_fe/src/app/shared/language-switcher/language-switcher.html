@@ -1,0 +1,12 @@
+<button matIconButton [matMenuTriggerFor]="langMenu" [attr.aria-label]="lang.t('TOOLBAR_CHANGE_LANGUAGE')">
+  <mat-icon>translate</mat-icon>
+</button>
+
+<mat-menu #langMenu="matMenu">
+  @for (language of languages; track language) {
+    <button mat-menu-item (click)="lang.setLang(language)">
+      <mat-icon [class.invisible]="lang.lang() !== language">check</mat-icon>
+      <span>{{ lang.t(labelKey(language)) }}</span>
+    </button>
+  }
+</mat-menu>
