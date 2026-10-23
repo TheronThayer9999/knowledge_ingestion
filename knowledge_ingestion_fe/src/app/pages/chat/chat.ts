@@ -1,6 +1,7 @@
 import { TextFieldModule } from '@angular/cdk/text-field';
 import {
   Component,
+  DestroyRef,
   ElementRef,
   Injector,
   afterNextRender,
@@ -12,6 +13,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import type { Subscription } from 'rxjs';
 import type { ChatCite, ChatTurn } from '../../core/chat/chat.models';
 import { ChatService } from '../../core/chat/chat.service';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
@@ -41,6 +44,7 @@ const HISTORY_LIMIT = 12;
     MatIconModule,
     MatFormFieldModule,
     MatSelectModule,
+    MatTooltipModule,
     MarkdownPipe,
   ],
   templateUrl: './chat.html',
@@ -52,13 +56,19 @@ export class Chat {
   private readonly knowledge = inject(KnowledgeService);
   private readonly messages = inject(MessageService);
   private readonly injector = inject(Injector);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly categories = signal<Category[]>([]);
   protected readonly turns = signal<ChatMessage[]>([]);
   protected readonly draft = signal('');
   protected readonly scope = signal(0);
   protected readonly sending = signal(false);
+  /** Suy luận sâu: gửi `thinking: true` để model chịu khó nghĩ trước khi đáp */
+  protected readonly thinking = signal(false);
   protected readonly suggestions = SUGGESTIONS;
+
+  /** Request đang bay — giữ subscription để nút Dừng hủy được giữa chừng */
+  private pending?: Subscription;
 
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
 
@@ -68,6 +78,12 @@ export class Chat {
       next: (categories) => this.categories.set(categories),
       error: () => this.categories.set([]),
     });
+    // Rời trang giữa lúc đang chờ câu trả lời thì đừng để request treo
+    this.destroyRef.onDestroy(() => this.pending?.unsubscribe());
+  }
+
+  protected toggleThinking(): void {
+    this.thinking.update((value) => !value);
   }
 
   protected onInput(event: Event): void {
@@ -100,6 +116,23 @@ export class Chat {
     this.draft.set('');
   }
 
+  /**
+   * Dừng lúc model đang trả lời: hủy request, bỏ lượt user vừa ghi vào
+   * transcript và trả câu hỏi về ô soạn — chưa có đáp án nên giữ nó trong
+   * history chỉ tổ làm nhiễu ngữ cảnh lượt sau.
+   */
+  protected stop(): void {
+    this.pending?.unsubscribe();
+    this.pending = undefined;
+    this.sending.set(false);
+    const turns = this.turns();
+    const last = turns[turns.length - 1];
+    if (last?.role === 'user') {
+      this.turns.set(turns.slice(0, -1));
+      this.draft.set(last.content);
+    }
+  }
+
   private ask(text: string): void {
     const question = text.trim();
     if (question === '' || this.sending()) {
@@ -112,21 +145,25 @@ export class Chat {
     this.draft.set('');
     this.sending.set(true);
     this.scrollToBottom();
-    this.chat.send(question, history, this.scope() || null).subscribe({
-      next: (answer) => {
-        this.turns.update((list) => [
-          ...list,
-          { role: 'assistant', content: answer.answer, cites: answer.cites },
-        ]);
-        this.sending.set(false);
-        this.scrollToBottom();
-      },
-      error: (error: unknown) => {
-        this.sending.set(false);
-        this.messages.errorFromApi(error, 'AUTH_ERROR_GENERIC');
-        this.scrollToBottom();
-      },
-    });
+    this.pending = this.chat
+      .send(question, history, this.scope() || null, this.thinking())
+      .subscribe({
+        next: (answer) => {
+          this.pending = undefined;
+          this.turns.update((list) => [
+            ...list,
+            { role: 'assistant', content: answer.answer, cites: answer.cites },
+          ]);
+          this.sending.set(false);
+          this.scrollToBottom();
+        },
+        error: (error: unknown) => {
+          this.pending = undefined;
+          this.sending.set(false);
+          this.messages.errorFromApi(error, 'AUTH_ERROR_GENERIC');
+          this.scrollToBottom();
+        },
+      });
   }
 
   private scrollToBottom(): void {

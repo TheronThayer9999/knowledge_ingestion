@@ -329,8 +329,26 @@
   outline-offset: var(--border-width);
 }
 
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+}
+
 .send-button {
   flex: 0 0 auto;
+}
+
+// Trạng thái bật suy luận sâu phải đọc được bằng màu + nền (icon đơn thuần
+// không đủ), kèm aria-pressed cho screen reader.
+.thinking-toggle {
+  color: var(--color-muted);
+}
+
+.thinking-toggle.is-active {
+  color: var(--color-on-secondary-container);
+  background: var(--color-secondary-container);
 }
 
 // Gạch ngang trên composer tách vùng chat khỏi footer; giữ cùng nền để

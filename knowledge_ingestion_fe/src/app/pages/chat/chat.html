@@ -19,7 +19,12 @@
         </mat-select>
       </mat-form-field>
 
-      <button matButton="outlined" type="button" (click)="reset()" [disabled]="turns().length === 0">
+      <button
+        matButton="outlined"
+        type="button"
+        (click)="reset()"
+        [disabled]="turns().length === 0"
+      >
         <mat-icon aria-hidden="true">refresh</mat-icon>
         {{ lang.t('CHAT_CLEAR') }}
       </button>
@@ -112,16 +117,38 @@
         [attr.aria-label]="lang.t('CHAT_PLACEHOLDER')"
         [disabled]="sending()"
       ></textarea>
-      <button
-        matButton="filled"
-        type="button"
-        class="send-button"
-        (click)="send()"
-        [disabled]="sending() || draft().trim() === ''"
-      >
-        <mat-icon aria-hidden="true">send</mat-icon>
-        <span class="send-label">{{ lang.t('CHAT_SEND') }}</span>
-      </button>
+      <div class="composer-actions">
+        <button
+          mat-icon-button
+          type="button"
+          class="thinking-toggle"
+          [class.is-active]="thinking()"
+          [attr.aria-pressed]="thinking()"
+          [attr.aria-label]="lang.t('CHAT_THINKING_TOGGLE')"
+          [matTooltip]="lang.t('CHAT_THINKING_HINT')"
+          [disabled]="sending()"
+          (click)="toggleThinking()"
+        >
+          <mat-icon aria-hidden="true">psychology</mat-icon>
+        </button>
+        @if (sending()) {
+          <button matButton="outlined" type="button" class="send-button" (click)="stop()">
+            <mat-icon aria-hidden="true">stop</mat-icon>
+            <span class="send-label">{{ lang.t('CHAT_STOP') }}</span>
+          </button>
+        } @else {
+          <button
+            matButton="filled"
+            type="button"
+            class="send-button"
+            (click)="send()"
+            [disabled]="draft().trim() === ''"
+          >
+            <mat-icon aria-hidden="true">send</mat-icon>
+            <span class="send-label">{{ lang.t('CHAT_SEND') }}</span>
+          </button>
+        }
+      </div>
     </div>
 
     <p class="disclaimer">{{ lang.t('CHAT_ENTER_HINT') }} · {{ lang.t('CHAT_DISCLAIMER') }}</p>
