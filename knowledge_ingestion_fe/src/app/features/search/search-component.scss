@@ -1,0 +1,58 @@
+.search__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.search__query {
+  width: 100%;
+}
+
+.search__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.search__categories {
+  flex: 1 1 240px;
+}
+
+.search__num {
+  width: 140px;
+}
+
+.search__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  color: var(--color-text-secondary);
+}
+
+.search__empty {
+  color: var(--color-text-secondary);
+}
+
+.search__hit {
+  margin-bottom: var(--space-2);
+}
+
+.search__hit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.search__hit-score {
+  font-variant-numeric: tabular-nums;
+}
+
+.search__hit-text {
+  white-space: pre-wrap;
+  margin: 0;
+}

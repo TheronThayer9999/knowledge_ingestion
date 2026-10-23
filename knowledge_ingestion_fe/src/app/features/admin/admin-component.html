@@ -1,0 +1,222 @@
+<section class="admin">
+  <div class="admin__header">
+    <h2>{{ lang.t('ADMIN_TITLE') }}</h2>
+    <button mat-button (click)="loadQueue()">
+      <mat-icon>refresh</mat-icon>
+      {{ lang.t('COMMON_REFRESH') }}
+    </button>
+  </div>
+
+  <mat-tab-group>
+    <!-- ============ Hàng đợi ============ -->
+    <mat-tab [label]="lang.t('ADMIN_TAB_QUEUE')">
+      <div class="admin__tab-body">
+        @if (queueLoading() || !queue()) {
+          <p class="admin__empty">{{ lang.t('COMMON_LOADING') }}</p>
+        } @else if (queue(); as q) {
+          <p class="admin__now">{{ lang.t('ADMIN_QUEUE_AT', { now: (q.now | date: 'dd/MM/yyyy HH:mm:ss') ?? '' }) }}</p>
+
+          @for (p of phaseNames(); track p) {
+            <mat-card appearance="outlined" class="admin__phase">
+              <mat-card-header>
+                <mat-card-title>{{ lang.t(p === 'extract' ? 'ADMIN_PHASE_EXTRACT' : 'ADMIN_PHASE_INDEX') }}</mat-card-title>
+              </mat-card-header>
+              <mat-card-content>
+                <p class="admin__legend">
+                  {{ lang.t('ADMIN_GROUP_PENDING') }}: {{ countsLabel(q[p].counts) }}
+                </p>
+                @for (group of groupNames(); track group) {
+                  <h4 class="admin__group-title">
+                    {{ lang.t(group === 'processing' ? 'ADMIN_GROUP_PROCESSING' : group === 'failed' ? 'ADMIN_GROUP_FAILED' : 'ADMIN_GROUP_PENDING') }}
+                    <span>({{ q[p][group].length }})</span>
+                  </h4>
+                  @if (q[p][group].length > 0) {
+                    <table mat-table [dataSource]="q[p][group]" class="admin__table">
+                      <ng-container matColumnDef="name">
+                        <th mat-header-cell *matHeaderCellDef>{{ lang.t('ARTICLES_COL_NAME') }}</th>
+                        <td mat-cell *matCellDef="let item">{{ item.name }}</td>
+                      </ng-container>
+                      <ng-container matColumnDef="attempts">
+                        <th mat-header-cell *matHeaderCellDef>{{ lang.t('ADMIN_COL_ATTEMPTS') }}</th>
+                        <td mat-cell *matCellDef="let item">{{ item.attempts }}</td>
+                      </ng-container>
+                      <ng-container matColumnDef="nextRetry">
+                        <th mat-header-cell *matHeaderCellDef>{{ lang.t('ADMIN_COL_NEXT_RETRY') }}</th>
+                        <td mat-cell *matCellDef="let item">{{ item.next_retry_at | date: 'dd/MM/yyyy HH:mm' }}</td>
+                      </ng-container>
+                      <ng-container matColumnDef="lease">
+                        <th mat-header-cell *matHeaderCellDef>{{ lang.t('ADMIN_COL_LEASE') }}</th>
+                        <td mat-cell *matCellDef="let item">{{ item.lease_expires_at | date: 'dd/MM/yyyy HH:mm' }}</td>
+                      </ng-container>
+                      <ng-container matColumnDef="running">
+                        <th mat-header-cell *matHeaderCellDef>{{ lang.t('ADMIN_COL_RUNNING') }}</th>
+                        <td mat-cell *matCellDef="let item">{{ item.running_for_min }}</td>
+                      </ng-container>
+                      <ng-container matColumnDef="flags">
+                        <th mat-header-cell *matHeaderCellDef></th>
+                        <td mat-cell *matCellDef="let item">
+                          @if (item.lease_expired) {
+                            <mat-chip-set><mat-chip class="admin__chip--warn">{{ lang.t('ADMIN_LEASE_EXPIRED') }}</mat-chip></mat-chip-set>
+                          }
+                        </td>
+                      </ng-container>
+                      <tr mat-header-row *matHeaderRowDef="queueColumns"></tr>
+                      <tr mat-row *matRowDef="let row; columns: queueColumns"></tr>
+                    </table>
+                  }
+                }
+              </mat-card-content>
+            </mat-card>
+          }
+
+          <!-- Purge -->
+          <mat-card appearance="outlined" class="admin__phase">
+            <mat-card-header>
+              <mat-card-title>{{ lang.t('ADMIN_PHASE_PURGE') }}</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <p class="admin__legend">
+                {{ lang.t('ADMIN_PURGE_GRACE', { min: q.purge.grace_period_min }) }} ·
+                {{ lang.t('ADMIN_PURGE_BATCH', { size: q.purge.batch_size }) }}
+              </p>
+              @for (group of purgeGroupNames(); track group) {
+                <h4 class="admin__group-title">
+                  {{ lang.t(group === 'undoing' ? 'ADMIN_PURGE_UNDOING' : 'ADMIN_PURGE_READY') }}
+                  <span>({{ q.purge[group].length }})</span>
+                </h4>
+                @if (q.purge[group].length > 0) {
+                  <table mat-table [dataSource]="q.purge[group]" class="admin__table">
+                    <ng-container matColumnDef="name">
+                      <th mat-header-cell *matHeaderCellDef>{{ lang.t('ARTICLES_COL_NAME') }}</th>
+                      <td mat-cell *matCellDef="let item">{{ item.name }}</td>
+                    </ng-container>
+                    <ng-container matColumnDef="waiting">
+                      <th mat-header-cell *matHeaderCellDef>{{ lang.t('ADMIN_COL_WAITING') }}</th>
+                      <td mat-cell *matCellDef="let item">{{ item.waiting_min }}</td>
+                    </ng-container>
+                    <ng-container matColumnDef="undoUntil">
+                      <th mat-header-cell *matHeaderCellDef>{{ lang.t('ADMIN_COL_UNDO_UNTIL') }}</th>
+                      <td mat-cell *matCellDef="let item">{{ item.undo_until | date: 'dd/MM/yyyy HH:mm' }}</td>
+                    </ng-container>
+                    <ng-container matColumnDef="statuses">
+                      <th mat-header-cell *matHeaderCellDef>{{ lang.t('ADMIN_COL_STATUSES') }}</th>
+                      <td mat-cell *matCellDef="let item">
+                        {{ purgeItemFlags(item) }} · {{ item.extract_status }}/{{ item.index_status }}
+                      </td>
+                    </ng-container>
+                    <tr mat-header-row *matHeaderRowDef="purgeColumns"></tr>
+                    <tr mat-row *matRowDef="let row; columns: purgeColumns"></tr>
+                  </table>
+                }
+              }
+            </mat-card-content>
+          </mat-card>
+        }
+      </div>
+    </mat-tab>
+
+    <!-- ============ Nhất quán ============ -->
+    <mat-tab [label]="lang.t('ADMIN_TAB_CONSISTENCY')">
+      <div class="admin__tab-body">
+        <button mat-raised-button color="primary" (click)="runConsistency()" [disabled]="consistencyLoading()">
+          <mat-icon>health_and_safety</mat-icon>
+          {{ lang.t('ADMIN_RUN_CHECK') }}
+        </button>
+
+        @if (consistency(); as res) {
+          <mat-card appearance="outlined" class="admin__metrics">
+            <mat-card-content>
+              <div class="admin__metric">
+                <span>{{ lang.t('ADMIN_METRIC_ORPHAN_CLOSURE') }}</span><b>{{ res.orphan_closure_rows }}</b>
+              </div>
+              <div class="admin__metric">
+                <span>{{ lang.t('ADMIN_METRIC_MISSING_SELF') }}</span><b>{{ res.missing_self_rows }}</b>
+              </div>
+              <div class="admin__metric">
+                <span>{{ lang.t('ADMIN_METRIC_CYCLES') }}</span><b>{{ res.cycle_indicators }}</b>
+              </div>
+              <div class="admin__metric">
+                <span>{{ lang.t('ADMIN_METRIC_ORPHAN_ARTICLES') }}</span><b>{{ res.orphan_articles }}</b>
+              </div>
+              <div class="admin__metric">
+                <span>{{ lang.t('ADMIN_METRIC_ORPHAN_PAGES') }}</span><b>{{ res.orphan_article_pages }}</b>
+              </div>
+              <mat-chip-set>
+                <mat-chip [class.admin__chip--ok]="res.healthy" [class.admin__chip--bad]="!res.healthy">
+                  {{ lang.t(res.healthy ? 'ADMIN_CONSISTENCY_HEALTHY' : 'ADMIN_CONSISTENCY_ISSUES') }}
+                </mat-chip>
+              </mat-chip-set>
+            </mat-card-content>
+          </mat-card>
+        }
+      </div>
+    </mat-tab>
+
+    <!-- ============ Embed cache ============ -->
+    <mat-tab [label]="lang.t('ADMIN_TAB_EMBED_CACHE')">
+      <div class="admin__tab-body">
+        @if (embedStats(); as s) {
+          <mat-card appearance="outlined" class="admin__metrics">
+            <mat-card-content>
+              <div class="admin__metric">
+                <span>{{ lang.t('ADMIN_CACHE_COUNT') }}</span><b>{{ s.count }}</b>
+              </div>
+              <div class="admin__metric">
+                <span>{{ lang.t('ADMIN_CACHE_BYTES') }}</span><b>{{ formatBytes(s.bytes) }}</b>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <form [formGroup]="purgeForm" class="admin__inline-form">
+          <mat-form-field appearance="outline">
+            <mat-label>{{ lang.t('ADMIN_PURGE_OLDER_THAN') }}</mat-label>
+            <input formControlName="olderThanDays" type="number" min="0" matInput />
+            <span matTextSuffix>&nbsp;{{ lang.t('ADMIN_DAYS_UNIT') }}</span>
+            <mat-hint>{{ lang.t('ADMIN_PURGE_OLDER_THAN_HINT') }}</mat-hint>
+          </mat-form-field>
+          <button mat-raised-button color="warn" type="button" (click)="purgeEmbedCache()">
+            <mat-icon>cleaning_services</mat-icon>
+            {{ lang.t('ADMIN_PURGE_SUBMIT') }}
+          </button>
+        </form>
+      </div>
+    </mat-tab>
+
+    <!-- ============ Bảo trì lô ============ -->
+    <mat-tab [label]="lang.t('ADMIN_TAB_MAINTENANCE')">
+      <div class="admin__tab-body">
+        <mat-card appearance="outlined">
+          <mat-card-content>
+            <form [formGroup]="scopeForm" class="admin__scope-form">
+              <p class="admin__scope-hint">{{ lang.t('ADMIN_SCOPE_HINT') }}</p>
+              <mat-form-field appearance="outline">
+                <mat-label>{{ lang.t('ARTICLES_FIELD_CATEGORY') }}</mat-label>
+                <mat-select formControlName="categoryId">
+                  @for (c of categoryOptions(); track c.id) {
+                    <mat-option [value]="c.id">{{ c.label }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>{{ lang.t('ADMIN_SCOPE_ARTICLE_IDS') }}</mat-label>
+                <input formControlName="articleIds" matInput placeholder="1,2,3" />
+              </mat-form-field>
+
+              <div class="admin__scope-actions">
+                <button mat-raised-button color="primary" type="button" (click)="rebuildVectors()">
+                  <mat-icon>sync</mat-icon>
+                  {{ lang.t('ADMIN_REBUILD_VECTORS') }}
+                </button>
+                <button mat-raised-button color="warn" type="button" (click)="resetExtract()">
+                  <mat-icon>science</mat-icon>
+                  {{ lang.t('ADMIN_RESET_EXTRACT') }}
+                </button>
+              </div>
+            </form>
+          </mat-card-content>
+        </mat-card>
+      </div>
+    </mat-tab>
+  </mat-tab-group>
+</section>

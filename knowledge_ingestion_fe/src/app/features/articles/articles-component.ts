@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -8,7 +9,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { filter, switchMap } from 'rxjs';
+import { filter } from 'rxjs';
 import { ArticlesService } from '../../core/api/articles.service';
 import { CategoriesService } from '../../core/api/categories.service';
 import { ApiRequestError } from '../../core/api/api.helpers';
@@ -28,6 +29,7 @@ const PAGE_SIZE = 20;
 @Component({
   selector: 'app-articles',
   imports: [
+    DatePipe,
     MatButtonModule,
     MatCardModule,
     MatFormFieldModule,

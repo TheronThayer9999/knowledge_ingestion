@@ -1,0 +1,83 @@
+<section class="articles">
+  <div class="articles__header">
+    <h2>{{ lang.t('ARTICLES_TITLE') }}</h2>
+    <button mat-raised-button color="primary" (click)="openCreate()" [disabled]="orderedCategories().length === 0">
+      <mat-icon>note_add</mat-icon>
+      {{ lang.t('ARTICLES_NEW') }}
+    </button>
+  </div>
+
+  @if (orderedCategories().length === 0) {
+    <mat-card appearance="outlined">
+      <mat-card-content>
+        <p class="articles__empty">
+          {{ lang.t('ARTICLES_NEED_CATEGORY') }}
+          <a mat-button color="primary" routerLink="/categories">{{ lang.t('NAV_CATEGORIES') }}</a>
+        </p>
+      </mat-card-content>
+    </mat-card>
+  } @else {
+    <div class="articles__toolbar">
+      <mat-form-field appearance="outline" class="articles__filter">
+        <mat-label>{{ lang.t('ARTICLES_FIELD_CATEGORY') }}</mat-label>
+        <mat-select [value]="selectedCategory()" (selectionChange)="selectCategory($event.value)">
+          @for (c of orderedCategories(); track c.id) {
+            <mat-option [value]="c.id">{{ '\u00A0\u00A0'.repeat(c.depth) }}{{ c.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+      <span class="articles__count">{{ lang.t('ARTICLES_TOTAL', { total: total() }) }}</span>
+    </div>
+
+    <mat-card appearance="outlined">
+      <mat-card-content>
+        @if (loading()) {
+          <p class="articles__empty">{{ lang.t('COMMON_LOADING') }}</p>
+        } @else if (articles().length === 0) {
+          <p class="articles__empty">{{ lang.t('ARTICLES_EMPTY') }}</p>
+        } @else {
+          <table mat-table [dataSource]="articles()" class="articles__table">
+            <ng-container matColumnDef="name">
+              <th mat-header-cell *matHeaderCellDef>{{ lang.t('ARTICLES_COL_NAME') }}</th>
+              <td mat-cell *matCellDef="let a">
+                <a class="articles__link" [routerLink]="['/articles', a.id]">{{ a.name }}</a>
+              </td>
+            </ng-container>
+            <ng-container matColumnDef="docType">
+              <th mat-header-cell *matHeaderCellDef>{{ lang.t('ARTICLES_COL_DOCTYPE') }}</th>
+              <td mat-cell *matCellDef="let a">{{ a.doc_type ?? 'general' }}</td>
+            </ng-container>
+            <ng-container matColumnDef="source">
+              <th mat-header-cell *matHeaderCellDef>{{ lang.t('ARTICLES_COL_SOURCE') }}</th>
+              <td mat-cell *matCellDef="let a">{{ lang.t(sourceLabel(a)) }}</td>
+            </ng-container>
+            <ng-container matColumnDef="updatedAt">
+              <th mat-header-cell *matHeaderCellDef>{{ lang.t('COMMON_UPDATED_AT') }}</th>
+              <td mat-cell *matCellDef="let a">{{ a.updated_at | date: 'dd/MM/yyyy HH:mm' }}</td>
+            </ng-container>
+            <ng-container matColumnDef="actions">
+              <th mat-header-cell *matHeaderCellDef></th>
+              <td mat-cell *matCellDef="let a">
+                <button mat-icon-button color="warn" [matTooltip]="lang.t('COMMON_DELETE')" (click)="remove(a)">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </td>
+            </ng-container>
+            <tr mat-header-row *matHeaderRowDef="columns"></tr>
+            <tr mat-row *matRowDef="let row; columns: columns"></tr>
+          </table>
+
+          <div class="articles__pager">
+            <button mat-button [disabled]="pageIndex() === 0" (click)="prevPage()">
+              <mat-icon>chevron_left</mat-icon>
+            </button>
+            <span>{{ pageIndex() + 1 }}</span>
+            <button mat-button [disabled]="!hasMore()" (click)="nextPage()">
+              <mat-icon>chevron_right</mat-icon>
+            </button>
+          </div>
+        }
+      </mat-card-content>
+    </mat-card>
+  }
+</section>

@@ -1,0 +1,104 @@
+@if (article(); as a) {
+  <section class="article-detail">
+    <div class="article-detail__header">
+      <button mat-icon-button (click)="back()" [matTooltip]="lang.t('COMMON_BACK')">
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <h2>{{ a.name }}</h2>
+      <span class="article-detail__spacer"></span>
+      <button mat-stroked-button (click)="openEdit()">
+        <mat-icon>edit</mat-icon>
+        {{ lang.t('COMMON_EDIT') }}
+      </button>
+      <button mat-stroked-button color="warn" (click)="remove()">
+        <mat-icon>delete</mat-icon>
+        {{ lang.t('COMMON_DELETE') }}
+      </button>
+    </div>
+
+    <mat-card appearance="outlined" class="article-detail__meta">
+      <mat-card-content>
+        <dl>
+          <div><dt>{{ lang.t('ARTICLES_FIELD_CATEGORY') }}</dt><dd>{{ categoryName() }}</dd></div>
+          <div><dt>{{ lang.t('ARTICLES_FIELD_DOCTYPE') }}</dt><dd>{{ a.doc_type || 'general' }}</dd></div>
+          <div><dt>{{ lang.t('ARTICLES_FIELD_CONTENT_TYPE') }}</dt><dd>{{ a.content_type }}</dd></div>
+          <div>
+            <dt>{{ lang.t('ARTICLES_COL_SOURCE') }}</dt>
+            <dd>
+              @if (a.url) {
+                <a [href]="a.url" target="_blank" rel="noopener">{{ a.url }}</a>
+              } @else {
+                <code>{{ a.storage_key }}</code>
+              }
+            </dd>
+          </div>
+          <div><dt>{{ lang.t('COMMON_CREATED_AT') }}</dt><dd>{{ a.created_at | date: 'dd/MM/yyyy HH:mm' }}</dd></div>
+          <div><dt>{{ lang.t('COMMON_UPDATED_AT') }}</dt><dd>{{ a.updated_at | date: 'dd/MM/yyyy HH:mm' }}</dd></div>
+          @if (a.description) {
+            <div class="article-detail__desc"><dt>{{ lang.t('COMMON_DESCRIPTION') }}</dt><dd>{{ a.description }}</dd></div>
+          }
+        </dl>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-tab-group animationDuration="0ms" class="article-detail__tabs">
+      <mat-tab>
+        <ng-template mat-tab-label>
+          {{ lang.t('ARTICLE_TAB_SECTIONS') }}
+          @if (sections(); as s) {
+            <span class="article-detail__count">({{ s.section_count }})</span>
+          }
+        </ng-template>
+        <div class="article-detail__tab-body">
+          @if (sections(); as s) {
+            <div class="article-detail__status">
+              <span class="article-detail__status-chip">{{ lang.t('ARTICLE_INDEX_STATUS') }}: {{ s.index_status }}</span>
+              <span class="article-detail__status-chip">{{ lang.t('ARTICLE_COMPILE_STATUS') }}: {{ s.compile_status }}</span>
+            </div>
+            @if (s.sections.length === 0) {
+              <p class="article-detail__empty">{{ lang.t('ARTICLE_SECTIONS_EMPTY') }}</p>
+            } @else {
+              <table mat-table [dataSource]="s.sections" class="article-detail__table">
+                <ng-container matColumnDef="name">
+                  <th mat-header-cell *matHeaderCellDef>{{ lang.t('ARTICLE_COL_SECTION') }}</th>
+                  <td mat-cell *matCellDef="let sec">{{ sec.name }}</td>
+                </ng-container>
+                <ng-container matColumnDef="from">
+                  <th mat-header-cell *matHeaderCellDef>{{ lang.t('ARTICLE_COL_FROM_CHUNK') }}</th>
+                  <td mat-cell *matCellDef="let sec">{{ sec.from }}</td>
+                </ng-container>
+                <ng-container matColumnDef="summary">
+                  <th mat-header-cell *matHeaderCellDef>{{ lang.t('ARTICLE_COL_SUMMARY') }}</th>
+                  <td mat-cell *matCellDef="let sec">{{ sec.summary || '—' }}</td>
+                </ng-container>
+                <tr mat-header-row *matHeaderRowDef="sectionColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: sectionColumns"></tr>
+              </table>
+            }
+          } @else {
+            <p class="article-detail__empty">{{ lang.t('COMMON_LOADING') }}</p>
+          }
+        </div>
+      </mat-tab>
+
+      <mat-tab>
+        <ng-template mat-tab-label>{{ lang.t('ARTICLE_TAB_TREE') }}</ng-template>
+        <div class="article-detail__tab-body">
+          @if (tree(); as t) {
+            @if (t.roots.length === 0) {
+              <p class="article-detail__empty">{{ lang.t('ARTICLE_TREE_EMPTY') }}</p>
+            } @else {
+              @for (root of t.roots; track root.name + root.from) {
+                <app-section-tree [node]="root" />
+              }
+            }
+          } @else {
+            <p class="article-detail__empty">{{ lang.t('COMMON_LOADING') }}</p>
+          }
+        </div>
+      </mat-tab>
+    </mat-tab-group>
+  </section>
+} @else {
+  <p class="article-detail__empty">{{ lang.t('COMMON_LOADING') }}</p>
+}
