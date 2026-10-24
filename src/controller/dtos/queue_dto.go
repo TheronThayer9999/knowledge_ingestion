@@ -98,9 +98,6 @@ type QueueStatusResponse struct {
 // ToQueueArticleItems map danh sách bài trong hàng đợi — lease_expired so
 // sánh với now (mốc server) chứ không so với đồng hồ client. Attempts và
 // RunningFor chỉ có nghĩa với processing nên để 0 cho các trạng thái khác.
-// ToQueueArticleItems map danh sách bài trong hàng đợi — lease_expired so
-// sánh với now (mốc server) chứ không so với đồng hồ client. Attempts và
-// RunningFor chỉ có ý nghĩa với processing nên để 0 cho các trạng thái khác.
 //
 // index=true lấy cột lease của phase index, false lấy của phase extract —
 // mỗi phase có cặp next_retry_at riêng, lấy chung phase nào sẽ ra số lease
