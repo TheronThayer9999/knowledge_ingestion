@@ -202,6 +202,57 @@
   flex: 1 1 auto;
 }
 
+// ---- Chip "đang xử lý" trên toolbar: worker sống + còn bài trong pipeline ----
+// .chip khai báo sau (dòng cuối file) nên phải bám cả 2 class mới đè được
+// display/background của nó.
+.chip.pipeline-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-accent-soft);
+  color: var(--color-primary);
+}
+
+.pipeline-count {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+// ---- Cảnh báo worker tắt: bài "Chờ xử lý" sẽ đứng yên tới khi bật worker ----
+.worker-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: var(--border-width) solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+}
+
+.worker-alert mat-icon {
+  color: var(--color-danger);
+  flex: 0 0 auto;
+}
+
+.worker-alert-text p {
+  margin: 0;
+}
+
+.worker-alert-title {
+  font: var(--mat-sys-label-large);
+  color: var(--color-danger);
+}
+
+.worker-alert-text .worker-alert-body {
+  margin-top: var(--space-1);
+  font: var(--mat-sys-body-small);
+  color: var(--color-muted);
+}
+
 // ---- Trạng thái ----
 .state-card {
   display: flex;
@@ -412,6 +463,13 @@
 @keyframes status-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+// Người dùng giảm chuyển động: chữ "Đang xử lý" đã đủ nghĩa, khỏi xoay
+@media (prefers-reduced-motion: reduce) {
+  .status-spinner {
+    animation: none;
   }
 }
 

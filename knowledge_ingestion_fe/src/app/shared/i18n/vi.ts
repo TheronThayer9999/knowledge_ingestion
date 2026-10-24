@@ -216,6 +216,11 @@ export const VI_ENTRIES = [
   ['DOC_STATUS_PROCESSING', 'Đang xử lý'],
   ['DOC_STATUS_DONE', 'Đã xử lý'],
   ['DOC_STATUS_FAILED', 'Lỗi xử lý'],
+  ['DOC_WORKER_OFFLINE_TITLE', 'Worker chưa chạy'],
+  [
+    'DOC_WORKER_OFFLINE_BODY',
+    'Tài liệu đang chờ sẽ không tiến triển cho tới khi bật worker (go run ./cmd/worker).',
+  ],
 
   // Chatbot
   ['CHAT_TITLE', 'Trợ lý tri thức'],

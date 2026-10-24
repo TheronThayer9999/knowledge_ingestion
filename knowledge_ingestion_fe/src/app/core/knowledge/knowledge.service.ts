@@ -6,6 +6,7 @@ import {
   toArticle,
   toArticleTree,
   toCategory,
+  toPipelineStatus,
   toUploadTicket,
   type Article,
   type ArticleList,
@@ -19,6 +20,8 @@ import {
   type CreateArticlePayload,
   type CreateCategoryPayload,
   type DocType,
+  type PipelineStatus,
+  type PipelineStatusDto,
   type UpdateArticlePayload,
   type UpdateCategoryPayload,
   type UploadTicket,
@@ -107,6 +110,14 @@ export class KnowledgeService {
       ),
       map((pages) => pages.flat()),
     );
+  }
+
+  /**
+   * Trạng thái pipeline (id + 3 phase) và nhịp sống worker trong 1 request —
+   * UI dùng để tự cập nhật badge tiến trình và cảnh báo khi worker đã tắt.
+   */
+  getPipelineStatus(): Observable<PipelineStatus> {
+    return this.api.get<PipelineStatusDto>('/pipeline/articles').pipe(map(toPipelineStatus));
   }
 
   getArticleTree(id: number): Observable<ArticleTree> {

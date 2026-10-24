@@ -87,6 +87,15 @@
         <span class="content-count" aria-live="polite">
           {{ visible().length }} {{ lang.t('DOC_ITEMS') }}
         </span>
+
+        @if (workerOnline() && activeCount() > 0) {
+          <span class="chip pipeline-chip" role="status">
+            <span class="status-spinner" aria-hidden="true"></span>
+            {{ lang.t('DOC_STATUS_PROCESSING') }}
+            <span class="pipeline-count">{{ activeCount() }}</span>
+          </span>
+        }
+
         <span class="toolbar-spacer"></span>
 
         <mat-button-toggle-group [value]="view()" hideSingleSelectionIndicator>
@@ -106,6 +115,16 @@
           </mat-button-toggle>
         </mat-button-toggle-group>
       </div>
+
+      @if (!workerOnline() && activeCount() > 0) {
+        <div class="worker-alert" role="status">
+          <mat-icon aria-hidden="true">error_outline</mat-icon>
+          <div class="worker-alert-text">
+            <p class="worker-alert-title">{{ lang.t('DOC_WORKER_OFFLINE_TITLE') }}</p>
+            <p class="worker-alert-body">{{ lang.t('DOC_WORKER_OFFLINE_BODY') }}</p>
+          </div>
+        </div>
+      }
 
       @if (failed()) {
         <mat-card appearance="outlined" class="state-card">

@@ -216,6 +216,11 @@ export const EN_ENTRIES = [
   ['DOC_STATUS_PROCESSING', 'Processing'],
   ['DOC_STATUS_DONE', 'Processed'],
   ['DOC_STATUS_FAILED', 'Failed'],
+  ['DOC_WORKER_OFFLINE_TITLE', 'Worker is not running'],
+  [
+    'DOC_WORKER_OFFLINE_BODY',
+    'Queued documents will not progress until the worker is started (go run ./cmd/worker).',
+  ],
 
   // Chat
   ['CHAT_TITLE', 'Knowledge assistant'],

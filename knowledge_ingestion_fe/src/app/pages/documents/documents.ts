@@ -16,6 +16,7 @@ import {
   articleStage,
   buildFolderTree,
   docTypeKey as docTypeTranslationKey,
+  mergeArticleStatuses,
   statusKey,
   subtreeIds,
   type Article,
@@ -26,19 +27,21 @@ import {
 import { KnowledgeService } from '../../core/knowledge/knowledge.service';
 import { MessageService } from '../../shared/feedback/message.service';
 import { DocumentDetailDialog, type DocumentDetailData } from './dialogs/document-detail-dialog';
-import {
-  DocumentEditDialog,
-  type DocumentEditDialogData,
-} from './dialogs/document-edit-dialog';
+import { DocumentEditDialog, type DocumentEditDialogData } from './dialogs/document-edit-dialog';
 import { FolderDialog, type FolderDialogData } from './dialogs/folder-dialog';
 import { UploadDialog, type UploadDialogData } from './dialogs/upload-dialog';
 
 type ViewMode = 'list' | 'grid';
 
-/** Nhịp tự tải lại danh sách khi còn bài đang xử lý (badge tự cập nhật) */
-const STATUS_POLL_MS = 5000;
-/** Chặn poll vô hạn khi worker tắt — 120 kỳ ≈ 10 phút, thao tác sau reset lại */
-const STATUS_POLL_LIMIT = 120;
+/** Nhịp poll trạng thái đầu tiên — câu này chỉ lấy 4 cột/bài nên rất nhẹ */
+const STATUS_POLL_MS = 10_000;
+/** Trần giãn nhịp: bài kẹt lâu thì 1 phút/lần là đủ, không quét DB liên tục */
+const STATUS_POLL_MAX_MS = 60_000;
+/**
+ * Chặn poll vô hạn khi worker tắt — nhịp chạm trần 60s sau ~1 phút, 60 kỳ
+ * ≈ 1 giờ là dừng; thao tác của user (tải lại/upload/sửa) reset lại.
+ */
+const STATUS_POLL_LIMIT = 60;
 
 /** Node thư mục kèm số tài liệu của cả nhánh để hiện cạnh tên */
 interface FolderView {
@@ -87,12 +90,22 @@ export class Documents implements OnDestroy {
   protected readonly view = signal<ViewMode>('list');
   protected readonly loading = signal(true);
   protected readonly failed = signal(false);
+  /** Worker còn ghi heartbeat không — false thì bài đang chờ sẽ đứng yên */
+  protected readonly workerOnline = signal(true);
   protected readonly skeletonRows = [1, 2, 3, 4, 5, 6];
 
   private loadedOnce = false;
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
   private statusRefreshInFlight = false;
   private statusPolls = 0;
+  private statusDelay = STATUS_POLL_MS;
+
+  /** Tab bị ẩn thì ngừng hẹn nhịp — mở lại mới tính tiếp, khỏi quét DB vô ích */
+  private readonly onVisibilityChange = (): void => {
+    if (!document.hidden) {
+      this.scheduleStatusRefresh();
+    }
+  };
 
   /** Cây thư mục + đếm tài liệu theo cả nhánh */
   protected readonly folderViews = computed<FolderView[]>(() => {
@@ -125,8 +138,22 @@ export class Documents implements OnDestroy {
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   });
 
+  /**
+   * Số bài còn trong pipeline (chờ + đang chạy) — chip "đang xử lý" trên
+   * toolbar và cảnh báo worker cùng dựa vào đây. Bài lỗi không tính: nó không
+   * chờ worker làm gì nữa, báo "đang xử lý" sẽ sai.
+   */
+  protected readonly activeCount = computed(
+    () =>
+      this.articles().filter((article) => {
+        const stage = articleStage(article);
+        return stage === 'pending' || stage === 'processing';
+      }).length,
+  );
+
   constructor() {
     this.load();
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
   }
 
   protected load(): void {
@@ -141,7 +168,11 @@ export class Documents implements OnDestroy {
         this.articles.set(articles);
         this.loading.set(false);
         this.statusPolls = 0;
-        this.scheduleStatusRefresh();
+        this.statusDelay = STATUS_POLL_MS;
+        // Hỏi ngay thay vì chờ hết nhịp đầu để badge + cảnh báo worker đúng
+        // từ lúc mở trang; refreshStatuses tự hẹn nhịp kế tiếp.
+        this.clearStatusRefresh();
+        this.refreshStatuses();
         if (!this.loadedOnce) {
           this.loadedOnce = true;
           this.expanded.set(
@@ -159,6 +190,7 @@ export class Documents implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.clearStatusRefresh();
   }
 
@@ -232,11 +264,7 @@ export class Documents implements OnDestroy {
   }
 
   /** `autoUpload`: tạo thư mục đầu tiên xong mở luôn hộp thoại upload */
-  protected openFolderDialog(
-    parentId: number | null,
-    autoUpload = false,
-    folder?: Category,
-  ): void {
+  protected openFolderDialog(parentId: number | null, autoUpload = false, folder?: Category): void {
     const ref = this.dialog.open<FolderDialog, FolderDialogData, Category>(FolderDialog, {
       data: { categories: this.categories(), parentId, folder },
       maxWidth: '94vw',
@@ -299,9 +327,7 @@ export class Documents implements OnDestroy {
       }
       this.messages.success('DOC_UPDATED');
       // Thay tại chỗ, khỏi tải lại cả danh sách
-      this.articles.update((list) =>
-        list.map((item) => (item.id === updated.id ? updated : item)),
-      );
+      this.articles.update((list) => list.map((item) => (item.id === updated.id ? updated : item)));
     });
   }
 
@@ -373,17 +399,26 @@ export class Documents implements OnDestroy {
   }
 
   /**
-   * Bài còn pending/processing thì tự tải lại danh sách để badge tiến trình
-   * cập nhật — refresh ngầm nên không bật skeleton, UI không nháy.
+   * Còn bài chưa xong thì hẹn nhịp kế tiếp để badge tự cập nhật. Nhịp giãn
+   * dần 10s → 60s, tab ẩn thì dừng hẳn: badge không đáng để quét DB liên
+   * tục, nhất là khi worker kẹt ở compile cả chục phút.
    */
   private scheduleStatusRefresh(): void {
     this.clearStatusRefresh();
+    if (document.hidden) {
+      return;
+    }
+    if (this.statusPolls >= STATUS_POLL_LIMIT) {
+      return;
+    }
     const busy = this.articles().some((article) => articleStage(article) !== 'done');
-    if (!busy || this.statusPolls >= STATUS_POLL_LIMIT) {
+    if (!busy) {
+      this.statusDelay = STATUS_POLL_MS;
       return;
     }
     this.statusPolls += 1;
-    this.statusTimer = setTimeout(() => this.refreshStatuses(), STATUS_POLL_MS);
+    this.statusTimer = setTimeout(() => this.refreshStatuses(), this.statusDelay);
+    this.statusDelay = Math.min(this.statusDelay * 2, STATUS_POLL_MAX_MS);
   }
 
   private clearStatusRefresh(): void {
@@ -393,20 +428,26 @@ export class Documents implements OnDestroy {
     }
   }
 
+  /**
+   * Hỏi đúng 3 cột trạng thái + nhịp sống worker (1 request) rồi gộp vào
+   * danh sách đang hiển thị — không tải lại categories + từng danh mục như
+   * trước, nên không bật skeleton và UI không nháy.
+   */
   private refreshStatuses(): void {
     this.statusTimer = null;
-    if (this.statusRefreshInFlight) {
+    if (document.hidden || this.statusRefreshInFlight) {
       return;
     }
     this.statusRefreshInFlight = true;
-    this.knowledge.listAllArticles().subscribe({
-      next: (articles) => {
+    this.knowledge.getPipelineStatus().subscribe({
+      next: (status) => {
         this.statusRefreshInFlight = false;
-        this.articles.set(articles);
+        this.workerOnline.set(status.workerOnline);
+        this.articles.update((articles) => mergeArticleStatuses(articles, status.statuses));
         this.scheduleStatusRefresh();
       },
       error: () => {
-        // Lỗi mạng tạm thời: thử lại kỳ sau, không làm phiền người dùng
+        // Lỗi mạng tạm thời: nhịp đã giãn nên cứ để kỳ sau thử lại
         this.statusRefreshInFlight = false;
         this.scheduleStatusRefresh();
       },

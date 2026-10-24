@@ -90,6 +90,84 @@ export interface ArticleList {
   total: number;
 }
 
+/** Trạng thái pipeline gọn của 1 bài — endpoint poll chỉ trả đúng 4 field này */
+export interface ArticleStatus {
+  id: number;
+  extractStatus: string;
+  indexStatus: string;
+  compileStatus: string;
+}
+
+export interface ArticleStatusDto {
+  id: number;
+  extract_status?: string;
+  index_status?: string;
+  compile_status?: string;
+}
+
+/** Nhịp sống worker do backend suy ra từ bảng worker_heartbeats */
+export interface WorkerStatusDto {
+  online?: boolean;
+  last_seen_at?: string;
+}
+
+export interface PipelineStatusDto {
+  items?: ArticleStatusDto[];
+  worker?: WorkerStatusDto;
+}
+
+/** Trạng thái pipeline + tình trạng worker trong 1 lần poll */
+export interface PipelineStatus {
+  statuses: ArticleStatus[];
+  /** worker còn ghi heartbeat trong ngưỡng offline không — false thì bài chờ sẽ đứng yên */
+  workerOnline: boolean;
+  workerLastSeenAt: string;
+}
+
+export function toArticleStatus(dto: ArticleStatusDto): ArticleStatus {
+  return {
+    id: dto.id,
+    extractStatus: dto.extract_status ?? '',
+    indexStatus: dto.index_status ?? '',
+    compileStatus: dto.compile_status ?? '',
+  };
+}
+
+/**
+ * Backend cũ (chưa có khối worker) thì coi như worker "online" — thà không
+ * cảnh báo còn hơn báo động nhầm với server chưa deploy bản mới.
+ */
+export function toPipelineStatus(dto: PipelineStatusDto): PipelineStatus {
+  return {
+    statuses: (dto.items ?? []).map(toArticleStatus),
+    workerOnline: dto.worker?.online ?? true,
+    workerLastSeenAt: dto.worker?.last_seen_at ?? '',
+  };
+}
+
+/**
+ * Gộp trạng thái mới vào danh sách đang hiển thị — chỉ thay 3 field trạng
+ * thái, giữ nguyên phần còn lại để bảng không phải tải lại toàn bộ dữ liệu
+ * (mỗi lần tải là 1 request categories + N request theo danh mục).
+ */
+export function mergeArticleStatuses(articles: Article[], statuses: ArticleStatus[]): Article[] {
+  if (statuses.length === 0) {
+    return articles;
+  }
+  const byId = new Map(statuses.map((status) => [status.id, status]));
+  return articles.map((article) => {
+    const status = byId.get(article.id);
+    return status === undefined
+      ? article
+      : {
+          ...article,
+          extractStatus: status.extractStatus,
+          indexStatus: status.indexStatus,
+          compileStatus: status.compileStatus,
+        };
+  });
+}
+
 /** 1 mục trong cây heading của tài liệu (Chương > Mục > Điều) */
 export interface SectionNode {
   name: string;
@@ -335,13 +413,8 @@ export interface CategoryOption {
  * Danh sách thư mục phẳng theo đúng thứ tự cây, thụt lề theo cấp bằng NBSP.
  * `blocked` dùng khi sửa thư mục: loại chính nó + nhánh con khỏi lựa chọn cha.
  */
-export function flattenCategories(
-  categories: Category[],
-  blocked?: Set<number>,
-): CategoryOption[] {
-  const visible = blocked
-    ? categories.filter((category) => !blocked.has(category.id))
-    : categories;
+export function flattenCategories(categories: Category[], blocked?: Set<number>): CategoryOption[] {
+  const visible = blocked ? categories.filter((category) => !blocked.has(category.id)) : categories;
   const out: CategoryOption[] = [];
   const walk = (nodes: FolderNode[], level: number): void => {
     for (const node of nodes) {
