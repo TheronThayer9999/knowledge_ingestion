@@ -1154,6 +1154,37 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/pipeline/articles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lightweight poll endpoint for the documents UI: only id + extract/index/compile status, no metadata",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "articles"
+                ],
+                "summary": "Pipeline status of my articles",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/pong": {
             "get": {
                 "description": "Returns ping with server timestamp",

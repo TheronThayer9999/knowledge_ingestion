@@ -78,6 +78,9 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		authed.GET("/articles/:id/tree", articleAPI.GetTree)
 		authed.PUT("/articles/:id", articleAPI.Update)
 		authed.DELETE("/articles/:id", articleAPI.Delete)
+		// Trạng thái pipeline gọn (1 query 4 cột) cho UI poll tiến trình —
+		// không đặt dưới /articles vì đụng wildcard :id của gin.
+		authed.GET("/pipeline/articles", articleAPI.ListStatuses)
 		// Admin endpoints — yêu cầu role admin (role >= 1). Gate Role đã bật.
 		admin := authed.Group("")
 		admin.Use(middlewares.RequireRole(domain.RoleAdmin))

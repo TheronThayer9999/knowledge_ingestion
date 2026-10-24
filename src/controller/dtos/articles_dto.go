@@ -122,6 +122,47 @@ func ToArticleListResponse(articles []*domain.Article) ArticleListResponse {
 	return res
 }
 
+// ArticleStatusResponse chỉ gồm id + trạng thái 3 phase — client poll tiến
+// trình (khi danh sách còn bài đang xử lý) nên trả metadata là thừa.
+type ArticleStatusResponse struct {
+	ID            int64  `json:"id" example:"8"`
+	ExtractStatus string `json:"extract_status" example:"done"`
+	IndexStatus   string `json:"index_status" example:"processing"`
+	CompileStatus string `json:"compile_status" example:"pending"`
+}
+
+// WorkerStatusResponse tình trạng tiến trình worker tại thời điểm gọi:
+// online=false nghĩa là không có heartbeat nào trong WORKER_OFFLINE_AFTER —
+// bài "chờ xử lý" sẽ không tiến triển cho tới khi bật lại worker.
+type WorkerStatusResponse struct {
+	Online     bool       `json:"online" example:"true"`
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty" example:"2026-10-24T22:30:00+07:00"`
+}
+
+// ArticleStatusListResponse bọc danh sách trạng thái + nhịp sống worker —
+// UI cần cả hai để biết "đang xử lý" hay "đang chờ vì worker đã tắt".
+type ArticleStatusListResponse struct {
+	Items  []*ArticleStatusResponse `json:"items"`
+	Worker WorkerStatusResponse     `json:"worker"`
+}
+
+// ToArticleStatusListResponse map domain -> response trạng thái gọn.
+func ToArticleStatusListResponse(articles []*domain.Article) ArticleStatusListResponse {
+	res := ArticleStatusListResponse{Items: make([]*ArticleStatusResponse, 0, len(articles))}
+	for _, a := range articles {
+		if a == nil {
+			continue
+		}
+		res.Items = append(res.Items, &ArticleStatusResponse{
+			ID:            a.ID,
+			ExtractStatus: a.ExtractStatus,
+			IndexStatus:   a.IndexStatus,
+			CompileStatus: a.CompileStatus,
+		})
+	}
+	return res
+}
+
 // SearchRequest hỏi tri thức — query bắt buộc, category_ids để khoanh nhiều
 // chủ đề, limit/threshold để kiểm soát lượng + chất hit. Owner lấy từ token.
 // Model là model LLM cho vòng 1 agentic (phân loại câu hỏi) — rỗng thì default

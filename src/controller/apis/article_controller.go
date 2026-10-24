@@ -81,6 +81,19 @@ func (a *ArticleAPI) List(c *gin.Context) {
 	Render(c, a, a.svc.List(c, &q))
 }
 
+// ListStatuses godoc
+// @Summary Pipeline status of my articles
+// @Description Lightweight poll endpoint for the documents UI: only id + extract/index/compile status, no metadata
+// @Tags articles
+// @Produce json
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 500 {object} dtos.ResponseResource
+// @Security BearerAuth
+// @Router /api/v1/pipeline/articles [get]
+func (a *ArticleAPI) ListStatuses(c *gin.Context) {
+	Render(c, a, a.svc.ListStatuses(c))
+}
+
 // Update godoc
 // @Summary Update an article
 // @Description Partial update — only sent fields change (source url/storage_key is immutable)

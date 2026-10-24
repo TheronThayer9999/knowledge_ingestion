@@ -42,6 +42,7 @@ func main() {
 		fx.Provide(services.NewArticleIndexService),
 		fx.Provide(services.NewArticleCompileService),
 		fx.Provide(services.NewRefreshTokenJanitor),
+		fx.Provide(services.NewWorkerHeartbeatService),
 		// Thêm job mới = inject service ở tham số + append 1 dòng Schedule:
 		// {Name: "...", Interval: ..., Run: asJob(svc.Method)}.
 		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, extract services.IArticleExtractService, index services.IArticleIndexService, compile services.IArticleCompileService, refreshJanitor services.IRefreshTokenJanitor, opts services.PurgeOptions) {
@@ -81,6 +82,22 @@ func main() {
 					return err
 				}},
 			}).Attach(lc)
+		}),
+		// Nhịp sống worker — ghi bảng worker_heartbeats mỗi
+		// WORKER_HEARTBEAT_INTERVAL để API/UI biết worker còn chạy (không
+		// phải job Schedule: log "job xong" mỗi 15s chỉ tổ nhiễu).
+		fx.Invoke(func(lc fx.Lifecycle, beat services.IWorkerHeartbeatService) {
+			ctx, cancel := context.WithCancel(context.Background())
+			lc.Append(fx.Hook{
+				OnStart: func(context.Context) error {
+					go beat.Run(ctx)
+					return nil
+				},
+				OnStop: func(context.Context) error {
+					cancel()
+					return nil
+				},
+			})
 		}),
 	)
 

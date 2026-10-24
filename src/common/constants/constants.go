@@ -161,6 +161,16 @@ const COMPILE_MAX_CHUNKS_PER_SECTION = 6
 // phủ vòng đời tài liệu sửa chậm.
 const COMPILE_CACHE_TTL = 30 * 24 * time.Hour
 
+// WORKER_HEARTBEAT_INTERVAL nhịp worker tự ghi nhịp sống (bảng
+// worker_heartbeats) — API/UI dựa vào đó để phân biệt "worker đang xử lý"
+// với "worker đã tắt". Không có nhịp này thì bài kẹt chờ trông y hệt bài
+// đang chạy và user ngồi đợi vô vọng.
+const WORKER_HEARTBEAT_INTERVAL = 15 * time.Second
+
+// WORKER_OFFLINE_AFTER quá ngưỡng này mà không thấy heartbeat thì coi như
+// worker tắt — rộng hơn 3 nhịp để 1 lần ghi DB chậm không báo động nhầm.
+const WORKER_OFFLINE_AFTER = 3 * WORKER_HEARTBEAT_INTERVAL
+
 // SHUTDOWN_GRACE thời gian worker chờ job đang chạy thoát sau khi cancel —
 // đủ để service thấy ctx.Done giữa 2 batch/page và ghi nốt trạng thái bằng
 // detached ctx. Quá hạn thì vẫn đóng DB/Qdrant để không treo process.

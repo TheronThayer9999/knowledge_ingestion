@@ -1053,6 +1053,26 @@ paths:
       summary: Ping the server
       tags:
       - health
+  /api/v1/pipeline/articles:
+    get:
+      description: 'Lightweight poll endpoint for the documents UI: only id + extract/index/compile
+        status, no metadata'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Pipeline status of my articles
+      tags:
+      - articles
   /api/v1/pong:
     get:
       description: Returns ping with server timestamp

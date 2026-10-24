@@ -46,6 +46,9 @@ func LoadWorkerInfra() []fx.Option {
 		// AnythingLLM (cachedVectorInformation) nhưng khoá theo NỘI DUNG chunk
 		// thay vì cả file, nên trùng lặp giữa các bài cũng ăn.
 		fx.Provide(repository.NewEmbedCacheRepository),
+		// Nhịp sống worker (host:pid → last_seen_at) để API/UI biết worker
+		// còn chạy — worker tự ghi, chỉ đọc ở API.
+		fx.Provide(repository.NewWorkerHeartbeatRepository),
 		fx.Provide(repository.NewUnitOfWork),
 		// PurgeOptions cho janitor dọn chunk già — map từ config worker để đổi
 		// config + restart là ăn ngay.

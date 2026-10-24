@@ -64,7 +64,9 @@ func (r *sectionsStubRepo) ListByArticle(_ context.Context, _ int64) ([]*domain.
 }
 
 func newSectionsSvc(repo *sectionsStubArticles, vectors *sectionsStubVectors, sectionRepo domain.IArticleSectionRepository) IArticleService {
-	return NewArticleService(repo, nil, stubUser{id: 7}, nil, vectors, sectionRepo)
+	// heartbeatRepo nil: các test này chỉ chạm ListSections/GetTree, không
+	// gọi ListStatuses nên không cần nhịp sống worker.
+	return NewArticleService(repo, nil, stubUser{id: 7}, nil, vectors, sectionRepo, nil)
 }
 
 func TestArticleListSectionsReturnsPageIndex(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"knowledge_ingestion/src/domain"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type IArticleService interface {
@@ -27,6 +28,9 @@ type IArticleService interface {
 	// GetTree trả cây mục theo phân cấp heading (P2.4 phase 1c) — cùng nguồn
 	// PageIndex + summary đã compile, nest Chương/Phần > Mục > Điều/Bài.
 	GetTree(ctx context.Context, id int64) dtos.Result[*dtos.ArticleTreeResponse]
+	// ListStatuses trả trạng thái pipeline của mọi bài mình sở hữu — UI
+	// poll tiến trình bằng câu nhẹ này thay vì tải lại cả danh sách.
+	ListStatuses(ctx context.Context) dtos.Result[dtos.ArticleStatusListResponse]
 }
 
 type articleService struct {
@@ -40,16 +44,20 @@ type articleService struct {
 	// sectionRepo đọc summary LLM đã compile (phase 1b) để merge vào
 	// PageIndex — best-effort: bài chưa compile thì summary rỗng.
 	sectionRepo domain.IArticleSectionRepository
+	// heartbeatRepo đọc nhịp sống worker — UI cần biết worker còn chạy để không
+	// báo "đang xử lý" cho một bài thực ra đang chờ vô hạn.
+	heartbeatRepo domain.IWorkerHeartbeatRepository
 }
 
-func NewArticleService(articleRepo domain.IArticleRepository, categoryRepo domain.ICategoryRepositoryImpl, currentUser middlewares.ICurrentUser, storage storage.IStorage, vectors domain.IVectorStore, sectionRepo domain.IArticleSectionRepository) IArticleService {
+func NewArticleService(articleRepo domain.IArticleRepository, categoryRepo domain.ICategoryRepositoryImpl, currentUser middlewares.ICurrentUser, storage storage.IStorage, vectors domain.IVectorStore, sectionRepo domain.IArticleSectionRepository, heartbeatRepo domain.IWorkerHeartbeatRepository) IArticleService {
 	return &articleService{
-		articleRepo:  articleRepo,
-		categoryRepo: categoryRepo,
-		currentUser:  currentUser,
-		storage:      storage,
-		vectors:      vectors,
-		sectionRepo:  sectionRepo,
+		articleRepo:   articleRepo,
+		categoryRepo:  categoryRepo,
+		currentUser:   currentUser,
+		storage:       storage,
+		vectors:       vectors,
+		sectionRepo:   sectionRepo,
+		heartbeatRepo: heartbeatRepo,
 	}
 }
 
@@ -150,6 +158,29 @@ func (s *articleService) List(ctx context.Context, q *dtos.ListArticlesQuery) dt
 		return dtos.Fail[dtos.ArticleListResponse](err)
 	}
 	return dtos.Ok(dtos.ToArticleListResponse(articles))
+}
+
+// ListStatuses gom trạng thái pipeline của toàn bộ bài mình sở hữu trong 1
+// câu SELECT 4 cột, kèm nhịp sống worker — UI dùng để tự cập nhật badge và
+// cảnh báo "worker đã tắt" khi có bài đang chờ.
+func (s *articleService) ListStatuses(ctx context.Context) dtos.Result[dtos.ArticleStatusListResponse] {
+	userID, _ := s.currentUser.UserID(ctx)
+	articles, err := s.articleRepo.ListStatuses(ctx, userID)
+	if err != nil {
+		return dtos.Fail[dtos.ArticleStatusListResponse](err)
+	}
+	lastSeen, seen, err := s.heartbeatRepo.LatestSeen(ctx)
+	if err != nil {
+		return dtos.Fail[dtos.ArticleStatusListResponse](err)
+	}
+	res := dtos.ToArticleStatusListResponse(articles)
+	res.Worker = dtos.WorkerStatusResponse{
+		Online: seen && time.Since(lastSeen) <= constants.WORKER_OFFLINE_AFTER,
+	}
+	if seen {
+		res.Worker.LastSeenAt = &lastSeen
+	}
+	return dtos.Ok(res)
 }
 
 // Update sửa từng phần — field nil giữ nguyên. Nguồn (URL/StorageKey) là

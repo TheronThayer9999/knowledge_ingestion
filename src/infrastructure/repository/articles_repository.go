@@ -245,9 +245,23 @@ func (a *ArticleRepository) ListByIndexStatus(ctx context.Context, status string
 	return articles, nil
 }
 
-// HardDelete xóa hẳn row — gorm Delete thường chỉ set DeletedAt nên phải
-// Unscoped. Xóa row không tồn tại cũng không báo lỗi nên 2 worker cùng quét
-// trúng 1 row vẫn an toàn.
+// ListStatuses chỉ SELECT 4 cột (id + 3 trạng thái) của bài còn sống thuộc
+// owner. Client gọi câu này vài chục giây/lần để vẽ badge tiến trình — trả
+// cả row (name, storage_key, description) là phí băng thông lẫn thời gian
+// quét. Không phân trang: mỗi row chỉ vài chục byte.
+func (a *ArticleRepository) ListStatuses(ctx context.Context, userID int64) ([]*domain.Article, error) {
+	articles := make([]*domain.Article, 0)
+	err := dbConn(ctx, a.db).
+		Select("id", "extract_status", "index_status", "compile_status").
+		Where("user_id = ?", userID).
+		Order("id DESC").
+		Find(&articles).Error
+	if err != nil {
+		return nil, err
+	}
+	return articles, nil
+}
+
 // HardDeleteMany xóa hẳn nhiều row 1 câu — janitor gom id các bài đã dọn xong
 // blob + vector trong kỳ rồi xóa loạt, thay vì 1 DELETE mỗi bài (100 bài/đợt
 // là 100 round trip chỉ để xóa row). Rỗng thì no-op nên caller không cần

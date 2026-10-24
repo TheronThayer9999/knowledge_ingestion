@@ -201,6 +201,11 @@ type IArticleRepository interface {
 	ListByExtractStatus(ctx context.Context, status string, limit, offset int) ([]*Article, error)
 	ListByIndexStatus(ctx context.Context, status string, limit, offset int) ([]*Article, error)
 
+	// ListStatuses trả id + trạng thái 3 phase của mọi bài còn sống thuộc
+	// owner — client poll tiến trình khi còn bài đang chạy, nên đây là câu
+	// SELECT 4 cột thay vì tải cả danh sách theo từng danh mục.
+	ListStatuses(ctx context.Context, userID int64) ([]*Article, error)
+
 	// IDsByCategory trả id các bài còn sống trong 1 danh mục của đúng owner
 	// — API rebuild resolve scope category thành danh sách id cụ thể.
 	IDsByCategory(ctx context.Context, categoryID int64, userID int64) ([]int64, error)

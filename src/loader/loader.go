@@ -72,6 +72,9 @@ func loadAdapter() []fx.Option {
 		//
 		fx.Provide(repository.NewCategoryClosureRepository),
 		fx.Provide(repository.NewEmbedCacheRepository),
+		// Nhịp sống worker để API trả về UI biết "đang xử lý" hay "chờ vì
+		// worker đã tắt".
+		fx.Provide(repository.NewWorkerHeartbeatRepository),
 	}
 }
 
