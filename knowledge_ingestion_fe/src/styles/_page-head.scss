@@ -1,0 +1,15 @@
+// Tiêu đề trang dùng chung cho MỌI trang nằm trong APP SHELL.
+// Khai báo một lần ở đây — trang KHÔNG copy lại .page-title/.page-subtitle.
+// (`.page-head` cố ý KHÔNG gom: mỗi trang có bố cục khác nhau — row + actions
+//  như overview/documents, hay column như settings/profile.)
+.page-title {
+  margin: 0;
+  font: var(--mat-sys-headline-small);
+  color: var(--color-on-surface);
+}
+
+.page-subtitle {
+  margin: var(--space-1) 0 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--color-muted);
+}

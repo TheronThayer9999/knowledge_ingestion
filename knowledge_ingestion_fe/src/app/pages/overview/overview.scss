@@ -19,18 +19,6 @@
   flex-wrap: wrap;
 }
 
-.page-title {
-  margin: 0;
-  font: var(--mat-sys-headline-small);
-  color: var(--color-on-surface);
-}
-
-.page-subtitle {
-  margin: var(--space-1) 0 0;
-  font: var(--mat-sys-body-medium);
-  color: var(--color-muted);
-}
-
 // ---- Trạng thái lỗi ----
 .state-card {
   display: flex;

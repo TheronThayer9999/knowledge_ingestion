@@ -86,6 +86,9 @@
   --content-padding: var(--space-5);
   // chiều cao vùng content khi trang cần khung cao đúng (chat, sticky offset...)
   --content-viewport-height: calc(100dvh - var(--toolbar-height) - var(--content-padding) * 2);
+  // offset cho phần tử sticky trong trang (vd panel thư mục) — nằm dưới topbar.
+  // Trang KHÔNG tự calc(var(--toolbar-height) + …) nữa, dùng token này.
+  --content-sticky-offset: calc(var(--toolbar-height) + var(--space-4));
   // chiều cao chuẩn của control soạn thảo (ô nhập chat, dropdown phạm vi, nút Gửi)
   --control-height: 48px;
   --content-max-width: 560px;

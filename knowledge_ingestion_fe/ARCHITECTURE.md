@@ -20,8 +20,11 @@ src/main.ts
       │    (tự đặt Language/ThemeSwitcher góc phải — không được dựng header/sidebar)
       └─ tokens khung : src/styles/_tokens.scss
            --toolbar-height · --sidebar-width · --sidebar-width-rail
-           --content-padding · --content-viewport-height · --control-height
-           --account-menu-max-width · --z-* · --radius-* · --space-* · --text-style-*
+           --content-padding · --content-viewport-height · --content-sticky-offset
+           --control-height · --account-menu-max-width · --z-* · --radius-*
+           --space-* · --text-style-*
+      └─ tiêu đề trang dùng chung : src/styles/_page-head.scss
+           .page-title · .page-subtitle (khai báo 1 lần, không copy ở trang)
 ```
 
 ## Quy tắc bắt buộc
@@ -33,7 +36,9 @@ src/main.ts
 2. **Không hard-code màu / bo góc / khoảng cách / kích thước khung.** Chỉ dùng
    token trong `src/styles/_tokens.scss` (spacing 4/8/12/16/24/32, radius
    8/16/999, 4 cỡ chữ × 2 độ đậm). Trang cần chiều cao vừa viewport dùng
-   `--content-viewport-height`, KHÔNG tự `calc(100dvh - toolbar - padding)`.
+   `--content-viewport-height`, KHÔNG tự `calc(100dvh - toolbar - padding)`;
+   panel sticky dùng `--content-sticky-offset`, KHÔNG tự
+   `calc(var(--toolbar-height) + …)`.
 3. **Thêm mục menu chỉ qua `shell.config.ts`**: 1 dòng vào `NAV_GROUPS`
    (kèm route con tương ứng trong `app.routes.ts` + key i18n `NAV_*` trong
    `src/app/shared/i18n/vi.ts` và `en.ts`). Thêm nút trên header: 1 dòng vào
@@ -44,11 +49,13 @@ src/main.ts
    dùng slot trong trang (page-head, panel toggle như `chat.scss`), không sửa shell.
 6. Title trang: topbar lấy từ `NAV_GROUPS` theo URL; trong nội dung trang có
    `.page-head` (title + subtitle + action) — cả hai lớp là chủ đích, giữ nguyên.
+   `.page-title`/`.page-subtitle` khai báo MỘT lần ở `src/styles/_page-head.scss`,
+   trang KHÔNG copy lại; chỉ `.page-head` (bố cục riêng từng trang) nằm trong trang.
 
 ## KHÔNG động vào nếu không có yêu cầu rõ ràng
 
 - `src/app/layout/dashboard-layout/**` (shell + shell.config.ts)
-- `src/styles/_tokens.scss`, `src/styles/styles.scss` (theme/tokens)
+- `src/styles/_tokens.scss`, `src/styles/_page-head.scss`, `src/styles/styles.scss` (theme/tokens)
 - `app.routes.ts` phần layout cha-con (router structure)
 - `index.html` script chống FOUC (song song với `core/theme/theme.service.ts` —
   thêm palette phải sửa CẢ HAI nơi theo chủ đích)

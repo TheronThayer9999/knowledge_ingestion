@@ -1,6 +1,7 @@
 @use '@angular/material' as mat;
 @use './tokens';
 @use './reset';
+@use './page-head';
 
 @mixin app-theme($primary, $tertiary) {
   @include mat.theme(
