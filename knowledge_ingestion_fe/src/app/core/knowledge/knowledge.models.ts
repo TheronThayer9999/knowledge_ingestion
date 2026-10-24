@@ -41,8 +41,48 @@ export interface Article {
   docType: DocType | '';
   description: string;
   categoryId: number;
+  /** Trạng thái pipeline (chỉ đọc): extract → index → compile */
+  extractStatus: string;
+  indexStatus: string;
+  compileStatus: string;
   createdAt: string;
   updatedAt: string;
+}
+
+const STATUS_KEYS: Record<string, TranslationKey> = {
+  pending: 'DOC_STATUS_PENDING',
+  waiting: 'DOC_STATUS_PENDING',
+  processing: 'DOC_STATUS_PROCESSING',
+  running: 'DOC_STATUS_PROCESSING',
+  done: 'DOC_STATUS_DONE',
+  failed: 'DOC_STATUS_FAILED',
+};
+
+/** Key i18n của 1 trạng thái phase — giá trị lạ rơi về "Chờ xử lý" */
+export function statusKey(status: string): TranslationKey {
+  return STATUS_KEYS[status] ?? 'DOC_STATUS_PENDING';
+}
+
+/** Trạng thái gộp cả pipeline để hiện badge trên danh sách tài liệu */
+export type ArticleStage = 'pending' | 'processing' | 'failed' | 'done';
+
+/**
+ * Gộp 3 phase thành 1 trạng thái: lỗi thắng, rồi đang chạy, rồi chờ; chỉ
+ * khi cả 3 done mới coi là xong (UI ẩn badge). Giá trị lạ/rỗng coi như done
+ * để bài cũ không bị gắn nhầm nhãn "chờ xử lý".
+ */
+export function articleStage(article: Article): ArticleStage {
+  const phases = [article.extractStatus, article.indexStatus, article.compileStatus];
+  if (phases.includes('failed')) {
+    return 'failed';
+  }
+  if (phases.includes('processing') || phases.includes('running')) {
+    return 'processing';
+  }
+  if (phases.includes('pending') || phases.includes('waiting')) {
+    return 'pending';
+  }
+  return 'done';
 }
 
 export interface ArticleList {
@@ -135,6 +175,9 @@ export interface ArticleDto {
   doc_type?: string;
   description?: string;
   category_id: number;
+  extract_status?: string;
+  index_status?: string;
+  compile_status?: string;
   created_at: string;
   updated_at: string;
 }
@@ -188,6 +231,9 @@ export function toArticle(dto: ArticleDto): Article {
     docType: (dto.doc_type ?? '') as DocType | '',
     description: dto.description ?? '',
     categoryId: dto.category_id,
+    extractStatus: dto.extract_status ?? '',
+    indexStatus: dto.index_status ?? '',
+    compileStatus: dto.compile_status ?? '',
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };

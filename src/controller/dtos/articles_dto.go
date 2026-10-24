@@ -46,17 +46,22 @@ type ListArticlesQuery struct {
 
 // ArticleResponse trả về cho client — không bao giờ lộ field nội bộ.
 type ArticleResponse struct {
-	ID          int64     `json:"id" example:"1"`
-	UserID      int64     `json:"user_id" example:"7"`
-	URL         string    `json:"url,omitempty" example:"https://example.com/docs/go-fx"`
-	StorageKey  string    `json:"storage_key,omitempty" example:"uploads/550e8400-e29b-41d4-a716-446655440000.pdf"`
-	Name        string    `json:"name" example:"Giới thiệu Go Fx"`
-	ContentType string    `json:"content_type" example:"text/html"`
-	DocType     string    `json:"doc_type,omitempty" example:"laws"`
-	Description string    `json:"description,omitempty" example:"Tài liệu về dependency injection trong Go"`
-	CategoryID  int64     `json:"category_id" example:"1"`
-	CreatedAt   time.Time `json:"created_at" example:"2026-10-06T10:00:00+07:00"`
-	UpdatedAt   time.Time `json:"updated_at" example:"2026-10-06T10:00:00+07:00"`
+	ID          int64  `json:"id" example:"1"`
+	UserID      int64  `json:"user_id" example:"7"`
+	URL         string `json:"url,omitempty" example:"https://example.com/docs/go-fx"`
+	StorageKey  string `json:"storage_key,omitempty" example:"uploads/550e8400-e29b-41d4-a716-446655440000.pdf"`
+	Name        string `json:"name" example:"Giới thiệu Go Fx"`
+	ContentType string `json:"content_type" example:"text/html"`
+	DocType     string `json:"doc_type,omitempty" example:"laws"`
+	Description string `json:"description,omitempty" example:"Tài liệu về dependency injection trong Go"`
+	CategoryID  int64  `json:"category_id" example:"1"`
+	// Trạng thái pipeline (chỉ đọc) để client hiện tiến trình extract → index
+	// → compile; thiếu chúng thì UI không biết bài đang xử lý hay đã xong.
+	ExtractStatus string    `json:"extract_status" example:"done"`
+	IndexStatus   string    `json:"index_status" example:"processing"`
+	CompileStatus string    `json:"compile_status" example:"pending"`
+	CreatedAt     time.Time `json:"created_at" example:"2026-10-06T10:00:00+07:00"`
+	UpdatedAt     time.Time `json:"updated_at" example:"2026-10-06T10:00:00+07:00"`
 }
 
 // ArticleListResponse bọc danh sách + tổng số.
@@ -95,8 +100,13 @@ func ToArticleResponse(a *domain.Article) *ArticleResponse {
 		DocType:     a.DocType,
 		Description: a.Description,
 		CategoryID:  a.CategoryID,
-		CreatedAt:   a.CreatedAt,
-		UpdatedAt:   a.UpdatedAt,
+
+		ExtractStatus: a.ExtractStatus,
+		IndexStatus:   a.IndexStatus,
+		CompileStatus: a.CompileStatus,
+
+		CreatedAt: a.CreatedAt,
+		UpdatedAt: a.UpdatedAt,
 	}
 }
 

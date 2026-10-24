@@ -6,8 +6,11 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { LangService, type TranslationKey } from '../../../core/i18n/lang.service';
 import {
+  articleStage,
   docTypeKey as docTypeTranslationKey,
+  statusKey as statusTranslationKey,
   type Article,
+  type ArticleStage,
   type ArticleTree,
 } from '../../../core/knowledge/knowledge.models';
 import { KnowledgeService } from '../../../core/knowledge/knowledge.service';
@@ -16,15 +19,6 @@ export interface DocumentDetailData {
   article: Article;
   categoryName: string;
 }
-
-const STATUS_KEYS: Record<string, TranslationKey> = {
-  pending: 'DOC_STATUS_PENDING',
-  waiting: 'DOC_STATUS_PENDING',
-  processing: 'DOC_STATUS_PROCESSING',
-  running: 'DOC_STATUS_PROCESSING',
-  done: 'DOC_STATUS_DONE',
-  failed: 'DOC_STATUS_FAILED',
-};
 
 /**
  * "Xem file": backend không có endpoint tải/preview nên hiển thị metadata
@@ -61,7 +55,12 @@ export class DocumentDetailDialog {
   }
 
   protected statusKey(status: string): TranslationKey {
-    return STATUS_KEYS[status] ?? 'DOC_STATUS_PENDING';
+    return statusTranslationKey(status);
+  }
+
+  /** Trạng thái gộp extract → index → compile của bài đang mở */
+  protected stage(): ArticleStage {
+    return articleStage(this.data.article);
   }
 
   protected loadTree(): void {

@@ -147,12 +147,25 @@
           </div>
 
           @for (article of visible(); track article.id) {
+            @let docStage = stage(article);
             <div class="doc-row">
               <button type="button" class="doc-open" (click)="openDetail(article)">
                 <span class="doc-icon">
                   <mat-icon aria-hidden="true">description</mat-icon>
                 </span>
                 <span class="doc-name" [title]="article.name">{{ article.name }}</span>
+                @if (docStage !== 'done') {
+                  <span
+                    class="chip status-chip"
+                    [class.status-processing]="docStage === 'processing'"
+                    [class.status-failed]="docStage === 'failed'"
+                  >
+                    @if (docStage === 'processing') {
+                      <span class="status-spinner" aria-hidden="true"></span>
+                    }
+                    {{ lang.t(stageKey(docStage)) }}
+                  </span>
+                }
               </button>
               <span class="col-folder doc-meta" [title]="categoryName(article.categoryId)">
                 {{ categoryName(article.categoryId) }}
@@ -197,6 +210,7 @@
       } @else {
         <div class="doc-grid">
           @for (article of visible(); track article.id) {
+            @let docStage = stage(article);
             <mat-card appearance="outlined" class="doc-card">
               <button type="button" class="card-open" (click)="openDetail(article)">
                 <span class="doc-icon">
@@ -206,6 +220,18 @@
                 <span class="card-meta">
                   {{ categoryName(article.categoryId) }} · {{ lang.t(docTypeKey(article.docType)) }}
                 </span>
+                @if (docStage !== 'done') {
+                  <span
+                    class="chip status-chip"
+                    [class.status-processing]="docStage === 'processing'"
+                    [class.status-failed]="docStage === 'failed'"
+                  >
+                    @if (docStage === 'processing') {
+                      <span class="status-spinner" aria-hidden="true"></span>
+                    }
+                    {{ lang.t(stageKey(docStage)) }}
+                  </span>
+                }
               </button>
               <div class="card-foot">
                 <span class="doc-meta">{{ article.updatedAt | date: 'dd/MM/yyyy' }}</span>

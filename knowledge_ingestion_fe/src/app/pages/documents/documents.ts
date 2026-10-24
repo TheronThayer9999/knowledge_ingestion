@@ -1,5 +1,5 @@
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, type OnDestroy } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
@@ -13,10 +13,13 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
 import {
+  articleStage,
   buildFolderTree,
   docTypeKey as docTypeTranslationKey,
+  statusKey,
   subtreeIds,
   type Article,
+  type ArticleStage,
   type Category,
   type FolderNode,
 } from '../../core/knowledge/knowledge.models';
@@ -31,6 +34,11 @@ import { FolderDialog, type FolderDialogData } from './dialogs/folder-dialog';
 import { UploadDialog, type UploadDialogData } from './dialogs/upload-dialog';
 
 type ViewMode = 'list' | 'grid';
+
+/** Nhịp tự tải lại danh sách khi còn bài đang xử lý (badge tự cập nhật) */
+const STATUS_POLL_MS = 5000;
+/** Chặn poll vô hạn khi worker tắt — 120 kỳ ≈ 10 phút, thao tác sau reset lại */
+const STATUS_POLL_LIMIT = 120;
 
 /** Node thư mục kèm số tài liệu của cả nhánh để hiện cạnh tên */
 interface FolderView {
@@ -63,7 +71,7 @@ interface FolderView {
   templateUrl: './documents.html',
   styleUrl: './documents.scss',
 })
-export class Documents {
+export class Documents implements OnDestroy {
   protected readonly lang = inject(LangService);
   private readonly knowledge = inject(KnowledgeService);
   private readonly messages = inject(MessageService);
@@ -82,6 +90,9 @@ export class Documents {
   protected readonly skeletonRows = [1, 2, 3, 4, 5, 6];
 
   private loadedOnce = false;
+  private statusTimer: ReturnType<typeof setTimeout> | null = null;
+  private statusRefreshInFlight = false;
+  private statusPolls = 0;
 
   /** Cây thư mục + đếm tài liệu theo cả nhánh */
   protected readonly folderViews = computed<FolderView[]>(() => {
@@ -129,6 +140,8 @@ export class Documents {
         this.categories.set(categories);
         this.articles.set(articles);
         this.loading.set(false);
+        this.statusPolls = 0;
+        this.scheduleStatusRefresh();
         if (!this.loadedOnce) {
           this.loadedOnce = true;
           this.expanded.set(
@@ -143,6 +156,18 @@ export class Documents {
         this.messages.errorFromApi(error, 'DOC_LOAD_ERROR');
       },
     });
+  }
+
+  ngOnDestroy(): void {
+    this.clearStatusRefresh();
+  }
+
+  protected stage(article: Article): ArticleStage {
+    return articleStage(article);
+  }
+
+  protected stageKey(stage: ArticleStage): TranslationKey {
+    return statusKey(stage);
   }
 
   protected select(folderId: number | null): void {
@@ -345,5 +370,46 @@ export class Documents {
         replaceUrl: true,
       });
     }
+  }
+
+  /**
+   * Bài còn pending/processing thì tự tải lại danh sách để badge tiến trình
+   * cập nhật — refresh ngầm nên không bật skeleton, UI không nháy.
+   */
+  private scheduleStatusRefresh(): void {
+    this.clearStatusRefresh();
+    const busy = this.articles().some((article) => articleStage(article) !== 'done');
+    if (!busy || this.statusPolls >= STATUS_POLL_LIMIT) {
+      return;
+    }
+    this.statusPolls += 1;
+    this.statusTimer = setTimeout(() => this.refreshStatuses(), STATUS_POLL_MS);
+  }
+
+  private clearStatusRefresh(): void {
+    if (this.statusTimer !== null) {
+      clearTimeout(this.statusTimer);
+      this.statusTimer = null;
+    }
+  }
+
+  private refreshStatuses(): void {
+    this.statusTimer = null;
+    if (this.statusRefreshInFlight) {
+      return;
+    }
+    this.statusRefreshInFlight = true;
+    this.knowledge.listAllArticles().subscribe({
+      next: (articles) => {
+        this.statusRefreshInFlight = false;
+        this.articles.set(articles);
+        this.scheduleStatusRefresh();
+      },
+      error: () => {
+        // Lỗi mạng tạm thời: thử lại kỳ sau, không làm phiền người dùng
+        this.statusRefreshInFlight = false;
+        this.scheduleStatusRefresh();
+      },
+    });
   }
 }
