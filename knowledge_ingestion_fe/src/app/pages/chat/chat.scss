@@ -12,7 +12,8 @@
   gap: var(--space-5);
   max-width: var(--content-max-width-page);
   margin: 0 auto;
-  height: calc(100dvh - var(--toolbar-height) - var(--space-5) * 2);
+  // shell đo sẵn vùng content trong token — trang không tự trừ toolbar/padding
+  height: var(--content-viewport-height);
   min-height: 0;
 }
 

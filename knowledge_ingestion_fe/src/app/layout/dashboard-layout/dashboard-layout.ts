@@ -1,4 +1,5 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
+import { NgComponentOutlet } from '@angular/common';
 import {
   Component,
   DestroyRef,
@@ -22,29 +23,19 @@ import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } fro
 import { filter, map } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
-import { LanguageSwitcher } from '../../shared/language-switcher/language-switcher';
-import { ThemeSwitcher } from '../../shared/theme-switcher/theme-switcher';
-
-interface NavItem {
-  path: string;
-  icon: string;
-  label: TranslationKey;
-}
-
-const WORKSPACE_NAV: NavItem[] = [
-  { path: '/app/overview', icon: 'space_dashboard', label: 'NAV_OVERVIEW' },
-  { path: '/app/documents', icon: 'folder_open', label: 'NAV_DOCUMENTS' },
-  { path: '/app/chat', icon: 'forum', label: 'NAV_CHAT' },
-];
-
-const ACCOUNT_NAV: NavItem[] = [
-  { path: '/app/settings', icon: 'settings', label: 'NAV_SETTINGS' },
-  { path: '/app/profile', icon: 'account_circle', label: 'NAV_PROFILE' },
-];
+import {
+  DEFAULT_PAGE_TITLE,
+  HEADER_ACTIONS,
+  NAV_GROUPS,
+  type NavGroup,
+} from './shell.config';
 
 /**
- * Khung dashboard: sidenav dọc (thu gọn còn rail ở desktop, drawer ở mobile)
- * + topbar giữ theme/ngôn ngữ/tài khoản. Chỉ trang con đổi, khung giữ nguyên.
+ * APP SHELL duy nhất của vùng đăng nhập: sidenav dọc (thu gọn còn rail ở
+ * desktop, drawer ở mobile) + topbar giữ theme/ngôn ngữ/tài khoản + vùng
+ * content. Sidebar/header render hoàn toàn từ shell.config.ts (NAV_GROUPS,
+ * HEADER_ACTIONS) — thêm menu/action chỉ sửa config, không sửa file này.
+ * Chỉ trang con đổi, khung giữ nguyên.
  */
 @Component({
   selector: 'app-dashboard-layout',
@@ -52,6 +43,7 @@ const ACCOUNT_NAV: NavItem[] = [
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
+    NgComponentOutlet,
     MatSidenavModule,
     MatToolbarModule,
     MatListModule,
@@ -60,8 +52,6 @@ const ACCOUNT_NAV: NavItem[] = [
     MatMenuModule,
     MatDividerModule,
     MatTooltipModule,
-    LanguageSwitcher,
-    ThemeSwitcher,
   ],
   templateUrl: './dashboard-layout.html',
   styleUrl: './dashboard-layout.scss',
@@ -72,8 +62,8 @@ export class DashboardLayout {
   private readonly router = inject(Router);
   private readonly breakpoints = inject(BreakpointObserver);
 
-  protected readonly workspaceNav = WORKSPACE_NAV;
-  protected readonly accountNav = ACCOUNT_NAV;
+  protected readonly navGroups: NavGroup[] = NAV_GROUPS;
+  protected readonly headerActions = HEADER_ACTIONS;
   protected readonly collapsed = signal(false);
   protected readonly mobileOpen = signal(false);
 
@@ -87,12 +77,12 @@ export class DashboardLayout {
     { initialValue: null },
   );
 
-  /** Tiêu đề topbar bám theo route đang mở — nguồn duy nhất là bảng nav */
+  /** Tiêu đề topbar bám theo route đang mở — nguồn duy nhất là bảng nav config */
   protected readonly pageTitle = computed<TranslationKey>(() => {
     this.navigationEnd();
     const url = this.router.url;
-    const all = [...this.workspaceNav, ...this.accountNav];
-    return all.find((item) => url.startsWith(item.path))?.label ?? 'NAV_OVERVIEW';
+    const all = this.navGroups.flatMap((group) => group.items);
+    return all.find((item) => url.startsWith(item.path))?.label ?? DEFAULT_PAGE_TITLE;
   });
 
   protected readonly initials = computed(() => {

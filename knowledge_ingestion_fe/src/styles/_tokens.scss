@@ -80,8 +80,12 @@
   --duration-fast: 120ms;
   --duration-base: 200ms;
 
-  // Layout
+  // Layout — kích thước APP SHELL (dashboard-layout) khai báo tập trung ở
+  // đây; trang con KHÔNG tự suy ra chiều cao header/padding của shell.
   --toolbar-height: 64px;
+  --content-padding: var(--space-5);
+  // chiều cao vùng content khi trang cần khung cao đúng (chat, sticky offset...)
+  --content-viewport-height: calc(100dvh - var(--toolbar-height) - var(--content-padding) * 2);
   // chiều cao chuẩn của control soạn thảo (ô nhập chat, dropdown phạm vi, nút Gửi)
   --control-height: 48px;
   --content-max-width: 560px;
@@ -94,6 +98,7 @@
   --suggestions-max-width: 480px;
   --avatar-size: 40px;
   --avatar-size-toolbar: 36px;
+  --account-menu-max-width: 260px;
   --list-row-height: 56px;
   --icon-size-sm: 18px;
   --icon-size-md: 20px;

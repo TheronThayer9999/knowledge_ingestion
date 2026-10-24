@@ -34,6 +34,36 @@ module.exports = tseslint.config(
     },
   },
   {
+    // Khóa APP SHELL (xem ARCHITECTURE.md): chỉ src/app/layout/** được dựng
+    // sidenav/toolbar hay import DashboardLayout/shell.config trực tiếp.
+    // `ignores` đứng cùng object với `files` là cách flat config loại trừ phạm vi.
+    files: ['src/**/*.ts'],
+    ignores: ['src/app/layout/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@angular/material/sidenav',
+              message: 'APP SHELL duy nhất là DashboardLayout (src/app/layout/). Trang mới = thêm route con vào app.routes.ts — xem ARCHITECTURE.md.',
+            },
+            {
+              name: '@angular/material/toolbar',
+              message: 'APP SHELL duy nhất là DashboardLayout (src/app/layout/). Trang mới = thêm route con vào app.routes.ts — xem ARCHITECTURE.md.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['**/dashboard-layout', '**/shell.config'],
+              message: 'Không import nội bộ shell ngoài layout/ — menu/header qua route con + NAV_GROUPS/HEADER_ACTIONS (shell.config.ts).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.html'],
     extends: [...angular.configs.templateRecommended, ...angular.configs.templateAccessibility],
     rules: {},

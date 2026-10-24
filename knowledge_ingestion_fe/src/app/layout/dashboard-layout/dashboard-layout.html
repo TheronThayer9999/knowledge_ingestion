@@ -14,46 +14,29 @@
         }
       </div>
 
+      <!-- Sidebar render từ NAV_GROUPS — thêm mục menu chỉ sửa shell.config.ts -->
       <nav class="nav-groups" aria-label="Main navigation">
-        <p class="nav-section">{{ lang.t('NAV_SECTION_WORKSPACE') }}</p>
-        <mat-nav-list class="nav-list">
-          @for (item of workspaceNav; track item.path) {
-            <a
-              mat-list-item
-              class="nav-link"
-              [routerLink]="item.path"
-              routerLinkActive="is-active"
-              [matTooltip]="rail() ? lang.t(item.label) : ''"
-              matTooltipPosition="right"
-              (click)="closeMobileNav()"
-            >
-              <mat-icon matListItemIcon aria-hidden="true">{{ item.icon }}</mat-icon>
-              @if (!rail()) {
-                <span matListItemTitle>{{ lang.t(item.label) }}</span>
-              }
-            </a>
-          }
-        </mat-nav-list>
-
-        <p class="nav-section">{{ lang.t('NAV_SECTION_ACCOUNT') }}</p>
-        <mat-nav-list class="nav-list">
-          @for (item of accountNav; track item.path) {
-            <a
-              mat-list-item
-              class="nav-link"
-              [routerLink]="item.path"
-              routerLinkActive="is-active"
-              [matTooltip]="rail() ? lang.t(item.label) : ''"
-              matTooltipPosition="right"
-              (click)="closeMobileNav()"
-            >
-              <mat-icon matListItemIcon aria-hidden="true">{{ item.icon }}</mat-icon>
-              @if (!rail()) {
-                <span matListItemTitle>{{ lang.t(item.label) }}</span>
-              }
-            </a>
-          }
-        </mat-nav-list>
+        @for (group of navGroups; track group.title) {
+          <p class="nav-section">{{ lang.t(group.title) }}</p>
+          <mat-nav-list class="nav-list">
+            @for (item of group.items; track item.path) {
+              <a
+                mat-list-item
+                class="nav-link"
+                [routerLink]="item.path"
+                routerLinkActive="is-active"
+                [matTooltip]="rail() ? lang.t(item.label) : ''"
+                matTooltipPosition="right"
+                (click)="closeMobileNav()"
+              >
+                <mat-icon matListItemIcon aria-hidden="true">{{ item.icon }}</mat-icon>
+                @if (!rail()) {
+                  <span matListItemTitle>{{ lang.t(item.label) }}</span>
+                }
+              </a>
+            }
+          </mat-nav-list>
+        }
       </nav>
 
       @if (!isHandset()) {
@@ -86,8 +69,10 @@
       }
       <h1 class="topbar-title">{{ lang.t(pageTitle()) }}</h1>
       <span class="topbar-spacer"></span>
-      <app-language-switcher />
-      <app-theme-switcher />
+      <!-- Action góc phải render từ HEADER_ACTIONS — thêm nút chỉ sửa config -->
+      @for (action of headerActions; track action) {
+        <ng-container [ngComponentOutlet]="action" />
+      }
       <button
         mat-icon-button
         type="button"

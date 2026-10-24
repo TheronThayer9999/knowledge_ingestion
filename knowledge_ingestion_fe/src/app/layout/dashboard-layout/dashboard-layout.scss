@@ -152,7 +152,7 @@
 
 .menu-user {
   padding: var(--space-2) var(--space-4);
-  max-width: 260px;
+  max-width: var(--account-menu-max-width);
 }
 
 .menu-user-name {
@@ -171,6 +171,7 @@
 
 .shell-content {
   min-height: calc(100dvh - var(--toolbar-height));
-  // lề trang thống nhất 24px mọi breakpoint
-  padding: var(--space-5);
+  // lề trang thống nhất --content-padding mọi breakpoint (trang con dùng
+  // biến --content-viewport-height nếu cần khung cao vừa đúng, đừng tự calc)
+  padding: var(--content-padding);
 }
