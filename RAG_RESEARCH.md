@@ -1256,7 +1256,7 @@ quả) — đúng với dữ liệu dùng để trả lời.
 
 | Việc | Chỗ sửa | Vì sao |
 |---|---|---|
-| Mở đường trong prompt | `prompts/chat_system.md`: bước 1d, “Thông tin tối thiểu” (thêm mục bảng), bước 2 (nới trần lượt gọi cho đọc sheet), mục 7 (loại câu hỏi Excel), mục 11 (liệt kê sheet trước → đọc theo hàng → đọc tiếp bằng `next_from_row`; số hàng lấy từ tool) | model lập kế hoạch theo prompt; không có đường “bảng Excel” thì nó đi `knowledge_search` rồi trả lời từ mảnh bảng vỡ cột |
+| Mở đường trong prompt | các mục bước 1d, “Thông tin tối thiểu”, bước 2 (nới trần lượt gọi cho đọc sheet), mục 7, mục 11 (liệt kê sheet trước → đọc theo hàng → đọc tiếp bằng `next_from_row`; số hàng lấy từ tool) — đợt 8 đã **dời toàn bộ sang `prompts/chat_system_sheets.md`**, xem §6.21 | model lập kế hoạch theo prompt; không có đường “bảng Excel” thì nó đi `knowledge_search` rồi trả lời từ mảnh bảng vỡ cột |
 | Mô tả tool tự giải thích | `listSheetsDesc`/`readSheetDesc` + `jsonschema` của args: KHI NÀO GỌI / KHI NÀO KHÔNG / CÁCH DÙNG / VÍ DỤ; mỗi tham số có description; 2 tool trỏ tên nhau | prompt mục 11 cố ý không chép tên tool ⇒ ToolInfo là kênh duy nhất dạy model |
 | Test canh metadata | `src/agent/eino/tool_metadata_test.go` | mô tả/tag hỏng thì test gãy ngay, không chờ tới lúc chat trả lời sai |
 
@@ -1272,6 +1272,130 @@ không cứu được vì `reflect.StructTag.Get` unquote hỏng trước khi t�
 - Không dựng MCP server thật; không đổi chữ ký `ExtractRawPages`.
 - Không parse công thức/định dạng ô/ảnh/merged cell — cần thì thay `read_xlsx` bằng excelize (1 dòng).
 - Không cho tool ghi gì: vai hẹp `domain.ArticlePageText` chỉ có `ListPagesRange`.
+
+---
+
+### 6.20 Chọn provider/model từ CLI — học aider/`llm`, cố ý **không** theo litellm
+
+#### a) Vấn đề: lựa chọn duy nhất là sửa file không được commit
+
+Trước đợt 8, muốn đổi LLM phải sửa `configs/config.local.json` (file gitignored) rồi restart.
+Không có cách xem nhanh “đang cấu hình provider nào, provider nào thiếu key”, và đổi model để
+thử là thao tác sửa file — dễ commit nhầm, dễ mất cấu hình của người khác.
+
+#### b) Bốn repo nổi tiếng làm thế nào
+
+| CLI | Cách chọn | Điểm đáng học |
+|---|---|---|
+| aider | `--model <name>` (id kiểu litellm `provider/model`) + `--list-models <partial>` | **Discovery mode**: gõ sai thì liệt kê/gợi ý thứ gần đúng thay vì lỗi trống |
+| `llm` (Simon Willison) | `-m/--model`, `llm models`, env `LLM_MODEL` | **env là lớp giữa**: đổi nhanh theo shell/CI mà không sửa file |
+| LiteLLM / OpenRouter | id model dạng `provider/model`, tham số CLI thắng config | Một nguồn chân lý cho id model |
+| Ollama | `ollama run <model>`, `ollama list` | liệt kê trước, chọn sau |
+
+Hai kết luận:
+
+1. Thứ tự ưu tiên **flag > env > file config > default** là quy ước chung (12-factor) — áp đúng thứ tự.
+2. Chuỗi gộp `provider/model` **không dùng được ở repo này**: model thật của 9router là
+   `cl/nvidia/nemotron-3.5-super-vl:free`, OpenRouter là `nvidia/nemotron-3.5-super-vl:free` —
+   tách theo dấu `/` đầu tiên sẽ cắt sai provider. Vì vậy dùng **hai flag riêng**.
+
+#### c) Thiết kế đã chốt
+
+| Lớp | Cơ chế | Ghi chú |
+|---|---|---|
+| flag | `-provider <slug>`, `-model <id>`, `-list-llms` trên **cả** `cmd/apis` và `cmd/worker` | `-list-llms` in bảng rồi thoát, không khởi động server |
+| env | `LLM_PROVIDER`, `LLM_MODEL` | đọc trong `config.Load` nên worker ăn luôn, không phải sửa main |
+| file | `llms.default_provider` + `providers[slug].model` | hành vi cũ giữ nguyên; `Load(path)` vẫn gọi được 1 tham số |
+| default | `llms.default_provider` | thiếu cả ba lớp thì không đổi gì |
+
+```
+flag  --(cao nhất)-->  env  -->  file  -->  default
+        │
+ApplyLLMSelection: provider phải có trong llms.providers (sai ⇒ lỗi kèm danh sách slug)
+                   model rỗng ⇒ KHÔNG ghi đè model của provider
+                   provider được chọn mà model vẫn rỗng ⇒ fail-fast lúc boot
+```
+
+- `src/config/llm_selection.go`: `LoadOption`/`WithLLMSelection`, `applyLLMSelection`, `FormatLLMs`.
+- `-list-llms` in `slug`, `type`, `model`, `base_url`, `key=set|missing`, đánh dấu `*` provider mặc
+  định. **Không in api_key** (ra màn hình/CI log) — có test `TestFormatLLMsHidesAPIKey`.
+- Hai main gọi `config.Load` **một lần** rồi `fx.Provide(func() config.IConfig { return cfg })`;
+  trước đây `Load` nằm trong closure fx nên không thể can thiệp trước khi khởi động.
+
+#### d) Test khoá hành vi
+
+`src/config/llm_selection_test.go` (fixture JSON tạm, không phụ thuộc file máy đang chạy): file mặc
+định, env đè file, flag đè env, `-model` một mình áp lên provider mặc định, provider lạ → lỗi có
+`nope` + danh sách slug, provider thiếu model → fail-fast, `FormatLLMs` không lộ key.
+`src/agent/eino/provider_test.go` khoá đường 9router: `BuildProviderAgents` với
+`base_url=http://localhost:20128/v1` + model `cl/nvidia/nemotron-3.5-super-vl:free`, `Resolve("", "")`
+phải trả model **nguyên vẹn dấu `/`**, `Resolve("  9ROUTER ")` vẫn khớp, `thinking` fallback không
+lỗi, và provider thiếu key bị bỏ qua lúc boot (request chọn nó mới 400). Test dựng client
+OpenAI-compatible nên **không cần 9router đang bật**.
+
+#### e) Không làm
+
+- Không hỗ trợ chuỗi gộp `provider/model` (lý do ở b).
+- Không thêm subcommand `models`/`config` — `-list-llms` là một flag, đủ cho discovery.
+- Không đọc api_key từ flag (lộ trong `ps`/history) — vẫn `<NAME>_API_KEY` + file config.
+
+---
+
+### 6.21 Prompt bảng tính nạp theo điều kiện — `BeforeAgent`, không phải prompt phình
+
+#### a) Vấn đề: 15 dòng luật Excel nằm giữa 250 dòng luật chung
+
+Sau §6.19e, `prompts/chat_system.md` có 6 khối luật bảng tính rải ở bước 1d, “Thông tin tối thiểu”,
+bước 2, mục 7 và mục 11. Hệ quả hai chiều: câu hỏi về hợp đồng vẫn phải “đọc” luật sheet vô ích
+(tốn token, loãng luật chính), còn câu hỏi Excel thì luật bị chôn giữa 250 dòng nên dễ bị bỏ qua.
+
+#### b) Hook đúng của Eino: `BeforeAgent` sửa được instruction mỗi lượt
+
+`adk.ChatModelAgentConfig.Instruction` cố định lúc dựng agent. Nhưng middleware
+`TypedChatModelAgentMiddleware.BeforeAgent(ctx, runCtx *adk.ChatModelAgentContext)` được gọi **mỗi
+lượt** (khi `len(a.handlers) > 0`, `chatmodel.go` → `applyBeforeAgent`) và `runCtx.Instruction` là
+field mutable; instruction sau các handler mới được đưa vào `GenModelInput`
+(`eino@v0.9.21/adk/handler.go`). Repo đã có sẵn middleware tóm tắt nên điều kiện handler > 0 luôn đúng.
+
+| Thành phần | Việc |
+|---|---|
+| `prompts/chat_system.md` | luật chung, **0** chữ Excel/sheet/bảng tính (test khoá) |
+| `prompts/chat_system_sheets.md` | 15 luật bảng tính, kể cả ngoại lệ trần 8 lượt gọi tool |
+| `eino.InstructionSet{Base, Sheets}` | `Render(PromptVars)` — thay `{ngày_hiện_tại}`, nối fragment khi `Sheets=true` |
+| `eino.promptInjector` | `BeforeAgent` → `runCtx.Instruction = Render(promptVarsFrom(ctx))` |
+| `eino.IsSpreadsheetQuestion(query, history)` | keyword trên câu hỏi + 4 message gần nhất (mọi role) |
+
+Bộ dò key word (không gọi thêm LLM, không thêm độ trễ): `excel, xlsx, xls, spreadsheet, sheet,
+trang tính, bảng tính, bảng dữ liệu, bảng `. Nguyên tắc ghi trong code: **bật thừa thì vô hại (thêm
+luật), tắt thiếu mới sai (model không biết phải `list_sheets`)** — nên `"Bảng lương tháng 9 có bao
+nhiêu nhân viên?"` (không có chữ Excel) vẫn phải bật. History tính cả message của assistant: một câu
+trả lời “Theo sheet Bảng lương…” là tín hiệu đủ mạnh cho câu nối tiếp.
+
+#### c) Sửa luôn bug placeholder chết
+
+`chat_system.md` có `{ngày_hiện_tại}` và `{label}` nhưng **không chỗ nào render** — model đang nhận
+nguyên văn `{ngày_hiện_tại}`, làm quy tắc “đối chiếu hiệu lực với hôm nay” ở mục 11 mất căn cứ.
+`Render` thay ngày mỗi lượt (`02/01/2006`); `{label}` bị **xoá** vì classifier chạy *sau* khi agent
+trả lời nên không có nhãn tại thời điểm dựng instruction — giữ lại chỉ là bẫy cho người sửa prompt sau.
+
+#### d) Test khoá việc tách file
+
+| Test | Khoá điều gì |
+|---|---|
+| `TestIsSpreadsheetQuestion` (11 case) | VI/EN, “bảng lương” không nói Excel, nối tiếp qua history, câu phủ định |
+| `TestRenderInstructionFillsToday` | output không còn `{`, có ngày |
+| `TestRenderInstructionAppendsSheetsOnlyWhenRelevant` | câu thường **không** thấy fragment; câu sheet thấy fragment ở cuối |
+| `TestSheetRulesLiveOnlyInFragment` | `chat_system.md` cấm chứa excel/sheet/bảng tính/trang tính và `{label}`; fragment phải nhắc `sheet` + bước liệt kê |
+| `TestLoadPromptsLoadsSheetsFragment` | fragment load được lúc startup, không rỗng |
+
+Thiếu file fragment thì `LoadPrompts` **fail-fast** như prompt chính: agent sẽ âm thầm trả lời câu
+hỏi Excel bằng suy đoán thay vì đọc sheet — đúng loại lỗi im lặng cần chặn từ lúc boot.
+
+#### e) Không làm
+
+- Không dùng LLM/router phụ để phân loại câu hỏi (thêm 1 call + độ trễ cho mỗi lượt; keyword đủ và sai theo hướng an toàn).
+- Không nối fragment vào **history** hay tin nhắn system phụ — `runCtx.Instruction` là đúng chỗ, không tạo 2 nguồn luật.
+- Không để chỉ dấu “xem phần Quy tắc riêng: bảng tính” trong prompt chung — như vậy lại dạy model về sheet ở mọi lượt và test tách file mất nghĩa.
 
 ---
 
@@ -1319,3 +1443,11 @@ không cứu được vì `reflect.StructTag.Get` unquote hỏng trước khi t�
 
 **Đánh giá bằng LLM (judge)**
 33. Zheng et al. — *Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena* (thiên lệch self-preference, cần hiệu chỉnh bằng nhãn người): https://arxiv.org/abs/2306.05685
+
+**Chọn model từ CLI (§6.20)**
+34. aider — Other LLMs (`--model`, `--list-models`): https://aider.chat/docs/llms/other.html
+35. Simon Willison — `llm` CLI (`-m/--model`, `llm models`, env `LLM_MODEL`): https://llm.datasette.io/en/stable/usage.html
+36. LiteLLM — model naming `provider/model`: https://docs.litellm.ai/docs/providers
+
+**Eino — sửa instruction mỗi lượt (§6.21)**
+37. CloudWeGo Eino — `adk` middleware (`BeforeAgent`, `ChatModelAgentContext.Instruction`): https://github.com/cloudwego/eino/blob/main/adk/handler.go
