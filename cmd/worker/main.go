@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
@@ -15,7 +16,12 @@ import (
 	"go.uber.org/fx"
 )
 
-var configPath string
+var (
+	configPath  string
+	llmProvider string
+	llmModel    string
+	listLLMs    bool
+)
 
 func init() {
 	logs.LoadLogger()
@@ -28,14 +34,28 @@ func init() {
 		defaultPath = "./configs/config.local.json"
 	}
 	flag.StringVar(&configPath, "configs", defaultPath, "path config")
+	// Cùng bộ flag với cmd/apis: worker compile tóm tắt mục bằng
+	// llms.DefaultProvider nên chọn ở đây cũng đổi luôn model của compile.
+	flag.StringVar(&llmProvider, "provider", "", "LLM provider slug (đè llms.default_provider; env LLM_PROVIDER)")
+	flag.StringVar(&llmModel, "model", "", "LLM model của provider đã chọn (đè model trong config; env LLM_MODEL)")
+	flag.BoolVar(&listLLMs, "list-llms", false, "in danh sách provider/model đã cấu hình rồi thoát")
 	flag.Parse()
 }
 
 func main() {
+	cfg, err := config.Load(configPath, config.WithLLMSelection(llmProvider, llmModel))
+	if err != nil {
+		logs.Fatal(err, "Error loading config", "path", configPath)
+	}
+	if listLLMs {
+		fmt.Println(config.FormatLLMs(cfg))
+		return
+	}
+	llms := cfg.GetLLMs()
+	logs.Infow("llm selected", "provider", llms.DefaultProvider, "model", llms.Providers[llms.DefaultProvider].Model)
+
 	app := fx.New(
-		fx.Provide(func() (config.IConfig, error) {
-			return config.Load(configPath)
-		}),
+		fx.Provide(func() config.IConfig { return cfg }),
 		fx.Options(loader.LoadWorkerInfra()...),
 		fx.Provide(services.NewArticlePurgeService),
 		fx.Provide(services.NewArticleExtractService),

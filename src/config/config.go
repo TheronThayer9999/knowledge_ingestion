@@ -285,8 +285,9 @@ type VLMConfig struct {
 	MaxImageBytes int `json:"max_image_bytes"`
 }
 
-// Load đọc file JSON và trả về IConfig
-func Load(path string) (IConfig, error) {
+// Load đọc file JSON và trả về IConfig. opts áp SAU file và SAU env — dùng
+// cho flag CLI, nên thứ tự ưu tiên là flag > env > file (xem llm_selection.go).
+func Load(path string, opts ...LoadOption) (IConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
@@ -366,6 +367,19 @@ func Load(path string) (IConfig, error) {
 			p.RateLimitRPM = 0 // âm là lỗi nhập liệu — coi như không giới hạn
 		}
 		cfg.LLMs.Providers[name] = p
+	}
+	// Lớp lựa chọn LLM: env trước rồi mới tới flag (LoadOption) — flag thắng
+	// env, env thắng file. Rỗng cả hai lớp thì giữ nguyên config như cũ.
+	if err := applyLLMSelection(&cfg, os.Getenv("LLM_PROVIDER"), os.Getenv("LLM_MODEL")); err != nil {
+		return nil, err
+	}
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		if err := opt(&cfg); err != nil {
+			return nil, err
+		}
 	}
 	if cfg.Qdrant.Host == "" {
 		return nil, fmt.Errorf("qdrant.host is required")

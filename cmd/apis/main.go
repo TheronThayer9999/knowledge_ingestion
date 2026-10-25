@@ -29,7 +29,12 @@ import (
 	"go.uber.org/fx"
 )
 
-var configPath string
+var (
+	configPath  string
+	llmProvider string
+	llmModel    string
+	listLLMs    bool
+)
 
 func init() {
 	logs.LoadLogger()
@@ -42,14 +47,31 @@ func init() {
 		defaultPath = "./configs/config.local.json"
 	}
 	flag.StringVar(&configPath, "configs", defaultPath, "path config")
+	// Chọn LLM ngay trên dòng lệnh — khỏi sửa file config rồi restart. Thứ tự
+	// ưu tiên: flag > env (LLM_PROVIDER/LLM_MODEL) > file. Model tách riêng
+	// khỏi provider vì id thật có dấu "/" (vd 9router cl/nvidia/...:free).
+	flag.StringVar(&llmProvider, "provider", "", "LLM provider slug (đè llms.default_provider; env LLM_PROVIDER)")
+	flag.StringVar(&llmModel, "model", "", "LLM model của provider đã chọn (đè model trong config; env LLM_MODEL)")
+	flag.BoolVar(&listLLMs, "list-llms", false, "in danh sách provider/model đã cấu hình rồi thoát")
 	flag.Parse()
 }
 
 func main() {
+	// Load 1 lần ngay đây: cần config trước cả khi vào fx để -list-llms in
+	// được, và chỉ có một nguồn config duy nhất (không load lặp trong fx).
+	cfg, err := config.Load(configPath, config.WithLLMSelection(llmProvider, llmModel))
+	if err != nil {
+		logs.Fatal(err, "Error loading config", "path", configPath)
+	}
+	if listLLMs {
+		fmt.Println(config.FormatLLMs(cfg))
+		return
+	}
+	llms := cfg.GetLLMs()
+	logs.Infow("llm selected", "provider", llms.DefaultProvider, "model", llms.Providers[llms.DefaultProvider].Model)
+
 	app := fx.New(
-		fx.Provide(func() (config.IConfig, error) {
-			return config.Load(configPath)
-		}),
+		fx.Provide(func() config.IConfig { return cfg }),
 		fx.Options(loader.Load()...),
 		fx.Invoke(serverLifecycle),
 	)
