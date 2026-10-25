@@ -28,10 +28,10 @@ const (
 // ReadSheetArgs là args LLM được phép đưa. Sheet nhận cả số thứ tự ("2") lẫn
 // tên ("Bảng lương") vì LLM đọc từ kết quả list_sheets theo kiểu nào cũng có.
 type ReadSheetArgs struct {
-	ArticleID flexInt64 `json:"article_id" jsonschema:"description=ID bài viết Excel (lấy từ knowledge_search, article_info hoặc list_sheets). Bắt buộc."`
+	ArticleID flexInt64 `json:"article_id" jsonschema:"description=ID bài viết Excel (lấy từ knowledge_search hoặc article_info hoặc list_sheets). Bắt buộc."`
 	Sheet     string    `json:"sheet,omitempty" jsonschema:"description=Số thứ tự ('2') hoặc tên sheet ('Bảng lương') lấy từ list_sheets. Bỏ trống khi file chỉ có 1 sheet."`
-	FromRow   flexInt   `json:"from_row,omitempty" jsonschema:"description=Hàng dữ liệu bắt đầu, tính từ 1 và KHÔNG tính hàng header (bỏ trống = 1). Trang sau truyền next_from_row của lần trước."`
-	MaxRows   flexInt   `json:"max_rows,omitempty" jsonschema:"description=Số hàng mỗi lần đọc (mặc định 60, tối đa 300)."`
+	FromRow   flexInt   `json:"from_row,omitempty" jsonschema:"description=Hàng dữ liệu bắt đầu; tính từ 1 và KHÔNG tính hàng header (bỏ trống = 1). Trang sau truyền next_from_row của lần trước."`
+	MaxRows   flexInt   `json:"max_rows,omitempty" jsonschema:"description=Số hàng mỗi lần đọc (mặc định 60; tối đa 300)."`
 }
 
 // readSheetResult là 1 trang dữ liệu của sheet: text gồm header + các hàng được
@@ -55,7 +55,9 @@ KHI NÀO GỌI: người dùng hỏi nội dung bên trong một bảng Excel ("
 
 KHI NÀO KHÔNG GỌI: chưa biết file có sheet nào (gọi list_sheets trước); hỏi văn bản thường (knowledge_search, read_article); file không phải Excel.
 
-CÁCH DÙNG: gọi list_sheets trước rồi truyền sheet (số thứ tự hoặc tên). Dòng đầu của text là header, các dòng sau là dữ liệu bắt đầu từ from_row. total_rows là số hàng dữ liệu thật của sheet; next_from_row > 0 thì còn hàng — gọi lại với from_row = next_from_row, đừng suy đoán phần chưa đọc.`
+CÁCH DÙNG: gọi list_sheets trước rồi truyền sheet (số thứ tự hoặc tên). Dòng đầu của text là header, các dòng sau là dữ liệu bắt đầu từ from_row. total_rows là số hàng dữ liệu thật của sheet; next_from_row > 0 thì còn hàng — gọi lại với from_row = next_from_row, đừng suy đoán phần chưa đọc.
+
+VÍ DỤ: read_sheet({"article_id": 12, "sheet": "Bảng lương"}) → header + 60 hàng đầu, next_from_row = 61 nếu còn; đọc tiếp bằng read_sheet({"article_id": 12, "sheet": "Bảng lương", "from_row": 61}).`
 
 // NewReadSheetTool bọc page repo thành Eino InvokableTool — cùng nguồn
 // article_pages với list_sheets, nên số hàng hai tool báo luôn khớp nhau.

@@ -31,7 +31,7 @@ const (
 // knowledge_search/article_info, min_chars chỉ để chỉnh ngưỡng khi cần.
 type ListUnreadablePagesArgs struct {
 	ArticleID flexInt64 `json:"article_id" jsonschema:"description=ID bài viết cần kiểm tra (lấy từ knowledge_search hoặc article_info). Bắt buộc."`
-	MinChars  flexInt   `json:"min_chars,omitempty" jsonschema:"description=Ngưỡng coi là không đọc được, tính theo ký tự (bỏ trống = 40, tối đa 1000)."`
+	MinChars  flexInt   `json:"min_chars,omitempty" jsonschema:"description=Ngưỡng coi là không đọc được; tính theo ký tự (bỏ trống = 40; tối đa 1000)."`
 }
 
 // unreadablePage là 1 trang mất nội dung — page_num là số trang THẬT để agent

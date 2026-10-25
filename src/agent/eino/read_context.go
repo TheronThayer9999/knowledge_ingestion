@@ -24,7 +24,7 @@ const maxContextWindow = 3
 type ReadContextArgs struct {
 	ArticleID  flexInt64 `json:"article_id" jsonschema:"description=ID bài viết lấy từ kết quả knowledge_search (article_id của đoạn đang đọc dở). Bắt buộc."`
 	ChunkIndex flexInt   `json:"chunk_index" jsonschema:"description=Chỉ số chunk đang đọc dở (chunk_index của đoạn đó). Bắt buộc."`
-	Window     flexInt   `json:"window,omitempty" jsonschema:"description=Số chunk đọc thêm mỗi bên (trước/sau). Mặc định 1, tối đa 3."`
+	Window     flexInt   `json:"window,omitempty" jsonschema:"description=Số chunk đọc thêm mỗi bên (trước/sau). Mặc định 1; tối đa 3."`
 }
 
 // readContextHit là 1 chunk kề trả cho LLM — cùng shape với knowledge_search

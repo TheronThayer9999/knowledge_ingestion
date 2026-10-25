@@ -48,7 +48,9 @@ KHI NÀO GỌI: người dùng hỏi "file Excel này có những sheet nào", "
 
 KHI NÀO KHÔNG GỌI: hỏi nội dung văn bản thường (knowledge_search, read_article); đếm Điều/mục (list_sections); hỏi số trang/phiên bản (article_info); chào hỏi. File không phải Excel thì tool trả sheet_count = 0 kèm note — khi đó đừng dùng tool này nữa.
 
-CÁCH DÙNG: article_id lấy từ knowledge_search hoặc article_info. sheet_count là số sheet THẬT trong file — dùng nó để trả lời, đừng đếm bằng cách đọc nội dung. columns là hàng đầu tiên của sheet; nếu file không có header thì hàng đó vẫn là dữ liệu, đừng tự ý bỏ qua. Muốn đọc dữ liệu thì gọi read_sheet với index hoặc name của sheet vừa liệt kê.`
+CÁCH DÙNG: article_id lấy từ knowledge_search hoặc article_info. sheet_count là số sheet THẬT trong file — dùng nó để trả lời, đừng đếm bằng cách đọc nội dung. columns là hàng đầu tiên của sheet; nếu file không có header thì hàng đó vẫn là dữ liệu, đừng tự ý bỏ qua. Muốn đọc dữ liệu thì gọi read_sheet với index hoặc name của sheet vừa liệt kê.
+
+VÍ DỤ: người dùng hỏi "file lương có những sheet nào" → list_sheets({"article_id": 12}) → trả sheet_count kèm tên/số hàng/tên cột từng sheet; chọn được sheet rồi thì gọi read_sheet({"article_id": 12, "sheet": "Bảng lương"}).`
 
 // NewListSheetsTool bọc page repo (text đã trích) thành Eino InvokableTool.
 //

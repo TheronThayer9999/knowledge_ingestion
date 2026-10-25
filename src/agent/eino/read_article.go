@@ -23,8 +23,8 @@ const readArticleDefaultLimit = 8
 // các trang sau).
 type ReadArticleArgs struct {
 	ArticleID flexInt64 `json:"article_id" jsonschema:"description=ID bài viết cần đọc (lấy từ knowledge_search hoặc article_info). Bắt buộc."`
-	From      flexInt   `json:"from,omitempty" jsonschema:"description=Chunk bắt đầu đọc (bỏ trống = 0, trang đầu). Trang sau truyền next_from của trang trước."`
-	Limit     flexInt   `json:"limit,omitempty" jsonschema:"description=Số chunk mỗi trang (mặc định 8, tối đa 20)."`
+	From      flexInt   `json:"from,omitempty" jsonschema:"description=Chunk bắt đầu đọc (bỏ trống = 0; trang đầu). Trang sau truyền next_from của trang trước."`
+	Limit     flexInt   `json:"limit,omitempty" jsonschema:"description=Số chunk mỗi trang (mặc định 8; tối đa 20)."`
 }
 
 // readArticlePage là 1 trang nội dung file trả cho LLM — n khớp HitCollector
