@@ -71,12 +71,16 @@ sau đó chạy spike:
 
 1. `ollama pull qwen2.5vl:7b` (hoặc model ảnh đang có).
 2. Bật `vlm.enabled = true`, `vlm.model` = model thật trong `configs/config.local.json`.
-3. Render 3-5 trang có bảng thật trong `loadtest/fixtures` + `docs_test_case_and_data` bằng
-   `pdftoppm` (300 DPI), gọi `Transcribe`, rồi so với bảng gốc bằng `CompareExtraction`.
+3. Render 3-5 trang **chữ viết tay** (và 1-2 trang bảng thật trong `loadtest/fixtures`) bằng
+   `pdftoppm` (300 DPI), gọi `Transcribe`, rồi so với bản người đọc gõ tay / bảng gốc bằng
+   `CompareExtraction`.
 4. Ghi lại: trang nào `agree`, trang nào `conflict`, chỗ nào model bịa số.
 
-**Chỉ sau bước này mới quyết định** có làm L2 (`pdftohtml -xml`) và nối VLM vào phase 0
-hay không — nếu qwen-vl đọc sai số thì giữ nguyên hướng tất định, đừng ghép vào pipeline.
+**Phạm vi đã chốt lại ở đợt 5** (`plans/2026-10-27-dot-5-tool-trang-khong-doc-duoc.md`): VLM **không**
+nối vào phase 0 extract nữa — chữ in đã do OCR `vie+eng` lo, chữ viết tay là ca duy nhất đáng gọi VLM và
+ca đó phải do agent quyết định theo từng câu hỏi, không phải quét sẵn cả file. Spike này vì vậy chỉ còn
+để **đo chất lượng đọc ảnh** trước khi làm `read_page_visual` (đợt 6); nếu qwen-vl đọc sai số thì giữ
+nguyên hướng tất định và tool đó chỉ dùng cho `transcribe` chữ viết tay.
 
 ## Commit
 

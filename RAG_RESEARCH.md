@@ -752,17 +752,27 @@ POST {base_url}/api/chat
 ```json
 "vlm": {"enabled": true, "base_url": "http://localhost:11434",
         "model": "<qwen-vl tag>", "timeout_sec": 180, "dpi": 200,
-        "max_pages_per_doc": 20, "concurrency": 1}
+        "concurrency": 1}
 ```
+
+Không có `max_pages_per_doc`: đợt 5 đã bỏ đường VLM **tự động** trong phase 0 (xem 6.12-h), nên không
+còn "quét trần N trang mỗi file" để cấu hình — ngân sách giờ tính theo **request**, ở tool.
 
 Tag model cụ thể kiểm bằng `ollama list` — họ qwen2.5-vl / qwen3-vl có nhiều cỡ (3B/7B/32B); bảng phức tạp cần ≥ 7B, OCR thuần thì 3B đủ.
 
-#### c) Hai chỗ dùng, **một** adapter
+#### c) Hai tool, **một** adapter
 
 | Người dùng | Việc | Chạy ở đâu |
 |---|---|---|
-| Phase 0 extract | trang bị **gate** báo phức tạp → VLM thay Tesseract | worker, **giới hạn `max_pages_per_doc`** |
-| Agent tool `read_page_visual(article_id, page, mode)` | đọc lại 1 trang khi text đã index trông hỏng / câu hỏi về bảng | trong request, **có ngân sách** |
+| Tool agent `list_unreadable_pages(article_id)` | báo **trang nào** không trích được chữ (`article_pages` ngắn hơn ngưỡng) — đã có ở đợt 5 | trong request, 1 câu SQL, không model |
+| Tool agent `read_page_visual(article_id, page, mode)` | đọc lại đúng trang đó bằng ảnh | trong request, **có ngân sách** |
+| ~~Phase 0 extract~~ | **ĐÃ BỎ** — ingest không tự gọi VLM | — |
+
+Vì sao bỏ đường tự động: pipeline không biết **trang nào người dùng sẽ hỏi**. Gọi VLM khi ingest là đốt
+token + kéo dài extract cho những trang không ai hỏi, trong khi phần lớn việc đã xong bằng đường tất định
+(`pdftotext`, `tesseract -l vie+eng`, L2 `pdftohtml -xml`). Agent thì biết câu hỏi, nên nó là bên đúng để
+quyết định: nó gọi `list_unreadable_pages` để thấy trang trống, rồi (khi cần) gọi `read_page_visual`.
+Trang chữ viết tay rơi đúng vào danh sách "trống/chỉ vài ký tự" đó — không cần thêm detector riêng.
 
 #### d) Gate: khi nào mới đáng gọi VLM
 
@@ -778,7 +788,7 @@ Rẻ và tất định, xét theo thứ tự:
 
 | # | Quy tắc | Lý do |
 |---|---|---|
-| 1 | **Không bao giờ chạy toàn kho** — trần `max_pages_per_doc`, vượt thì log + bỏ qua, **không** fail job | 1 call/trang × 500 trang = vài giờ máy |
+| 1 | **Không bao giờ chạy toàn kho** — VLM chỉ tồn tại trong tool, 1 trang/lần, chặn bằng ngân sách request (#4); ingest **không** gọi VLM | 1 call/trang × 500 trang = vài giờ máy |
 | 2 | **Concurrency 1** + semaphore riêng cho VLM | Ollama serialize trên 1 GPU/CPU; chạy song song chỉ tăng timeout |
 | 3 | **Cache theo `(blob_sha, page, model, prompt_version)`** | Đổi chunker/retry extract không được trả tiền lại |
 | 4 | **Ngân sách theo request** cho tool: tối đa 1–2 lần/request, hết thì trả "hết ngân sách đọc ảnh" cho agent | `maxIterations = 12` × 60s = 12 phút nếu không chặn |
@@ -792,6 +802,8 @@ Rẻ và tất định, xét theo thứ tự:
 - `src/infrastructure/vlm/ollama/client.go` — adapter, soi khuôn `embedding/ollama/client.go` (base_url trim hậu tố, `IsPermanent` cho 4xx, timeout riêng).
 - `src/common/extractor/` — thêm `OCRImageTSV` trả `(text, meanConf)`; `Page` thêm field `Source`/`Conf`.
 - `src/agent/eino/read_page_visual.go` — `InferTool`, đọc `Scope` để lấy `user_id` (chống đọc chéo tài liệu) + ngân sách VLM; blob lấy qua `storage.IStorage.Download` (trả `io.ReadCloser`, caller phải Close), spool ra file (tái dùng `spoolPDF`) rồi `renderPDFPagePdftoppm`.
+- `src/agent/eino/list_unreadable_pages.go` — **đã có (đợt 5)**: tool báo trang trống/quá ngắn, để agent
+  biết file có lỗ hổng và (đợt 6) đọc lại bằng ảnh. Đây là **cửa vào** của toàn bộ đường VLM.
 - `src/loader/worker.go` / `loader/agent.go` — Provide adapter khi `vlm.enabled`; tắt thì tool không được đăng ký (đừng để agent thấy tool rồi gọi vào ngõ cụt).
 
 #### g) Chia việc
@@ -803,7 +815,22 @@ Rẻ và tất định, xét theo thứ tự:
 | V3 | Đối chiếu số tự động + chặn chart từ VLM | S |
 | V4 | (tuỳ chọn) dùng VLM cho ảnh upload trực tiếp, bỏ qua Tesseract | S |
 
-**V1 trước** vì nó không đụng pipeline ingest: chỉ thêm 1 tool, tắt bằng config là biến mất, và đo được ngay trên vài trang bảng thật của bộ `docs_test_case_and_data`.
+**V1 trước** vì nó không đụng pipeline ingest: chỉ thêm 1 tool, tắt bằng config là biến mất, và đo được ngay trên vài trang chữ viết tay thật.
+
+#### h) Đợt 5 — VLM chỉ là tool agent, không là bước ingest
+
+Quyết định (kèm lý do đầy đủ ở `plans/2026-10-27-dot-5-tool-trang-khong-doc-duoc.md`):
+
+- Chữ **in** (Việt/Anh) đã do OCR `vie+eng` lo (đợt 4) — không phải lý do gọi VLM.
+- Trang **bảng** đi đường tất định L1 `layout_score` → L2 `pdftohtml -xml`.
+- Việc còn lại **duy nhất** đáng gọi VLM là **chữ viết tay/chữ ký** — và chỉ khi câu hỏi chạm đúng trang đó.
+  Pipeline không biết điều đó, agent thì biết.
+- Vì vậy: ingest **ghi nhận** trang không đọc được (`text` ngắn hơn ngưỡng), agent **đọc** giấy báo qua
+  tool `list_unreadable_pages`, rồi tự quyết định gọi `read_page_visual` hay trả lời "tài liệu thiếu phần
+  ở trang N".
+- Tool trả `page_count`, `min_chars`, `issue_count` và danh sách `{page_num, seq, chars, layout_score}`;
+  `issue_count = 0` + `page_count > 0` = đã trích đủ, `page_count = 0` = chưa trích xong (không được coi
+  là sạch).
 
 ### 6.13 Ma trận xung đột giữa các tính năng
 
