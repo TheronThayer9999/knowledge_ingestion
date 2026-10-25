@@ -27,13 +27,15 @@ func newProviderAgents(
 	hybrid *retrieval.HybridSearcher,
 	categoryRepo domain.ICategoryRepositoryImpl,
 	vectors domain.IVectorStore,
-	articleRepo domain.IArticleRepository) (*ProviderAgents, error) {
+	articleRepo domain.IArticleRepository,
+	pageIssues domain.ArticlePageIssues) (*ProviderAgents, error) {
 
 	tools, err := eino.NewDefaultTools(eino.ToolDeps{
 		Hybrid:     hybrid,
 		Vectors:    vectors,
 		Categories: categoryRepo,
 		Articles:   articleRepo,
+		Pages:      pageIssues,
 	})
 	if err != nil {
 		return nil, err

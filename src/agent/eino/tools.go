@@ -17,6 +17,8 @@ type ToolDeps struct {
 	Vectors    domain.IVectorStore
 	Categories domain.ICategoryRepositoryImpl
 	Articles   domain.IArticleRepository
+	// Pages là vai hẹp "trang nào không đọc được" — tool báo độ phủ của file.
+	Pages domain.ArticlePageIssues
 }
 
 // NewDefaultTools dựng toàn bộ tool cho agent theo đúng thứ tự đăng ký —
@@ -47,7 +49,11 @@ func NewDefaultTools(d ToolDeps) ([]einotool.BaseTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	tools := []einotool.BaseTool{search, cats, ctxTool, info, sections, readArt}
+	issues, err := NewListUnreadablePagesTool(d.Articles, d.Pages)
+	if err != nil {
+		return nil, err
+	}
+	tools := []einotool.BaseTool{search, cats, ctxTool, info, sections, readArt, issues}
 	for _, t := range tools {
 		if t == nil {
 			return nil, fmt.Errorf("eino tools: tool nil")

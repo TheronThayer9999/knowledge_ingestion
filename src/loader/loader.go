@@ -62,6 +62,10 @@ func loadAdapter() []fx.Option {
 		// API cần pageRepo cho admin/reset-extract (xoá trang đã trích để
 		// OCR lại). Worker dĩng vậy cũng có repo riêng ở loader/worker.go.
 		fx.Provide(repository.NewArticlePageRepository),
+		// Tool agent hỏi "trang nào không đọc được" — cùng bảng, vai hẹp hơn
+		// (constructor riêng vì cái trên trả interface lớn, xem giải thích
+		// trong repository).
+		fx.Provide(repository.NewArticlePageIssues),
 		// API /sections đọc summary đã compile (phase 1b) merge vào PageIndex.
 		fx.Provide(repository.NewArticleSectionRepository),
 		fx.Provide(repository.NewUnitOfWork),
