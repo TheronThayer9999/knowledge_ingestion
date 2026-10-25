@@ -68,7 +68,39 @@ type Page struct {
 	Num  int
 	Seq  int
 	Text string
+	// Layout là ĐIỂM bố cục phức tạp của trang trong [0,1] — xem
+	// DetectLayout. 0 nghĩa là "không đo" hoặc "trang sạch"; phase extract
+	// lưu nguyên điểm này vào article_pages.layout_score để quyết định sau
+	// (L2/VLM) chỉ chạy trên trang thật sự có bảng. Không lưu bool vì ngưỡng
+	// còn phải chỉnh khi có dữ liệu thật.
+	Layout float64
 }
+
+// ExtractOption là tuỳ chọn bổ sung của một lượt trích.
+//
+// VÌ SAO VARIADIC: đổi chữ ký để nhận thêm struct options sẽ bắt sửa mọi
+// call site (≈25 chỗ, phần lớn là test) trong khi mặc định của tuỳ chọn mới
+// luôn là "tắt". Variadic giữ nguyên hợp đồng cũ và mở đường thêm tuỳ chọn
+// khác mà không phải sửa người gọi — đúng tinh thần mở để mở rộng.
+type ExtractOption func(*extractConfig)
+
+// extractConfig là cấu hình đã gộp của một lượt trích, chỉ dùng nội bộ.
+type extractConfig struct {
+	ocr    OCRConfig
+	layout bool
+}
+
+// WithLayoutDetection bật đo bố cục phức tạp cho PDF (thêm 1 lượt
+// `pdftotext -layout`). Chỉ có tác dụng với PDF — loại file khác trả Layout = 0.
+func WithLayoutDetection(enabled bool) ExtractOption {
+	return func(c *extractConfig) { c.layout = enabled }
+}
+
+// ExtractOptions là bộ tuỳ chọn đã CHỐT của một lượt trích, dựng một lần từ
+// config ở loader rồi tiêm vào service (fx không tiêm được tham số variadic,
+// nên service nhận slice rồi tự trải ra `...`). Có tên riêng để fx phân biệt
+// với mọi slice khác trong graph và để call site đọc rõ nghĩa.
+type ExtractOptions []ExtractOption
 
 // NeedsDespace báo loại file này có cần qua bước khử chữ rải không — chỉ PDF
 // (chữ rải do renderer nhúng ký tự rời); txt/docx/ảnh OCR ra text sạch sẵn.
@@ -112,9 +144,13 @@ func (c *ctxReader) Read(p []byte) (int, error) {
 	return c.r.Read(p)
 }
 
-func ExtractRawPages(ctx context.Context, key string, r io.Reader, ocr OCRConfig, have map[int]bool, visit func(Page) error) error {
+func ExtractRawPages(ctx context.Context, key string, r io.Reader, ocr OCRConfig, have map[int]bool, visit func(Page) error, opts ...ExtractOption) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	cfg := extractConfig{ocr: ocr}
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 	// Bọc reader để mọi đường đọc (text stream, docx, spool PDF) đều tôn
 	// trọng hủy giữa chừng, không chỉ các lệnh exec bên dưới.
@@ -131,7 +167,7 @@ func ExtractRawPages(ctx context.Context, key string, r io.Reader, ocr OCRConfig
 		}
 		return visitPieces(0, text, visit)
 	case ".pdf":
-		return extractPDFPages(ctx, r, ocr, have, visit)
+		return extractPDFPages(ctx, r, cfg, have, visit)
 	case ".jpg", ".jpeg", ".png", ".webp":
 		text, err := OCRImage(ctx, ocr, key, r)
 		if err != nil {

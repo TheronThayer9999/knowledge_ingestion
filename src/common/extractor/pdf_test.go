@@ -61,7 +61,7 @@ func TestExtractPDFSkipsSavedPages(t *testing.T) {
 	}
 	seen := map[int]int{}
 	err := extractPDFPages(t.Context(), bytes.NewReader(buildPDF(t, texts...)),
-		OCRConfig{RenderBinary: popplerPdftoppm(t)}, have, func(p Page) error {
+		extractConfig{ocr: OCRConfig{RenderBinary: popplerPdftoppm(t)}}, have, func(p Page) error {
 			seen[p.Seq]++
 			return nil
 		})
@@ -92,7 +92,7 @@ func TestExtractPDFVisitIsSerialized(t *testing.T) {
 		count    int
 	)
 	err := extractPDFPages(t.Context(), bytes.NewReader(buildPDF(t, uniquePageTexts(n)...)),
-		OCRConfig{RenderBinary: popplerPdftoppm(t)}, nil, func(p Page) error {
+		extractConfig{ocr: OCRConfig{RenderBinary: popplerPdftoppm(t)}}, nil, func(p Page) error {
 			mu.Lock()
 			inFlight++
 			if inFlight > 1 {
@@ -125,7 +125,7 @@ func TestExtractPDFVisitErrorStops(t *testing.T) {
 		count int
 	)
 	err := extractPDFPages(t.Context(), bytes.NewReader(buildPDF(t, uniquePageTexts(n)...)),
-		OCRConfig{RenderBinary: popplerPdftoppm(t)}, nil, func(p Page) error {
+		extractConfig{ocr: OCRConfig{RenderBinary: popplerPdftoppm(t)}}, nil, func(p Page) error {
 			mu.Lock()
 			defer mu.Unlock()
 			count++

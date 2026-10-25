@@ -59,8 +59,9 @@ type pdfRange struct{ from, to int }
 //
 // Visit lỗi thì huỷ các khoảng còn lại và trả lỗi đó; phần đã ghi giữ nguyên
 // và lần extract sau resume theo tập trang còn thiếu.
-func extractPDFPages(ctx context.Context, r io.Reader, ocr OCRConfig, have map[int]bool, visit func(Page) error) error {
+func extractPDFPages(ctx context.Context, r io.Reader, cfg extractConfig, have map[int]bool, visit func(Page) error) error {
 	start := time.Now()
+	ocr := cfg.ocr
 	if ocr.RenderBinary == "" {
 		return fmt.Errorf("cần ocr.render_binary (poppler) để đọc PDF")
 	}
@@ -89,13 +90,34 @@ func extractPDFPages(ctx context.Context, r io.Reader, ocr OCRConfig, have map[i
 		todo += rg.to - rg.from + 1
 	}
 
+	// Đo bố cục phải chạy TUẦN TỰ và xong TRƯỚC khi các goroutine trích bắt
+	// đầu — chúng chỉ đọc map này (đọc song song map đã ghi xong là an toàn).
+	// Lỗi ở bước đo không được làm hỏng extract: điểm bố cục là thông tin phụ,
+	// thiếu thì coi như 0 và lần trích sau (khi được bật lại) sẽ đo bù.
+	var layoutScores map[int]float64
+	if cfg.layout {
+		layoutScores = make(map[int]float64, todo)
+		for _, rg := range ranges {
+			err := streamPDFText(ctx, pdftotext, path, rg.from, rg.to, true, func(num int, text string) error {
+				layoutScores[num] = DetectLayout(text).Score()
+				return nil
+			})
+			if err != nil {
+				logs.Warnw("pdf: đo bố cục lỗi, bỏ qua bước này",
+					"from", rg.from, "to", rg.to, "error", err)
+				layoutScores = nil
+				break
+			}
+		}
+	}
+
 	var (
 		emitMu    sync.Mutex
 		extracted atomic.Int64
 		ocrPages  atomic.Int64
 	)
 	runRange := func(rg pdfRange) error {
-		return streamPDFText(ctx, pdftotext, path, rg.from, rg.to, func(num int, text string) error {
+		return streamPDFText(ctx, pdftotext, path, rg.from, rg.to, false, func(num int, text string) error {
 			// Log tiến trình mỗi pdfProgressEvery trang. Bắt buộc về mặt vận
 			// hành: job nặng chạy nhiều phút, không có dòng nào thì lúc chết
 			// không biết đang ở đâu.
@@ -121,7 +143,7 @@ func extractPDFPages(ctx context.Context, r io.Reader, ocr OCRConfig, have map[i
 			// chung 1 trục với số trang.
 			emitMu.Lock()
 			defer emitMu.Unlock()
-			return visit(Page{Num: num, Seq: num, Text: text})
+			return visit(Page{Num: num, Seq: num, Text: text, Layout: layoutScores[num]})
 		})
 	}
 	return runPDFRanges(ctx, ranges, constants.EXTRACT_PAGE_WORKERS, runRange)
@@ -262,11 +284,17 @@ func pdfPageCount(ctx context.Context, pdfinfo, path string) (int, error) {
 // streamPDFText chạy pdftotext cho khoảng trang [from, to] và đẩy từng trang
 // qua visit với số trang thật. pdftotext ngăn các trang bằng ký tự form feed
 // (\f), nên đọc stdout theo từng \f: RAM chỉ giữ 1 trang text.
-func streamPDFText(ctx context.Context, pdftotext, path string, from, to int, visit func(num int, text string) error) error {
-	cmd := exec.CommandContext(ctx, pdftotext,
-		"-enc", "UTF-8",
-		"-f", strconv.Itoa(from), "-l", strconv.Itoa(to),
-		path, "-")
+//
+// layout=true thêm cờ `-layout`: giữ khoảng trắng canh cột của bảng. Dùng cho
+// lượt ĐO bố cục; lượt trích chính vẫn chạy không -layout vì text đã canh cột
+// sẽ làm chunker cắt sai và làm phình token (nhiều khoảng trắng vô nghĩa).
+func streamPDFText(ctx context.Context, pdftotext, path string, from, to int, layout bool, visit func(num int, text string) error) error {
+	args := []string{"-enc", "UTF-8"}
+	if layout {
+		args = append(args, "-layout")
+	}
+	args = append(args, "-f", strconv.Itoa(from), "-l", strconv.Itoa(to), path, "-")
+	cmd := exec.CommandContext(ctx, pdftotext, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()

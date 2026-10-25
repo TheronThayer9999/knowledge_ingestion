@@ -113,6 +113,19 @@ func TestExtractPlainText(t *testing.T) {
 // thưa (page 3.., font 7, stream 10..) nên bảng xref bù free entry cho số thiếu.
 func buildPDF(t *testing.T, pageTexts ...string) []byte {
 	t.Helper()
+	contents := make([]string, len(pageTexts))
+	for i, text := range pageTexts {
+		contents[i] = fmt.Sprintf("BT /F1 12 Tf 72 720 Td (%s) Tj ET", text)
+	}
+	return buildPDFWithContent(t, contents...)
+}
+
+// buildPDFWithContent như buildPDF nhưng nhận CONTENT STREAM của từng trang —
+// dùng khi cần bố cục mà 1 dòng text không diễn tả được (bảng nhiều cột để
+// đo layout detector: mỗi cột là một text object ở toạ độ x khác nhau).
+func buildPDFWithContent(t *testing.T, contents ...string) []byte {
+	t.Helper()
+	pageTexts := contents
 	var buf bytes.Buffer
 	offsets := map[int]int{}
 	writeObj := func(n int, body string) {
@@ -135,8 +148,7 @@ func buildPDF(t *testing.T, pageTexts ...string) []byte {
 	}
 	writeObj(fontObj, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
 	maxObj := 0
-	for i, text := range pageTexts {
-		content := fmt.Sprintf("BT /F1 12 Tf 72 720 Td (%s) Tj ET", text)
+	for i, content := range pageTexts {
 		n := contentBase + i
 		offsets[n] = buf.Len()
 		fmt.Fprintf(&buf, "%d 0 obj\n<< /Length %d >>\nstream\n%s\nendstream\nendobj\n", n, len(content), content)
