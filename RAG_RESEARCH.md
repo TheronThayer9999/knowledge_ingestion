@@ -1250,7 +1250,24 @@ mỗi hàng 1 dòng pipe; `extractor.ParseSheetBlocks` đọc lại đúng hợp
 tiên** của sheet (không đọc metadata Excel), và chỉ có **giá trị đã lưu** của ô (công thức lấy kết
 quả) — đúng với dữ liệu dùng để trả lời.
 
-#### e) Không làm
+#### e) Bảo đảm LLM thật sự gọi: prompt mở đường + test canh bề mặt tool
+
+“Tool có trong tool list” ≠ “model dùng”. Ba việc đã làm, cả ba kiểm được bằng máy:
+
+| Việc | Chỗ sửa | Vì sao |
+|---|---|---|
+| Mở đường trong prompt | `prompts/chat_system.md`: bước 1d, “Thông tin tối thiểu” (thêm mục bảng), bước 2 (nới trần lượt gọi cho đọc sheet), mục 7 (loại câu hỏi Excel), mục 11 (liệt kê sheet trước → đọc theo hàng → đọc tiếp bằng `next_from_row`; số hàng lấy từ tool) | model lập kế hoạch theo prompt; không có đường “bảng Excel” thì nó đi `knowledge_search` rồi trả lời từ mảnh bảng vỡ cột |
+| Mô tả tool tự giải thích | `listSheetsDesc`/`readSheetDesc` + `jsonschema` của args: KHI NÀO GỌI / KHI NÀO KHÔNG / CÁCH DÙNG / VÍ DỤ; mỗi tham số có description; 2 tool trỏ tên nhau | prompt mục 11 cố ý không chép tên tool ⇒ ToolInfo là kênh duy nhất dạy model |
+| Test canh metadata | `src/agent/eino/tool_metadata_test.go` | mô tả/tag hỏng thì test gãy ngay, không chờ tới lúc chat trả lời sai |
+
+**Bẫy đã dính**: eino dựng JSON schema args bằng cách tách tag `jsonschema` theo **dấu phẩy**, nên
+dấu phẩy trong `description=...` **cắt description tại đó mà không báo lỗi** — model nhận
+`Số hàng mỗi lần đọc (mặc định 60` hay `ID bài viết Excel (lấy từ knowledge_search`. Đã sửa 6 tag
+(`read_sheet`, `read_article`, `read_context`, `list_unreadable_pages`) sang `;`. Test
+`TestToolArgTagsHaveNoCommaInDescription` soi toàn bộ struct args để không tái diễn; escape `\,`
+không cứu được vì `reflect.StructTag.Get` unquote hỏng trước khi tới parser của lib.
+
+#### f) Không làm
 
 - Không dựng MCP server thật; không đổi chữ ký `ExtractRawPages`.
 - Không parse công thức/định dạng ô/ảnh/merged cell — cần thì thay `read_xlsx` bằng excelize (1 dòng).
