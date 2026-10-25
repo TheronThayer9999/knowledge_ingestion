@@ -121,5 +121,15 @@
   "worker": {
     "trim_interval_hours": 24,
     "chunker": "recursive"
+  },
+  "vlm": {
+    "enabled": false,
+    "base_url": "http://localhost:11434",
+    "model": "qwen2.5vl:7b",
+    "api_key": "",
+    "timeout_sec": 180,
+    "max_tokens": 2048,
+    "temperature": 0,
+    "max_image_bytes": 10485760
   }
 }

@@ -75,6 +75,9 @@ func loadAdapter() []fx.Option {
 		// Nhịp sống worker để API trả về UI biết "đang xử lý" hay "chờ vì
 		// worker đã tắt".
 		fx.Provide(repository.NewWorkerHeartbeatRepository),
+		// VLM đọc ảnh (qwen-vl) — bind 2 vai hẹp cho agent dùng `Ask`; provider
+		// lazy nên không thành phụ thuộc bắt buộc lúc boot.
+		fx.Options(vlmOptions()...),
 	}
 }
 

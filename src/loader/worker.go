@@ -133,5 +133,8 @@ func LoadWorkerInfra() []fx.Option {
 			}
 			return eino.NewSectionSummarizer(model, pcfg.Model, system), nil
 		}),
+		// VLM đọc ảnh — worker dùng vai `Transcribe` khi extract gặp trang bảng/
+		// scan; prompt thiếu thì fail-fast ngay lúc boot.
+		fx.Options(vlmOptions()...),
 	}
 }

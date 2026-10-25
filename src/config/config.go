@@ -22,6 +22,7 @@ type IConfig interface {
 	GetCORS() CorsConfig
 	GetWorker() WorkerConfig
 	GetAgent() AgentConfig
+	GetVLM() VLMConfig
 }
 
 // Implementations
@@ -39,6 +40,7 @@ type appConfig struct {
 	Cors      CorsConfig      `json:"cors"`
 	Worker    WorkerConfig    `json:"worker"`
 	Agent     AgentConfig     `json:"agent"`
+	VLM       VLMConfig       `json:"vlm"`
 }
 
 type AppConfig struct {
@@ -252,6 +254,28 @@ type WorkerConfig struct {
 // sửa prompt rồi restart app là ăn, không cần build lại.
 type AgentConfig struct {
 	PromptDir string `json:"prompt_dir"`
+}
+
+// VLMConfig cấu hình model đọc ẢNH (qwen-vl). CỐ Ý tách khỏi llms.providers:
+// loader dựng 1 chat agent cho MỖI entry providers (BuildProviderAgents), mà
+// VLM không phải agent — nó chỉ đọc ảnh trả text, không tool-calling, không
+// quyết định gì. Nhét vào providers sẽ đẻ ra một agent chat rác và model ảnh
+// có thể bị chọn nhầm cho câu hỏi chữ.
+//
+// Enabled=false thì chưa consumer nào được phép dùng (hiện chưa có consumer:
+// pipeline extract tự bật theo config worker, xem RAG_RESEARCH.md §6.12).
+type VLMConfig struct {
+	Enabled     bool    `json:"enabled"`
+	BaseURL     string  `json:"base_url"`
+	Model       string  `json:"model"`
+	APIKey      string  `json:"api_key"`
+	TimeoutSec  int     `json:"timeout_sec"`
+	MaxTokens   int     `json:"max_tokens"`
+	Temperature float64 `json:"temperature"`
+	// MaxImageBytes trần ảnh mỗi request; 0 ⇒ mặc định 10MB (ảnh 300 DPI
+	// ~1-3MB, base64 phồng thêm ~33%, 10MB là đủ cho 1 trang và chặn được
+	// file ai đó nhét ảnh 100 trang vào một request).
+	MaxImageBytes int `json:"max_image_bytes"`
 }
 
 // Load đọc file JSON và trả về IConfig
@@ -477,6 +501,34 @@ func Load(path string) (IConfig, error) {
 	default:
 		return nil, fmt.Errorf("worker.chunker phải là recursive/semantic/manual, got %q", cfg.Worker.Chunker)
 	}
+	// VLM đọc ảnh: base_url mượn Ollama của embedding khi bỏ trống — cùng
+	// setup phổ biến nhất (một server Ollama phục vụ cả embed lẫn model ảnh).
+	if cfg.VLM.BaseURL == "" {
+		cfg.VLM.BaseURL = cfg.Embedding.BaseURL
+	}
+	if cfg.VLM.BaseURL == "" {
+		cfg.VLM.BaseURL = "http://localhost:11434"
+	}
+	// Key ưu tiên env như mọi secret khác — không commit key vào file.
+	if envKey := os.Getenv("VLM_API_KEY"); envKey != "" {
+		cfg.VLM.APIKey = envKey
+	}
+	// Trích xuất cần tất định: ngoài range thì kéo về 0 thay vì fail.
+	if cfg.VLM.Temperature < 0 || cfg.VLM.Temperature > 2 {
+		cfg.VLM.Temperature = 0
+	}
+	if cfg.VLM.TimeoutSec <= 0 {
+		cfg.VLM.TimeoutSec = 180 // đọc cả trang ảnh chậm hơn hẳn chat chữ
+	}
+	if cfg.VLM.TimeoutSec > 3600 {
+		cfg.VLM.TimeoutSec = 3600
+	}
+	if cfg.VLM.MaxTokens <= 0 {
+		cfg.VLM.MaxTokens = 2048
+	}
+	if cfg.VLM.MaxImageBytes <= 0 {
+		cfg.VLM.MaxImageBytes = 10 << 20
+	}
 
 	return &cfg, nil
 }
@@ -495,3 +547,4 @@ func (c *appConfig) GetJWT() JWTConfig             { return c.JWTCli }
 func (c *appConfig) GetCORS() CorsConfig           { return c.Cors }
 func (c *appConfig) GetWorker() WorkerConfig       { return c.Worker }
 func (c *appConfig) GetAgent() AgentConfig         { return c.Agent }
+func (c *appConfig) GetVLM() VLMConfig             { return c.VLM }

@@ -48,6 +48,8 @@ func (c *testConfig) GetOCR() config.OCRConfig { return c.inner.GetOCR() }
 
 func (c *testConfig) GetAgent() config.AgentConfig { return c.inner.GetAgent() }
 
+func (c *testConfig) GetVLM() config.VLMConfig { return c.inner.GetVLM() }
+
 func loadTestConfig(t *testing.T) config.IConfig {
 	t.Helper()
 	path := os.Getenv("APP_CONFIG_PATH")
