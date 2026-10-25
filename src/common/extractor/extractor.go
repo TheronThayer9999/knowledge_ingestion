@@ -110,6 +110,49 @@ func NeedsDespace(key string) bool {
 	return strings.EqualFold(utils.FileExt(key), ".pdf")
 }
 
+// errNoHandler báo đuôi đã nằm trong supportedExts nhưng switch chưa có nhánh
+// trích — chỉ xảy ra khi ai đó thêm đuôi mà quên viết handler. Không dùng
+// ErrUnsupported để không ai nhầm thành "loại file chưa hỗ trợ".
+var errNoHandler = errors.New("extractor chưa có nhánh trích cho đuôi này")
+
+// supportedExts là NGUỒN DUY NHẤT của "extractor đọc được đuôi nào" — vừa là
+// cổng chặn đầu vào ExtractRawPages, vừa nuôi Supports/SupportedExts để test
+// đối chiếu với whitelist upload. Xưa upload nhận 13 đuôi trong khi extractor
+// chỉ có 10 nhánh: .xlsx/.pptx/.zip lọt lưới, bài upload xong worker trả
+// ErrUnsupported, người dùng chỉ thấy badge "Thất bại" mà không biết vì sao.
+// .zip bị loại luôn khỏi whitelist (đó là archive, không phải tài liệu).
+var supportedExts = map[string]bool{
+	".txt":  true,
+	".md":   true,
+	".csv":  true,
+	".json": true,
+	".docx": true,
+	".xlsx": true,
+	".pptx": true,
+	".pdf":  true,
+	".jpg":  true,
+	".jpeg": true,
+	".png":  true,
+	".webp": true,
+}
+
+// Supports báo extractor có trích được loại file này không (nhận key blob hoặc
+// tên file, chỉ xét đuôi).
+func Supports(key string) bool {
+	return supportedExts[strings.ToLower(utils.FileExt(key))]
+}
+
+// SupportedExts trả các đuôi trích được, sắp tăng dần — để test/CLI so với
+// whitelist upload mà không phải chép lại danh sách.
+func SupportedExts() []string {
+	exts := make([]string, 0, len(supportedExts))
+	for ext := range supportedExts {
+		exts = append(exts, ext)
+	}
+	slices.Sort(exts)
+	return exts
+}
+
 // ExtractRawPages trích text THÔ của từng trang rồi đẩy qua visit, KHÔNG khử
 // chữ rải — vì sao tách vậy ở DespacePages.
 //
@@ -155,13 +198,18 @@ func ExtractRawPages(ctx context.Context, key string, r io.Reader, ocr OCRConfig
 	// Bọc reader để mọi đường đọc (text stream, docx, spool PDF) đều tôn
 	// trọng hủy giữa chừng, không chỉ các lệnh exec bên dưới.
 	r = &ctxReader{ctx: ctx, r: r}
-	switch strings.ToLower(utils.FileExt(key)) {
+	ext := strings.ToLower(utils.FileExt(key))
+	if !supportedExts[ext] {
+		return fmt.Errorf("%w: %q", ErrUnsupported, ext)
+	}
+	switch ext {
 	case ".txt", ".md", ".csv", ".json":
 		// Loại này đọc được TUẦN TỰ nên stream thẳng ra các mảnh, không
 		// gom cả file vào RAM rồi mới chia — file 100MB RAM vẫn chỉ 256KB.
 		return plainTextPieces(r, visit)
-	case ".docx":
-		text, err := extractDocx(r)
+	case ".docx", ".xlsx", ".pptx":
+		// Họ Office Open XML: zip chứa XML, gom 1 text rồi chia mảnh Num = 0.
+		text, err := extractOffice(ext, r)
 		if err != nil {
 			return err
 		}
@@ -175,7 +223,8 @@ func ExtractRawPages(ctx context.Context, key string, r io.Reader, ocr OCRConfig
 		}
 		return visit(Page{Num: 0, Seq: 1, Text: text})
 	default:
-		return fmt.Errorf("%w: %q", ErrUnsupported, utils.FileExt(key))
+		// Không xảy ra: supportedExts và switch khớp nhau (TestSupportedExtsDispatched).
+		return fmt.Errorf("%w: %q", errNoHandler, ext)
 	}
 }
 
