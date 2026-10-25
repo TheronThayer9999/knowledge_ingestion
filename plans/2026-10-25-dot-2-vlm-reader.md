@@ -63,6 +63,21 @@ pipeline nào. Chưa có consumer ⇒ không đổi hành vi hiện tại.
 - Sự cố khi tạo file: `Write` sinh trùng dòng `package` ở 2 file ⇒ lỗi biên dịch ngay; bài
   học: sau mỗi lần tạo file mới phải chạy `gofmt -l` + `go build` trước khi tin là xong.
 
+## Chờ môi trường (chưa xong — ghi lại để không quên)
+
+Adapter đã xong và đã test bằng `httptest`, nhưng **chưa chứng minh được chất lượng đọc ảnh** vì
+máy dev chưa cấu hình Ollama + model ảnh. Ngày 27/10/2026 người dùng sẽ cấu hình Ollama dev;
+sau đó chạy spike:
+
+1. `ollama pull qwen2.5vl:7b` (hoặc model ảnh đang có).
+2. Bật `vlm.enabled = true`, `vlm.model` = model thật trong `configs/config.local.json`.
+3. Render 3-5 trang có bảng thật trong `loadtest/fixtures` + `docs_test_case_and_data` bằng
+   `pdftoppm` (300 DPI), gọi `Transcribe`, rồi so với bảng gốc bằng `CompareExtraction`.
+4. Ghi lại: trang nào `agree`, trang nào `conflict`, chỗ nào model bịa số.
+
+**Chỉ sau bước này mới quyết định** có làm L2 (`pdftohtml -xml`) và nối VLM vào phase 0
+hay không — nếu qwen-vl đọc sai số thì giữ nguyên hướng tất định, đừng ghép vào pipeline.
+
 ## Commit
 
 1. `docs(rag): add batch 2 plan for VLM reader`
