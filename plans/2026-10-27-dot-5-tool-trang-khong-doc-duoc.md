@@ -57,9 +57,13 @@ Chi phí gần bằng 0: 1 câu SQL trên `article_pages`, không thêm cột, k
 
 ## Đợt 6 (dự kiến, sau khi spike Ollama)
 
+**Trạng thái: HOÃN theo yêu cầu người dùng (25/10/2026) — "tính năng này để sau".** Không code trước khi
+spike Ollama đo được chất lượng đọc ảnh thật; làm sớm chỉ tốn công đoán model.
+
 `read_page_visual(article_id, page, mode)`: tải blob → render đúng trang (`pdftoppm`, cần export helper
 trong `extractor`) → `IVLMReader.Transcribe/Ask`. Chỉ đăng ký tool khi `vlm.enabled`; ngân sách 1–2
-lần/request; lỗi thì trả "không đọc được" chứ không làm hỏng run.
+lần/request; lỗi thì trả "không đọc được" chứ không làm hỏng run. Khi tool đó ra đời thì mới sửa `note`
+của `list_unreadable_pages` để nhắc agent gọi nó.
 
 ## Commit
 
