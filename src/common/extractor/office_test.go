@@ -138,26 +138,3 @@ func TestExtractPptxWithoutSlides(t *testing.T) {
 		t.Fatalf("want ErrInvalid, got %v", err)
 	}
 }
-
-// TestSupportedExtsDispatched khoá đúng lỗi cũ: đuôi có trong supportedExts
-// (= được Supports báo "đọc được", whitelist upload tin vào đó) nhưng switch
-// thiếu nhánh. Input rỗng đủ để phân biệt: handler thật trả ErrInvalid/lỗi
-// binary, còn thiếu nhánh trả errNoHandler.
-func TestSupportedExtsDispatched(t *testing.T) {
-	cfg := OCRConfig{Enabled: true, Binary: "ki-test-khong-co-tesseract"}
-	for _, ext := range SupportedExts() {
-		err := ExtractRawPages(t.Context(), "tep"+ext, strings.NewReader(""), cfg, nil, func(Page) error { return nil })
-		if errors.Is(err, errNoHandler) {
-			t.Fatalf("%q có trong supportedExts nhưng switch không có nhánh trích", ext)
-		}
-		if errors.Is(err, ErrUnsupported) {
-			t.Fatalf("%q được Supports báo hỗ trợ nhưng ExtractRawPages báo ErrUnsupported", ext)
-		}
-	}
-	if Supports("uploads/a.zip") {
-		t.Fatal(".zip không phải tài liệu, không được báo hỗ trợ")
-	}
-	if !Supports("UPLOADS/A.PDF") {
-		t.Fatal("Supports phải không phân biệt hoa thường")
-	}
-}

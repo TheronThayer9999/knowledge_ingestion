@@ -110,47 +110,16 @@ func NeedsDespace(key string) bool {
 	return strings.EqualFold(utils.FileExt(key), ".pdf")
 }
 
-// errNoHandler báo đuôi đã nằm trong supportedExts nhưng switch chưa có nhánh
-// trích — chỉ xảy ra khi ai đó thêm đuôi mà quên viết handler. Không dùng
-// ErrUnsupported để không ai nhầm thành "loại file chưa hỗ trợ".
-var errNoHandler = errors.New("extractor chưa có nhánh trích cho đuôi này")
-
-// supportedExts là NGUỒN DUY NHẤT của "extractor đọc được đuôi nào" — vừa là
-// cổng chặn đầu vào ExtractRawPages, vừa nuôi Supports/SupportedExts để test
-// đối chiếu với whitelist upload. Xưa upload nhận 13 đuôi trong khi extractor
-// chỉ có 10 nhánh: .xlsx/.pptx/.zip lọt lưới, bài upload xong worker trả
-// ErrUnsupported, người dùng chỉ thấy badge "Thất bại" mà không biết vì sao.
-// .zip bị loại luôn khỏi whitelist (đó là archive, không phải tài liệu).
-var supportedExts = map[string]bool{
-	".txt":  true,
-	".md":   true,
-	".csv":  true,
-	".json": true,
-	".docx": true,
-	".xlsx": true,
-	".pptx": true,
-	".pdf":  true,
-	".jpg":  true,
-	".jpeg": true,
-	".png":  true,
-	".webp": true,
-}
-
 // Supports báo extractor có trích được loại file này không (nhận key blob hoặc
-// tên file, chỉ xét đuôi).
+// tên file, chỉ xét đuôi). Suy ra từ registry reader — không còn bảng đuôi thứ hai.
 func Supports(key string) bool {
-	return supportedExts[strings.ToLower(utils.FileExt(key))]
+	return defaultRegistry.Supports(key)
 }
 
 // SupportedExts trả các đuôi trích được, sắp tăng dần — để test/CLI so với
 // whitelist upload mà không phải chép lại danh sách.
 func SupportedExts() []string {
-	exts := make([]string, 0, len(supportedExts))
-	for ext := range supportedExts {
-		exts = append(exts, ext)
-	}
-	slices.Sort(exts)
-	return exts
+	return defaultRegistry.Exts()
 }
 
 // ExtractRawPages trích text THÔ của từng trang rồi đẩy qua visit, KHÔNG khử
@@ -172,6 +141,9 @@ func SupportedExts() []string {
 // trang với PDF (dùng Seq để sắp). visit trả lỗi thì dừng và trả luôn lỗi đó
 // (ctx hủy, DB chết...). ctx chỉ để tôn trọng hủy — quá trình to CPU/RAM cục
 // bộ, không I/O mạng (trừ OCR gọi binary local).
+// Hàm này KHÔNG biết định dạng nào: nó chỉ dựng ReadRequest rồi để registry
+// chọn reader theo đuôi (reader.go). Đổi engine hay tách phần đọc ra riêng thì
+// sửa defaultReaders() — không sửa hàm này.
 // ctxReader kiểm tra ctx trước mỗi lần đọc — io.ReadAll/io.Copy trên blob lớn
 // dừng ngay khi job bị hủy thay vì đọc hết file rồi mới thấy lỗi. Cần cho
 // docx (đọc cả archive vào RAM) và cho phần spool PDF từ S3.
@@ -198,34 +170,13 @@ func ExtractRawPages(ctx context.Context, key string, r io.Reader, ocr OCRConfig
 	// Bọc reader để mọi đường đọc (text stream, docx, spool PDF) đều tôn
 	// trọng hủy giữa chừng, không chỉ các lệnh exec bên dưới.
 	r = &ctxReader{ctx: ctx, r: r}
-	ext := strings.ToLower(utils.FileExt(key))
-	if !supportedExts[ext] {
-		return fmt.Errorf("%w: %q", ErrUnsupported, ext)
-	}
-	switch ext {
-	case ".txt", ".md", ".csv", ".json":
-		// Loại này đọc được TUẦN TỰ nên stream thẳng ra các mảnh, không
-		// gom cả file vào RAM rồi mới chia — file 100MB RAM vẫn chỉ 256KB.
-		return plainTextPieces(r, visit)
-	case ".docx", ".xlsx", ".pptx":
-		// Họ Office Open XML: zip chứa XML, gom 1 text rồi chia mảnh Num = 0.
-		text, err := extractOffice(ext, r)
-		if err != nil {
-			return err
-		}
-		return visitPieces(0, text, visit)
-	case ".pdf":
-		return extractPDFPages(ctx, r, cfg, have, visit)
-	case ".jpg", ".jpeg", ".png", ".webp":
-		text, err := OCRImage(ctx, ocr, key, r)
-		if err != nil {
-			return err
-		}
-		return visit(Page{Num: 0, Seq: 1, Text: text})
-	default:
-		// Không xảy ra: supportedExts và switch khớp nhau (TestSupportedExtsDispatched).
-		return fmt.Errorf("%w: %q", errNoHandler, ext)
-	}
+	return defaultRegistry.Read(ctx, ReadRequest{
+		Key:    key,
+		Data:   r,
+		OCR:    cfg.ocr,
+		Layout: cfg.layout,
+		Have:   have,
+	}, visit)
 }
 
 // ExtractAll trích HẾT text của file rồi mới trả về — dùng khi không cần ghi

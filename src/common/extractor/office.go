@@ -93,18 +93,3 @@ func numberedEntries(zr *zip.Reader, prefix string) []numberedFile {
 	sort.Slice(out, func(i, j int) bool { return out[i].num < out[j].num })
 	return out
 }
-
-// extractOffice là cửa vào chung của họ Office Open XML: cả 3 loại cùng hình
-// dạng zip+XML và cùng quy ước "1 text, Num = 0", nên dispatch đặt cạnh nhau
-// thay vì lặp 3 nhánh y hệt trong ExtractRawPages. Caller đã chắc chắn ext
-// thuộc tập supportedExts.
-func extractOffice(ext string, r io.Reader) (string, error) {
-	switch ext {
-	case ".xlsx":
-		return extractXlsx(r)
-	case ".pptx":
-		return extractPptx(r)
-	default:
-		return extractDocx(r)
-	}
-}
