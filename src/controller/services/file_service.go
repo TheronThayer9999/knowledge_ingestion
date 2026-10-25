@@ -16,6 +16,11 @@ import (
 // allowedExts là whitelist loại file được upload — BE chốt, không tin content_type
 // client gửi (client khai bừa cũng không ảnh hưởng vì MIME gắn với phần mở rộng).
 // Key là phần mở rộng đã viết thường, value là MIME do BE gán và nhét vào chữ ký.
+//
+// Mọi key ở đây PHẢI trích được bởi extractor.Supports — trước đây whitelist
+// nhận .zip mà extractor không có nhánh nào, upload xong worker trả
+// ErrUnsupported và bài nằm ở failed không rõ lý do. Test
+// file_service_sync_test.go giữ 2 bên khớp nhau.
 var allowedExts = map[string]string{
 	".pdf":  "application/pdf",
 	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -29,7 +34,6 @@ var allowedExts = map[string]string{
 	".jpeg": "image/jpeg",
 	".png":  "image/png",
 	".webp": "image/webp",
-	".zip":  "application/zip",
 }
 
 type IFileService interface {

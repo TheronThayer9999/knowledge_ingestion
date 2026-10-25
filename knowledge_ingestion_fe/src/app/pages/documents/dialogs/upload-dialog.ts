@@ -38,7 +38,6 @@ const ACCEPTED_EXTS = [
   'jpeg',
   'png',
   'webp',
-  'zip',
 ];
 
 const STAGE_ORDER: UploadStage[] = ['presign', 'upload', 'create'];

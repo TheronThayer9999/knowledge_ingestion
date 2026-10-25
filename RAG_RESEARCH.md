@@ -19,7 +19,7 @@
 7. Frontend Angular 21 + Material, 5 màn (overview, documents, chat, settings, profile) + 4 dialog **[XÁC MINH]** — `knowledge_ingestion_fe/src/app/app.routes.ts:4-48`.
 8. Điểm mạnh ít dự án có: worker heartbeat + endpoint `/pipeline/articles` cho UI poll tiến trình, admin queue, LLM summary theo mục **[XÁC MINH]** — `src/controller/routers/router.go:81-98`.
 9. Thiếu lớp "đọc lại nguồn": không có API/ màn hình xem text trang gốc, cite chỉ mở dialog metadata tài liệu **[XÁC MINH]** — `knowledge_ingestion_fe/src/app/pages/chat/chat.ts:137-151`.
-10. Thiếu streaming, lưu hội thoại, lý do lỗi, feedback/đánh giá retrieval; upload nhận `.xlsx/.pptx/.zip` nhưng extractor không xử lý → bài **failed vĩnh viễn** không rõ nguyên nhân **[XÁC MINH]** — chi tiết ở mục 3.
+10. Thiếu streaming, lưu hội thoại, lý do lỗi, feedback/đánh giá retrieval; upload từng nhận `.xlsx/.pptx/.zip` trong khi extractor không xử lý → bài **failed vĩnh viễn** **[ĐÃ SỬA 25/10/2026: `.xlsx`/`.pptx` trích được bằng stdlib, `.zip` bị chặn ở upload]** — chi tiết ở mục 3.5.
 
 ---
 
@@ -216,10 +216,11 @@ Mỗi mục ghi rõ mức độ: **[ĐÃ XÁC MINH]** (đọc code) hay **[SUY L
 - FE chỉ hiện badge "Thất bại" — `knowledge_ingestion_fe/src/app/core/knowledge/knowledge.models.ts:52-86`.
 - Hệ quả: lỗi OCR thiếu binary, PDF hỏng, sai dim embedding… đều nhìn giống nhau; `loadAdapter` có warn lúc boot nhưng user cuối không thấy (`src/loader/worker.go:83-90`).
 
-### 3.5 Lệch giữa whitelist upload và khả năng extract
-- Upload nhận `.xlsx`, `.pptx`, `.zip` — `src/controller/services/file_service.go:19-33`.
-- Extractor chỉ hỗ trợ `.txt/.md/.csv/.json/.docx/.pdf` + ảnh; còn lại trả `ErrUnsupported` và bị coi là **lỗi vĩnh viễn** — `src/common/extractor/extractor.go:122-143`, `extractor.go:37-52`.
+### 3.5 Lệch giữa whitelist upload và khả năng extract — **[ĐÃ XỬ LÝ 25/10/2026]**
+- Trước: upload nhận `.xlsx`, `.pptx`, `.zip` — `src/controller/services/file_service.go`.
+- Trước: extractor chỉ hỗ trợ `.txt/.md/.csv/.json/.docx/.pdf` + ảnh; còn lại trả `ErrUnsupported` và bị coi là **lỗi vĩnh viễn**.
 - **Kết luận [ĐÃ XÁC MINH]**: upload `.xlsx/.pptx/.zip` sẽ "thành công" rồi kẹt `failed` ở phase extract, không có thông báo nguyên nhân cho user. Đây là bug UX thực tế, không phải thiếu tính năng.
+- **Cách xử lý (đợt 6, 25/10/2026)**: `.xlsx`/`.pptx` trích bằng stdlib `archive/zip` + `encoding/xml` (`extractor/xlsx.go`, `extractor/pptx.go`, helper chung `office.go`); `.zip` bỏ khỏi whitelist; `extractor.Supports`/`SupportedExts` là nguồn sự thật duy nhất, `file_service_sync_test.go` đỏ ngay nếu whitelist vượt trước extractor.
 
 ### 3.6 Tài liệu nguồn URL không bao giờ được ingest
 - Model cho phép `url` **hoặc** `storage_key` — `README.md:11-13`.
@@ -397,7 +398,7 @@ Lưu ý: repo đã có reset `box-sizing` + `100dvh` theo convention; giữ nguy
 | 1 | **Đọc nguồn: API text trang/chunk + Source panel + jump-to-page** | Biến cite thành bằng chứng kiểm chứng được — giá trị cốt lõi của RAG | M | `article_page_repository.go` (đã có `ListPagesRange`), `qdrant.ScrollNeighbors` (`connection.go:717`), `chat_dto.go` (thêm `article_name`, `section`) | Lộ text thô/OCR rác → cần nhãn "bản trích tự động"; phân quyền đọc phải scope theo `user_id` |
 | 2 | **Lưu hội thoại + danh sách hội thoại** | Không mất lịch sử khi F5; nhiều hội thoại song song; nguồn sự thật cho history | M | `src/domain` (bảng mới), `src/loader/loader.go`, FE `chat.ts` | Migration + scope user; trùng lặp với "history client gửi" — cần chọn 1 nguồn (khuyến nghị: server) |
 | 3 | **Lý do lỗi + retry cho user** | Hiện badge "Thất bại" vô nghĩa; user không biết phải làm gì | S | `articles` thêm `last_error`, `Mark*Error` (`articles_repository.go`), endpoint `POST /articles/:id/retry` | Đừng lộ chi tiết hạ tầng (key, path) — map sang câu người dùng hiểu |
-| 4 | **Đồng bộ whitelist upload ↔ extractor** | Chặn bug: `.xlsx/.pptx/.zip` upload xong chết im lặng | S (chặn) / M (hỗ trợ xlsx) | `file_service.go:19-33` vs `extractor.go:122-143` | Nếu chặn, user mất tính năng đang "tưởng có"; nếu hỗ trợ xlsx cần thêm lib + test |
+| 4 | **Đồng bộ whitelist upload ↔ extractor** — **[ĐÃ XỬ LÝ 25/10/2026]** | Chặn bug: `.xlsx/.pptx/.zip` upload xong chết im lặng | S | `extractor/office.go`, `xlsx.go`, `pptx.go`, `supports` + `file_service_sync_test.go`, FE `upload-dialog.ts` | Đã làm: `.xlsx/.pptx` trích bằng stdlib zip+XML (không thêm dep), `.zip` bị chặn; `Supports`/`SupportedExts` là nguồn sự thật, test giữ whitelist ⊆ extractor |
 | 5 | **Streaming SSE cho /chat** | Cảm giác chờ 10–120s hiện tại là điểm chết UX; cho thấy tiến trình tool | M | `eino/agent.go` (iterator đã có event), handler mới `chat_stream`, FE dùng `EventSource`/fetch stream | `WriteTimeout`/proxy buffer; hủy giữa stream phải dọn context; tương thích `thinking` |
 | 6 | **Chặn/ cảnh báo khi tài liệu chưa sẵn sàng** | Tránh "hỏi mà không có dữ liệu" gây mất niềm tin | S | `/pipeline/articles` (đã có), `chat.ts` | Không được chặn quá tay (vẫn cho hỏi trên phần đã done) |
 | 7 | **Scope nhiều thư mục + chọn từng tài liệu** | Đúng nhu cầu "hỏi trong 3 văn bản này" | S/M | `chat_dto.go:25`, Qdrant filter đã hỗ trợ `ArticleID` (`connection.go:532`) | Payload filter dài → cần trần số ID |
@@ -530,7 +531,7 @@ Cột "Trạng thái": **có sẵn** = thêm dependency là dùng; **đã có tr
 | 1 | Source panel + text trang | `@angular/cdk/scrolling` (virtual scroll, đã nằm trong Material); `pdfjs-dist` chỉ nếu muốn hiển thị PDF gốc | đã có / có sẵn |
 | 2 | Session + messages | GORM (đã dùng); tìm hội thoại cũ: Postgres `tsvector` + `pg_trgm` | đã có |
 | 3 | Lý do lỗi + retry | cột DB + endpoint | đã có |
-| 4 | Đồng bộ whitelist↔extractor | `github.com/xuri/excelize/v2` (xlsx); **pptx: chưa có lib Go ổn định** (unioffice là license thương mại) ⇒ khuyến nghị **chặn** thay vì hứa | có sẵn / chưa có |
+| 4 | Đồng bộ whitelist↔extractor | **không cần lib**: `.xlsx`/`.pptx` là zip+XML, đọc bằng stdlib; `.zip` chặn ở upload | đã xong (đợt 6) |
 | 5 | Streaming SSE | Go stdlib `http.Flusher`; FE `@microsoft/fetch-event-source` (**`EventSource` không POST được**) | có sẵn |
 | 6 | Chặn khi chưa index | tái dùng `/pipeline/articles` | đã có |
 | 7 | Scope nhiều thư mục | có sẵn filter `CategoryIDs` | đã có |
