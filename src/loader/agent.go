@@ -50,7 +50,9 @@ func newProviderAgents(
 	for slug, pcfg := range llms.Providers {
 		providers = append(providers, eino.NewConfigProvider(slug, pcfg))
 	}
-	return eino.BuildProviderAgents(prompts.System, llms.DefaultProvider, tools, providers...)
+	return eino.BuildProviderAgents(
+		eino.InstructionSet{Base: prompts.System, Sheets: prompts.Sheets},
+		llms.DefaultProvider, tools, providers...)
 }
 
 // newHybridSearcher dựng pipeline hybrid dùng chung cho cả 2 đường /search

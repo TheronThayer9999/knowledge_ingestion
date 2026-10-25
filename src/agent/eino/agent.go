@@ -33,7 +33,7 @@ type ChatAgent struct {
 	runner *adk.Runner
 }
 
-func NewChatAgent(model einomodel.ToolCallingChatModel, instruction string, tls ...einotool.BaseTool) (*ChatAgent, error) {
+func NewChatAgent(model einomodel.ToolCallingChatModel, instr InstructionSet, tls ...einotool.BaseTool) (*ChatAgent, error) {
 	if model == nil {
 		return nil, fmt.Errorf("eino agent: model is required")
 	}
@@ -56,14 +56,17 @@ func NewChatAgent(model einomodel.ToolCallingChatModel, instruction string, tls 
 	agent, err := adk.NewChatModelAgent(context.Background(), &adk.ChatModelAgentConfig{
 		Name:        "knowledge_chat",
 		Description: "Trợ lý tri thức: dùng tools đọc tài liệu đã upload rồi trả lời kèm trích dẫn [^n]",
-		Instruction: instruction,
+		// Instruction dựng sẵn chỉ là bản không có luật bảng tính — middleware
+		// promptInjector render lại theo từng lượt (ngày hôm nay + fragment
+		// sheet khi câu hỏi liên quan).
+		Instruction: instr.Render(DefaultPromptVars()),
 		Model:       model,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
 				Tools: base,
 			},
 		},
-		Handlers:      []adk.ChatModelAgentMiddleware{summ},
+		Handlers:      []adk.ChatModelAgentMiddleware{&promptInjector{instr: instr}, summ},
 		MaxIterations: maxIterations,
 	})
 	if err != nil {
@@ -79,6 +82,21 @@ func NewChatAgent(model einomodel.ToolCallingChatModel, instruction string, tls 
 // nén chính do summarization middleware lo khi vượt ngưỡng (summarize.go),
 // nên giờ giữ được 40 lượt thay vì cắt cứng 6 như trước.
 const maxHistoryTurns = 40
+
+// promptInjector chèn phần instruction thay đổi theo lượt: ngày hôm nay và
+// fragment luật bảng tính (chỉ khi câu hỏi liên quan). ChatModelAgent cố định
+// instruction lúc dựng agent, nhưng middleware BeforeAgent được gọi mỗi lượt
+// và sửa được runCtx.Instruction — đúng hook Eino dành cho việc này (xem
+// adk/handler.go, TypedChatModelAgentMiddleware.BeforeAgent).
+type promptInjector struct {
+	*adk.BaseChatModelAgentMiddleware
+	instr InstructionSet
+}
+
+func (h *promptInjector) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
+	runCtx.Instruction = h.instr.Render(promptVarsFrom(ctx))
+	return ctx, runCtx, nil
+}
 
 // citationRe bắt nhãn trích dẫn [^n] của lượt trước. Số n của lượt cũ không
 // khớp số của lượt đang chạy nên bỏ đi, tránh model nhầm nguồn.
@@ -120,6 +138,13 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 		}
 	}
 	msgs = append(msgs, schema.UserMessage(query))
+
+	// Biến prompt của lượt: ngày hôm nay + có nạp fragment bảng tính hay
+	// không. Đặt ở đây (sau khi đã cắt history) để câu nối tiếp vẫn soi được
+	// các lượt gần nhất.
+	vars := DefaultPromptVars()
+	vars.Sheets = IsSpreadsheetQuestion(query, history)
+	ctx = WithPromptVars(ctx, vars)
 
 	iter := a.runner.Run(ctx, msgs, adk.WithChatModelOptions([]einomodel.Option{einomodel.WithModel(model)}))
 	var answer string

@@ -81,7 +81,7 @@ func (p configProvider) DefaultModel() string { return p.cfg.Model }
 // NewModel lỗi (thiếu key/cấu hình) thì warn + bỏ qua, boot vẫn lên; request
 // nào chọn nó mới 400. Tools dùng chung instance cho mọi agent (stateless theo
 // request qua Scope trong ctx). Không còn agent nào thì fail-fast vì app mù LLM.
-func BuildProviderAgents(system, defaultProvider string, tools []einotool.BaseTool, providers ...LLMProvider) (*ProviderAgents, error) {
+func BuildProviderAgents(system InstructionSet, defaultProvider string, tools []einotool.BaseTool, providers ...LLMProvider) (*ProviderAgents, error) {
 	out := &ProviderAgents{
 		Agents:          make(map[string]*ChatAgent),
 		ThinkingAgents:  make(map[string]*ChatAgent),
@@ -129,7 +129,7 @@ func BuildProviderAgents(system, defaultProvider string, tools []einotool.BaseTo
 // thường: cờ thinking của request khi đó chỉ thành "không có tác dụng ở backend
 // này", chat vẫn chạy chứ không chết lúc boot hay thành 500.
 func buildThinkingAgent(
-	name string, p LLMProvider, system string,
+	name string, p LLMProvider, system InstructionSet,
 	tools []einotool.BaseTool, fallback *ChatAgent,
 ) *ChatAgent {
 	tm, ok := p.(thinkingModeler)
