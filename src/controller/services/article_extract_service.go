@@ -46,18 +46,24 @@ type articleExtractService struct {
 	// value (không phải interface) vì chỉ là tham số chạy, không cần mock ở
 	// service (test truyền OCRConfig{} là tắt).
 	ocr extractor.OCRConfig
+	// opts là các tuỳ chọn bổ sung của lượt trích (hiện: đo bố cục phức tạp),
+	// cũng build từ config ở loader. Giữ dạng slice để thêm tuỳ chọn mới mà
+	// không phải sửa chữ ký constructor lần nữa.
+	opts extractor.ExtractOptions
 }
 
 func NewArticleExtractService(
 	articleRepo domain.ArticleExtractQueue,
 	pageRepo domain.IArticlePageRepository,
 	storage storage.IStorage,
-	ocr extractor.OCRConfig) IArticleExtractService {
+	ocr extractor.OCRConfig,
+	opts extractor.ExtractOptions) IArticleExtractService {
 	return &articleExtractService{
 		articleRepo: articleRepo,
 		pageRepo:    pageRepo,
 		storage:     storage,
 		ocr:         ocr,
+		opts:        opts,
 	}
 }
 
@@ -273,6 +279,9 @@ func (s *articleExtractService) extractOne(ctx context.Context, traceID string, 
 			Seq:       pg.Seq,
 			PageNum:   pg.Num,
 			Text:      stripNUL(pg.Text),
+			// Layout = 0 khi không bật đo — cột NOT NULL default 0 nên
+			// ghi thẳng, không cần phân biệt "chưa đo" ở tầng DB.
+			LayoutScore: pg.Layout,
 		})
 		sinceFlush++
 		if sinceFlush >= constants.EXTRACT_FLUSH_PAGES {
@@ -280,7 +289,7 @@ func (s *articleExtractService) extractOne(ctx context.Context, traceID string, 
 		}
 		return nil
 	}
-	err = extractor.ExtractRawPages(ctx, article.StorageKey, rc, s.ocr, seen, visit)
+	err = extractor.ExtractRawPages(ctx, article.StorageKey, rc, s.ocr, seen, visit, s.opts...)
 	// Close NGAY sau khi trích xong chứ không cuối hàm: OCR 1 trang scan có thể
 	// chạy hàng chục giây, giữ rc mở suốt là giữ connection S3 bị giữ vô ích.
 	_ = rc.Close()

@@ -274,7 +274,7 @@ func TestExtractStressRealPDF(t *testing.T) {
 	repo := &stressPageRepo{}
 	arts := &stressArticles{}
 	svc := NewArticleExtractService(arts, repo, &stressStorage{data: raw},
-		extractor.OCRConfig{}).(*articleExtractService)
+		extractor.OCRConfig{}, nil).(*articleExtractService)
 	article := &domain.Article{BaseModel: domain.BaseModel{ID: 1}, StorageKey: "uploads/real.pdf"}
 
 	peakMB, totalMB, elapsed := peakHeapMB(func() {
@@ -325,7 +325,7 @@ func TestExtractStressRealPDFConcurrent(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			svc := NewArticleExtractService(arts, repo, &stressStorage{data: buffers[id]},
-				extractor.OCRConfig{}).(*articleExtractService)
+				extractor.OCRConfig{}, nil).(*articleExtractService)
 			a := &domain.Article{BaseModel: domain.BaseModel{ID: int64(id + 1)}, StorageKey: "uploads/real.pdf"}
 			if err := svc.extractOne(context.Background(), "real", a); err != nil {
 				t.Errorf("bài %d lỗi: %v", id, err)
@@ -376,7 +376,7 @@ func TestExtractStressSoak(t *testing.T) {
 				defer wg.Done()
 				defer func() { <-sem }()
 				svc := NewArticleExtractService(arts, repo, &stressStorage{data: raw},
-					extractor.OCRConfig{}).(*articleExtractService)
+					extractor.OCRConfig{}, nil).(*articleExtractService)
 				a := &domain.Article{BaseModel: domain.BaseModel{ID: int64(r*10 + id)}, StorageKey: "uploads/soak.pdf"}
 				if err := svc.extractOne(context.Background(), "soak", a); err != nil {
 					t.Errorf("bài %d lỗi: %v", id, err)
@@ -438,7 +438,7 @@ func TestExtractStressPDF(t *testing.T) {
 	repo := &stressPageRepo{}
 	arts := &stressArticles{}
 	svc := NewArticleExtractService(arts, repo, &stressStorage{data: raw},
-		extractor.OCRConfig{}).(*articleExtractService)
+		extractor.OCRConfig{}, nil).(*articleExtractService)
 
 	article := &domain.Article{BaseModel: domain.BaseModel{ID: 1}, StorageKey: "uploads/big.pdf"}
 
@@ -475,7 +475,7 @@ func TestExtractStressConcurrent(t *testing.T) {
 	repo := &stressPageRepo{}
 	arts := &stressArticles{}
 	svc := NewArticleExtractService(arts, repo, &stressStorage{data: raw},
-		extractor.OCRConfig{}).(*articleExtractService)
+		extractor.OCRConfig{}, nil).(*articleExtractService)
 
 	peakMB, totalMB, elapsed := peakHeapMB(func() {
 		var wg sync.WaitGroup
@@ -517,7 +517,7 @@ func TestExtractStressUnderMemoryLimit(t *testing.T) {
 	repo := &stressPageRepo{}
 	arts := &stressArticles{}
 	svc := NewArticleExtractService(arts, repo, &stressStorage{data: raw},
-		extractor.OCRConfig{}).(*articleExtractService)
+		extractor.OCRConfig{}, nil).(*articleExtractService)
 	article := &domain.Article{BaseModel: domain.BaseModel{ID: 1}, StorageKey: "uploads/big.pdf"}
 
 	start := time.Now()

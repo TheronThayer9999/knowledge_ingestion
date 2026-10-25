@@ -120,7 +120,8 @@
   },
   "worker": {
     "trim_interval_hours": 24,
-    "chunker": "recursive"
+    "chunker": "recursive",
+    "layout_detector": false
   },
   "vlm": {
     "enabled": false,

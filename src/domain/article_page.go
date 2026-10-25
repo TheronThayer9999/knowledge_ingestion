@@ -51,6 +51,21 @@ type ArticlePage struct {
 	// Text là text thô của mảnh, có thể rỗng (trang trắng, trang lỗi, PDF
 	// không nhúng font) — vẫn giữ row để số trang khớp file gốc.
 	Text string `json:"text" gorm:"type:text;not null"`
+	// LayoutScore là ĐIỂM bố cục phức tạp của trang trong [0,1] do phase
+	// extract đo (extractor.DetectLayout trên text `pdftotext -layout`).
+	//
+	// VÌ SAO LƯU ĐIỂM CHỨ KHÔNG LƯU BOOL: ngưỡng "bao nhiêu là bảng" cần
+	// calibrate trên dữ liệu thật. Lưu điểm thì đổi ngưỡng chỉ là đổi hằng số
+	// rồi chạy một câu SELECT/UPDATE dẫn xuất, không phải trích lại cả kho.
+	// Câu hỏi "trang nào cần L2/VLM" = `WHERE layout_score >= ngưỡng`.
+	//
+	// 0 nghĩa là "trang sạch" HOẶC "lúc trích chưa bật đo" — đây là lý do
+	// mặc định của tính năng là TẮT, và cũng là lý do chỉ số này KHÔNG được
+	// dùng để kết luận sạch, chỉ để lọc ra trang đáng xem lại.
+	//
+	// default:0 BẮT BUỘC cùng lý do với Seq: AutoMigrate thêm cột NOT NULL
+	// vào bảng đã có dữ liệu sẽ fail nếu không có DEFAULT.
+	LayoutScore float64 `json:"layout_score" gorm:"not null;default:0"`
 }
 
 func (ArticlePage) TableName() string {

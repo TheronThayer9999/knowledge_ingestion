@@ -248,6 +248,11 @@ type WorkerConfig struct {
 	// tắt), "manual" (Split thủ công cũ, giữ cho test/fallback).
 	Chunker         string `json:"chunker"`
 	EnhanceKeywords bool   `json:"enhance_keywords"`
+	// LayoutDetector bật đo bố cục phức tạp (bảng, nhiều cột) cho PDF ngay
+	// trong phase extract — thêm 1 lượt `pdftotext -layout` mỗi lần trích,
+	// kết quả lưu vào article_pages.layout_score. Mặc định TẮT: bật là tăng
+	// thời gian extract nên chỉ bật khi cần lọc ra trang cho L2/VLM.
+	LayoutDetector bool `json:"layout_detector"`
 }
 
 // AgentConfig giữ đường dẫn thư mục prompt LLM của agent (prompts/*.md) —

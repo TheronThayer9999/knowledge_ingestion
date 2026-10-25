@@ -99,6 +99,16 @@ func LoadWorkerInfra() []fx.Option {
 				PSM:          o.PSM,
 			}
 		}),
+		// Tuỳ chọn của một lượt trích, map từ config worker — bật/tắt chỉ
+		// cần sửa JSON rồi restart worker. Để TẮT thì trả slice rỗng chứ
+		// không trả option `false`: mặc định của extractor đã là không đo,
+		// tránh hai nguồn sự thật cho cùng một quyết định.
+		fx.Provide(func(cfg config.IConfig) extractor.ExtractOptions {
+			if !cfg.GetWorker().LayoutDetector {
+				return nil
+			}
+			return extractor.ExtractOptions{extractor.WithLayoutDetection(true)}
+		}),
 		// Role interface hẹp cho worker — cùng 1 instance ArticleRepository,
 		// fx match theo type tường minh nên bind 1 dòng mỗi vai.
 		fx.Provide(func(r domain.IArticleRepository) domain.ArticleExtractQueue { return r }),
