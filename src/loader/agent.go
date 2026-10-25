@@ -28,7 +28,8 @@ func newProviderAgents(
 	categoryRepo domain.ICategoryRepositoryImpl,
 	vectors domain.IVectorStore,
 	articleRepo domain.IArticleRepository,
-	pageIssues domain.ArticlePageIssues) (*ProviderAgents, error) {
+	pageIssues domain.ArticlePageIssues,
+	pageText domain.ArticlePageText) (*ProviderAgents, error) {
 
 	tools, err := eino.NewDefaultTools(eino.ToolDeps{
 		Hybrid:     hybrid,
@@ -36,6 +37,7 @@ func newProviderAgents(
 		Categories: categoryRepo,
 		Articles:   articleRepo,
 		Pages:      pageIssues,
+		PageText:   pageText,
 	})
 	if err != nil {
 		return nil, err

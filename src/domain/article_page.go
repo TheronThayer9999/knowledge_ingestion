@@ -107,6 +107,19 @@ type ArticlePageIssues interface {
 	ListPageIssues(ctx context.Context, articleID int64, minChars int) ([]PageIssue, error)
 }
 
+// ArticlePageText là VAI HẸP "đọc text đã trích theo cửa sổ" cho tool agent
+// (list_sheets/read_sheet) — chỉ ĐỌC, không ghi/không xoá như đường của
+// worker, nên tool không phải cầm cả IArticlePageRepository (ISP) và test
+// chỉ cần 1 hàm giả.
+//
+// VÌ SAO ĐỌC THEO CỬA SỔ CHỨ KHÔNG ListByArticle: cùng lý do với phase index
+// — tài liệu lớn không được kéo hết text lên RAM chỉ để trả lời "có sheet
+// nào"; tool tự dừng khi đủ hoặc chạm trần.
+type ArticlePageText interface {
+	// ListPagesRange trả tối đa limit mảnh có seq >= fromSeq, theo thứ tự seq.
+	ListPagesRange(ctx context.Context, articleID int64, fromSeq, limit int) ([]*ArticlePage, error)
+}
+
 type IArticlePageRepository interface {
 	// CreateBatch lưu 1 lô mảnh trong transaction, ON CONFLICT DO NOTHING
 	// theo unique (article_id, seq) — lô ghi lại sau khi job chết là no-op

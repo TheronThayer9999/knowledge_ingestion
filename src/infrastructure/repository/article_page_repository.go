@@ -30,6 +30,12 @@ func NewArticlePageIssues(db *gorm.DB) domain.ArticlePageIssues {
 	return &ArticlePageRepository{db: db}
 }
 
+// NewArticlePageText cũng vậy, cho tool agent đọc text đã trích theo cửa sổ
+// (list_sheets/read_sheet) — không mở đường ghi cho agent.
+func NewArticlePageText(db *gorm.DB) domain.ArticlePageText {
+	return &ArticlePageRepository{db: db}
+}
+
 // pageInsertBatch số row mỗi câu INSERT — 1 mảnh text tối đa 256KB nên chia
 // nhỏ hơn chunk: 20 mảnh × 1 cột text vẫn xa trần param Postgres.
 const pageInsertBatch = 20

@@ -19,6 +19,9 @@ type ToolDeps struct {
 	Articles   domain.IArticleRepository
 	// Pages là vai hẹp "trang nào không đọc được" — tool báo độ phủ của file.
 	Pages domain.ArticlePageIssues
+	// PageText là vai hẹp "đọc text đã trích theo cửa sổ" — tool sheet của
+	// Excel (list_sheets/read_sheet) đọc lại từ article_pages.
+	PageText domain.ArticlePageText
 }
 
 // NewDefaultTools dựng toàn bộ tool cho agent theo đúng thứ tự đăng ký —
@@ -53,7 +56,15 @@ func NewDefaultTools(d ToolDeps) ([]einotool.BaseTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	tools := []einotool.BaseTool{search, cats, ctxTool, info, sections, readArt, issues}
+	sheets, err := NewListSheetsTool(d.Articles, d.PageText)
+	if err != nil {
+		return nil, err
+	}
+	sheet, err := NewReadSheetTool(d.Articles, d.PageText)
+	if err != nil {
+		return nil, err
+	}
+	tools := []einotool.BaseTool{search, cats, ctxTool, info, sections, readArt, issues, sheets, sheet}
 	for _, t := range tools {
 		if t == nil {
 			return nil, fmt.Errorf("eino tools: tool nil")

@@ -66,6 +66,9 @@ func loadAdapter() []fx.Option {
 		// (constructor riêng vì cái trên trả interface lớn, xem giải thích
 		// trong repository).
 		fx.Provide(repository.NewArticlePageIssues),
+		// Tool agent đọc sheet của Excel — cùng bảng, vai hẹp "đọc text theo
+		// cửa sổ" (không mở đường ghi cho agent).
+		fx.Provide(repository.NewArticlePageText),
 		// API /sections đọc summary đã compile (phase 1b) merge vào PageIndex.
 		fx.Provide(repository.NewArticleSectionRepository),
 		fx.Provide(repository.NewUnitOfWork),
