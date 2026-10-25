@@ -17,3 +17,20 @@ func TestLoadPromptsFromRepo(t *testing.T) {
 		t.Error("system prompt thiếu quy ước trích dẫn [^n]")
 	}
 }
+
+// TestLoadPromptsLoadsSheetsFragment: fragment luật bảng tính là file riêng,
+// phải load được lúc startup (thiếu file thì agent trả lời câu hỏi Excel bằng
+// suy đoán thay vì đọc sheet). Nội dung phải nhắc "sheet" — nếu ai đó làm rỗng
+// file thì test này đỏ chứ không âm thầm mất luật.
+func TestLoadPromptsLoadsSheetsFragment(t *testing.T) {
+	p, err := LoadPrompts("../../../prompts")
+	if err != nil {
+		t.Fatalf("LoadPrompts: %v", err)
+	}
+	if strings.TrimSpace(p.Sheets) == "" {
+		t.Fatal("fragment chat_system_sheets.md rỗng")
+	}
+	if !strings.Contains(strings.ToLower(p.Sheets), "sheet") {
+		t.Error("fragment bảng tính không nhắc tới sheet")
+	}
+}
