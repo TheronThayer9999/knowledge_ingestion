@@ -33,6 +33,55 @@ func tesseractPath(t *testing.T) string {
 	return ""
 }
 
+// TestMissingLangs khoá phần THUẦN của kiểm tra traineddata: config viết
+// "vie+eng" nhưng engine chỉ có 1 gói thì phải báo đúng gói còn thiếu, để
+// warn lúc boot chỉ ra thứ cần cài thay vì bắt người vận hành tự đoán.
+func TestMissingLangs(t *testing.T) {
+	tests := []struct {
+		name      string
+		available []string
+		lang      string
+		want      []string
+	}{
+		{name: "đủ cả hai", available: []string{"eng", "osd", "vie"}, lang: "vie+eng", want: nil},
+		{name: "thiếu eng", available: []string{"osd", "vie"}, lang: "vie+eng", want: []string{"eng"}},
+		{name: "config trống", available: []string{"vie"}, lang: "", want: nil},
+		{name: "có khoảng trắng thừa", available: []string{"vie", "eng"}, lang: " vie + eng ", want: nil},
+		{name: "trùng lặp chỉ báo một lần", available: []string{"vie"}, lang: "eng+eng", want: []string{"eng"}},
+		{name: "khác hoa thường", available: []string{"VIE", "Eng"}, lang: "vie+eng", want: nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := MissingLangs(tc.available, tc.lang)
+			if len(got) != len(tc.want) {
+				t.Fatalf("missing = %v, muốn %v", got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Fatalf("missing = %v, muốn %v", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// TestListLangs chạy với engine thật để chắc phần parse không vướng dòng
+// tiêu đề ("List of available languages in ... (3):") hay đường dẫn Windows.
+func TestListLangs(t *testing.T) {
+	langs, err := ListLangs(t.Context(), tesseractPath(t))
+	if err != nil {
+		t.Fatalf("ListLangs lỗi: %v", err)
+	}
+	if len(langs) == 0 {
+		t.Fatal("không parse được ngôn ngữ nào")
+	}
+	for _, l := range langs {
+		if strings.ContainsAny(l, " :") {
+			t.Fatalf("parse sai, dính cả dòng tiêu đề: %q", l)
+		}
+	}
+}
+
 // popplerPdftoppm tìm pdftoppm (poppler) để trích PDF thật. Thiếu thì skip.
 // Các công cụ khác của poppler (pdfinfo, pdftotext) suy từ thư mục này.
 func popplerPdftoppm(t *testing.T) string {

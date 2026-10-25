@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -98,6 +99,30 @@ func LoadWorkerInfra() []fx.Option {
 				MinTextChars: o.MinTextChars,
 				PSM:          o.PSM,
 			}
+		}),
+		// Kiểm tra traineddata lúc boot: thiếu gói ngôn ngữ thì tesseract
+		// exit != 0 cho MỌI trang (không phải "đọc kém chính xác") — job scan
+		// chết sau 10 lần retry mà log chỉ nói "tesseract lỗi". Ở đây chỉ
+		// WARN, không chặn boot: vẫn có thể chỉ dùng PDF có text layer.
+		fx.Invoke(func(cfg config.IConfig) {
+			o := cfg.GetOCR()
+			if !o.Enabled || strings.TrimSpace(o.Binary) == "" {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			have, err := extractor.ListLangs(ctx, o.Binary)
+			if err != nil {
+				logs.Warnw("ocr: không đọc được danh sách ngôn ngữ",
+					"binary", o.Binary, "error", err)
+				return
+			}
+			if miss := extractor.MissingLangs(have, o.Lang); len(miss) > 0 {
+				logs.Warnw("ocr: thiếu traineddata — trang scan sẽ lỗi, không chỉ kém chính xác",
+					"missing", miss, "available", have, "lang", o.Lang)
+				return
+			}
+			logs.Infow("ocr: đủ traineddata", "lang", o.Lang, "available", have)
 		}),
 		// Tuỳ chọn của một lượt trích, map từ config worker — bật/tắt chỉ
 		// cần sửa JSON rồi restart worker. Để TẮT thì trả slice rỗng chứ

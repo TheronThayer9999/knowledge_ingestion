@@ -23,6 +23,9 @@ const (
 	// defaultOCRTimeout khi service quên set — engine local vài giây/trang là
 	// cùng, 120s là trần an toàn.
 	defaultOCRTimeout = 120 * time.Second
+	// ocrListLangsTimeout chặn trường hợp binary trỏ sai đường dẫn (một
+	// chương trình không chịu thoát) — chỉ là lệnh hỏi, 10s là quá đủ.
+	ocrListLangsTimeout = 10 * time.Second
 )
 
 // OCRConfig giữ công tắc + đường dẫn engine Tesseract — service build từ
@@ -142,4 +145,64 @@ func firstLine(s string) string {
 		return strings.TrimSpace(s[:i])
 	}
 	return strings.TrimSpace(s)
+}
+
+// ListLangs hỏi engine những gói tessdata đã cài (`tesseract --list-langs`).
+//
+// VÌ SAO CẦN: thiếu gói ngôn ngữ KHÔNG phải "đọc kém chính xác" mà là
+// tesseract exit != 0 cho MỌI trang — job scan chết sau 10 lần retry với log
+// chỉ nói "tesseract lỗi". Hỏi danh sách lúc boot để người vận hành biết ngay.
+//
+// Chỉ dùng lúc boot; nếu binary trỏ sai đường dẫn thì tốn tối đa
+// ocrListLangsTimeout, không ảnh hưởng request nào.
+func ListLangs(ctx context.Context, binary string) ([]string, error) {
+	if strings.TrimSpace(binary) == "" {
+		return nil, fmt.Errorf("ocr: thiếu đường dẫn binary để hỏi danh sách ngôn ngữ")
+	}
+	tctx, cancel := context.WithTimeout(ctx, ocrListLangsTimeout)
+	defer cancel()
+	// CombinedOutput: tuỳ bản Tesseract, phần tiêu đề có thể ra stderr —
+	// parseLangs lọc theo hình dạng dòng nên nhận cả hai luồng là an toàn nhất.
+	out, err := exec.CommandContext(tctx, binary, "--list-langs").CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("tesseract --list-langs: %w (%s)", err, firstLine(string(out)))
+	}
+	return parseLangs(string(out)), nil
+}
+
+// parseLangs tách danh sách ngôn ngữ từ output --list-langs. Mỗi ngôn ngữ là
+// một token đứng riêng một dòng; dòng tiêu đề ("List of available languages
+// in C:\... (3):") có khoảng trắng/dấu hai chấm nên bị loại.
+func parseLangs(out string) []string {
+	var langs []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.ContainsAny(line, " :\t") {
+			continue
+		}
+		langs = append(langs, line)
+	}
+	return langs
+}
+
+// MissingLangs trả những ngôn ngữ trong chuỗi config (vd "vie+eng") mà engine
+// KHÔNG có — đúng chuỗi sắp truyền cho `-l` nên caller so trực tiếp được.
+//
+// Hàm thuần: không chạm đĩa/process, test được offline.
+func MissingLangs(available []string, lang string) []string {
+	have := make(map[string]bool, len(available))
+	for _, l := range available {
+		have[strings.ToLower(strings.TrimSpace(l))] = true
+	}
+	seen := make(map[string]bool, 2)
+	var missing []string
+	for _, l := range strings.Split(lang, "+") {
+		l = strings.ToLower(strings.TrimSpace(l))
+		if l == "" || have[l] || seen[l] {
+			continue
+		}
+		seen[l] = true
+		missing = append(missing, l)
+	}
+	return missing
 }

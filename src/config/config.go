@@ -163,7 +163,9 @@ type QdrantConfig struct {
 // os/exec cho file ảnh (jpg/png/webp), KHÔNG qua Python trung gian. Binary
 // mặc định "tesseract" (ăn theo PATH, hợp Linux/prod); Windows dev trỏ thẳng
 // "C:\Program Files\Tesseract-OCR\tesseract.exe" trong config.json hoặc env
-// OCR_BINARY. Lang theo model tessdata (file _tesseract.md chốt "vie").
+// OCR_BINARY. Lang theo model tessdata, nhận chuỗi nhiều gói kiểu "vie+eng"
+// (engine chọn model tốt hơn cho TỪNG từ — xem file _tesseract.md); tài liệu
+// chỉ toàn tiếng Việt thì "vie" là đủ và nhanh hơn.
 type OCRConfig struct {
 	Enabled    bool   `json:"enabled"`
 	Binary     string `json:"binary"`
@@ -416,7 +418,10 @@ func Load(path string) (IConfig, error) {
 		cfg.OCR.Binary = "tesseract" // ăn theo PATH (Linux/prod)
 	}
 	if cfg.OCR.Lang == "" {
-		cfg.OCR.Lang = "vie" // file _tesseract.md chốt model tiếng Việt
+		// Default giữ "vie" chứ không phải "vie+eng": máy chưa cài gói eng
+		// sẽ làm tesseract exit != 0 cho MỌI trang (không chỉ kém chính
+		// xác). Máy nào đã có eng thì khai "vie+eng" trong config.
+		cfg.OCR.Lang = "vie"
 	}
 	if cfg.OCR.TimeoutSec <= 0 {
 		cfg.OCR.TimeoutSec = 120
