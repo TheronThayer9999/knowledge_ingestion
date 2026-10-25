@@ -551,7 +551,7 @@ Cột "Trạng thái": **có sẵn** = thêm dependency là dùng; **đã có tr
 | 21 | Chia sẻ hội thoại | token share | đã có |
 | 22 | Sparse vector (BM25/SPLADE) | `github.com/qdrant/go-client` hỗ trợ sparse vector | có sẵn |
 | 23 | Graph view | `mermaid` (đơn giản) hoặc `cytoscape` | có sẵn |
-| 24 | Table-aware extraction | xlsx: `excelize/v2`; PDF: **poppler có sẵn `pdftohtml -xml`** (block + toạ độ, không thêm dep) — xem §6.11; VLM chỉ là lớp dự phòng | có sẵn một phần |
+| 24 | Table-aware extraction | xlsx: `excelize/v2` (port đã sẵn — cắm chỉ đổi 1 dòng, xem §6.19); PDF: **poppler có sẵn `pdftohtml -xml`** (block + toạ độ, không thêm dep) — xem §6.11; VLM chỉ là lớp dự phòng | có sẵn một phần |
 | 25 | Admin UI (queue/consistency) | tái dùng 3 API đã có | đã có |
 | 26 | Team/multi-user | đổi mô hình bảo mật | chưa có |
 | 27 | File đính kèm trong chat | `extractor.ExtractRawPages` có sẵn (`extractor.go:115`) + `InferTool`; **không cần lib mới** | đã có một phần |
@@ -1188,6 +1188,73 @@ Ba lựa chọn, theo thứ tự ưu tiên:
 | X5 | Dashboard tỉ lệ `agree/minor/conflict` từ trace | S | 1 (cần A1) |
 
 **X1 làm được ngay hôm nay** và là điều kiện cho mọi thứ còn lại — không có nó thì không biết cross-check đang bắt lỗi hay chỉ đang đốt token.
+
+### 6.19 Extractor là port + registry, và 2 tool sheet cho agent
+
+#### a) Vấn đề: hai bảng đuôi và một `switch` trong lõi pipeline
+
+Đợt 6 đã trích được `.xlsx`/`.pptx` bằng stdlib, nhưng dispatch vẫn là `switch ext` trong
+`ExtractRawPages` + bảng `supportedExts` song song. Hệ quả: đổi engine (excelize, unioffice,
+pdfcpu) là sửa thân hàm lõi; thêm định dạng là sửa 3 chỗ (switch, bảng đuôi, test); và không có
+bề mặt nào để nhấc phần đọc tài liệu ra khỏi process worker.
+
+#### b) Quyết định: mỗi định dạng là một `Reader`, registry kiểu “sau thắng”
+
+```
+ExtractRawPages (chữ ký không đổi)
+        │ ReadRequest{Key, Data, OCR, Layout, Have}
+        ▼
+Registry.Read ──theo đuôi──▶ read_text / read_docx / read_xlsx / read_pptx / read_pdf / read_image
+```
+
+| Điểm | Cách làm | Lý do |
+|---|---|---|
+| Thay engine | đổi **1 dòng** trong `defaultReaders()` (`readers.go`) | pipeline không biết reader nào đang chạy |
+| Thêm định dạng | thêm 1 `Reader` + đăng ký | không còn “bảng đuôi thứ hai” để lệch với whitelist upload |
+| Đuôi hỗ trợ | `Supports`/`SupportedExts` **suy ra từ registry** | 1 nguồn sự thật, xoá `supportedExts`/`errNoHandler`/`extractOffice` |
+| Test cắm adapter | `DefaultRegistry().With(fake)` trả **bản sao** | không có trạng thái toàn cục mutable; `.docx` vẫn về stdlib |
+| Dependency | **không thêm** (`Reader` chỉ là interface) | giữ “un dependency”; excelize chỉ là ví dụ trong doc |
+
+#### c) Vì sao **không** dựng MCP server (dù bề mặt đã đúng hình dạng)
+
+WordCraft (`storytold/wordcraft`) tách `wordcraft-mcp` (L5) khỏi engine để editor/CLI/MCP dùng
+chung bộ command. Ở đây app **đã là agent** (Eino in-process), thêm process + transport chỉ đổi
+lấy đúng chức năng đó, kèm thêm 1 chỗ có thể chết. Cái cần tách là **engine đọc** (nặng, dễ thay)
+— đã tách sau interface `Reader`. Nếu sau này thật sự cần khác process thì ánh xạ đã sẵn:
+`Registry.Tools()` ↔ `tools/list`, `Registry.Read(ReadRequest, visit)` ↔ `tools/call`, `Page` ↔
+`[{num, seq, text}]`; điều kiện để tách được là `ReadRequest` **không chứa gì thuộc queue/DB**
+(đó là lý do nó chỉ có `Key/Data/OCR/Layout/Have`).
+
+#### d) Bề mặt tool cho agent: `list_sheets` + `read_sheet`
+
+Agent cần trả lời “file Excel có sheet nào / sheet A có hàng nào”. `knowledge_search` và
+`read_article` trả đoạn rời, không cho biết cấu trúc sheet ⇒ LLM đoán. Hai tool đọc **text đã
+trích** (`article_pages`), không mở lại blob:
+
+| Tool | Vào | Ra |
+|---|---|---|
+| `list_sheets` | `article_id` | `sheet_count`, `[{index, name, rows, columns, chars}]`, `note` |
+| `read_sheet` | `article_id`, `sheet`, `from_row`, `max_rows` | `text` (header + hàng), `total_rows`, `next_from_row`, `note` |
+
+| Chặn | Lý do |
+|---|---|
+| Quét theo cửa sổ `article_pages` (20 mảnh/lượt), trần 4MB | RAM không phụ thuộc kích thước file |
+| Mảnh đầu không có `## Sheet` ⇒ dừng ngay, trả note “không có sheet” | gọi nhầm tool lên PDF 5000 trang chỉ tốn 1 SELECT |
+| Đọc theo **hàng** (`from_row`/`max_rows`, trần 300) | `next_from_row` nối tiếp được; chặn “cho tôi cả sheet” làm nổ context |
+| `sheet` nhận số thứ tự hoặc tên, khớp chính xác thắng khớp chứa | LLM chép tên từ `list_sheets` là đúng; khớp nhiều ⇒ trả note liệt kê, không tự đoán |
+| `GetByID(user_id)` + `AllowsCategory`; ngoài phạm vi trả cùng câu “không tìm thấy” | không lộ là bài tồn tại |
+
+Hợp đồng định dạng: `extractXlsx` sinh `## Sheet: <tên>` (hoặc `## Sheet <n>` khi thiếu tên) +
+mỗi hàng 1 dòng pipe; `extractor.ParseSheetBlocks` đọc lại đúng hợp đồng đó (test
+`TestParseSheetBlocksFromExtractXlsx` khoá cả hai đầu). Hệ quả đã biết: “header” là **hàng đầu
+tiên** của sheet (không đọc metadata Excel), và chỉ có **giá trị đã lưu** của ô (công thức lấy kết
+quả) — đúng với dữ liệu dùng để trả lời.
+
+#### e) Không làm
+
+- Không dựng MCP server thật; không đổi chữ ký `ExtractRawPages`.
+- Không parse công thức/định dạng ô/ảnh/merged cell — cần thì thay `read_xlsx` bằng excelize (1 dòng).
+- Không cho tool ghi gì: vai hẹp `domain.ArticlePageText` chỉ có `ListPagesRange`.
 
 ---
 

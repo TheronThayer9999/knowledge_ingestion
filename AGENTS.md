@@ -37,6 +37,8 @@
 - Checkpoint index = `articles.index_done_chunks` (1 số nguyên, không phải bảng row). Chunk sinh lại **tất định** từ cùng text + cùng config, PointID là UUIDv5 (`utils.NewPointID(articleID, chunkIndex)`) nên làm lại đợt đó ghi đè đúng point cũ, không nhân bản. `resumeFrom == 0` thì `DeleteByArticle` trước khi ghi (dọn đuôi thừa khi đổi chunker).
 - Cửa sổ luôn kết thúc ở **ranh giới trang** (`pageWindow.cuts`) → `PageNum` chính xác tuyệt đối cho trích dẫn, chunk không tràn 2 trang. `SplitBlocks` chạy TRONG cửa sổ nên vẫn thấy tiêu đề Điều ở tầm vài trang.
 - Điều kiện dừng vòng đọc là **`len(pages) == 0`**, TUYỆT ĐỐI không dùng "lượt đọc ngắn hơn window" — repo khác/`INDEX_WINDOW_MAX_CHARS` cắt cửa sổ sớm vẫn trả đủ trang, coi lượt ngắn là hết file là âm thầm bỏ sót nửa tài liệu (test `TestIndexOneReadsInWindows` khoá đúng cái này).
+- **Extractor là port + registry** (`src/common/extractor/reader.go`): mỗi định dạng 1 `Reader` (`read_text/read_docx/read_xlsx/read_pptx/read_pdf/read_image`) khai báo trong `defaultReaders()` (`readers.go`) — thêm/đổi engine (excelize, unioffice...) chỉ sửa danh sách đó, **không** sửa `ExtractRawPages` và không có bảng đuôi thứ hai (`Supports`/`SupportedExts` suy ra từ registry). Đây cũng là ranh giới để tách process đọc tài liệu sau này; không dựng MCP server (agent là Eino in-process).
+- Tool agent `list_sheets`/`read_sheet` (`src/agent/eino/`) đọc **`article_pages` đã trích** (`ParseSheetBlocks` trong `extractor/sheets.go` tách `## Sheet: <tên>` + dòng pipe), không mở lại blob: `list_sheets` trả tên/số hàng/cột, `read_sheet` đọc theo hàng với `from_row`/`max_rows` + `next_from_row` (trần 300 hàng/lần). Vai hẹp đọc là `domain.ArticlePageText`.
 
 ## Conventions
 
