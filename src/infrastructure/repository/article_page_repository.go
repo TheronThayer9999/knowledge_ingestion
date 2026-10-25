@@ -18,6 +18,18 @@ func NewArticlePageRepository(db *gorm.DB) domain.IArticlePageRepository {
 	return &ArticlePageRepository{db: db}
 }
 
+// NewArticlePageIssues cùng repo, nhưng trả VAI HẸP cho tool agent.
+//
+// VÌ SAO KHÔNG bind bằng wrapper từ NewArticlePageRepository: constructor
+// trên trả INTERFACE IArticlePageRepository (không có ListPageIssues), nên
+// `func(r domain.IArticlePageRepository) domain.ArticlePageIssues { return r }`
+// không compile; type-assert thì chỉ hoãn lỗi về runtime. Thêm method vào
+// interface lớn thì phải sửa 5 stub trong test của service. Hai constructor
+// cùng gói một *gorm.DB (stateless) là cách rẻ nhất, không phá ai.
+func NewArticlePageIssues(db *gorm.DB) domain.ArticlePageIssues {
+	return &ArticlePageRepository{db: db}
+}
+
 // pageInsertBatch số row mỗi câu INSERT — 1 mảnh text tối đa 256KB nên chia
 // nhỏ hơn chunk: 20 mảnh × 1 cột text vẫn xa trần param Postgres.
 const pageInsertBatch = 20
@@ -85,6 +97,33 @@ func (r *ArticlePageRepository) ListPagesRange(ctx context.Context, articleID in
 		return nil, err
 	}
 	return pages, nil
+}
+
+// ListPageIssues trả các trang có text rỗng/quá ngắn — bằng chứng để agent
+// nói thật "tài liệu thiếu phần ở trang N" thay vì trả lời thiếu mà không
+// báo. Không SELECT text: caller chỉ cần biết TRANG NÀO, còn nội dung trang
+// thiếu thì không có gì để đọc.
+//
+// Đếm bằng char_length (KHÔNG phải octet_length): Postgres đếm theo ký tự,
+// còn octet_length là byte — tiếng Việt 3 byte/ký tự nên ngưỡng 40 sẽ thành
+// ~13 ký tự thật, đúng những trang chỉ có số trang/watermark.
+//
+// btrim phải có TẬP KÝ TỰ: btrim(text) chỉ cắt dấu cách, trang rỗng chỉ có
+// "\n" sẽ được đếm 2 ký tự — sai bản chất (trắng vẫn là trắng).
+func (r *ArticlePageRepository) ListPageIssues(ctx context.Context, articleID int64, minChars int) ([]domain.PageIssue, error) {
+	if minChars < 0 {
+		minChars = 0
+	}
+	issues := make([]domain.PageIssue, 0)
+	err := dbConn(ctx, r.db).Model(&domain.ArticlePage{}).
+		Select("page_num, seq, char_length(btrim(text, E' \t\r\n\f\v')) AS chars, layout_score").
+		Where("article_id = ? AND char_length(btrim(text, E' \t\r\n\f\v')) < ?", articleID, minChars).
+		Order("seq ASC").
+		Scan(&issues).Error
+	if err != nil {
+		return nil, err
+	}
+	return issues, nil
 }
 
 // DeleteByArticleID dọn trang (Unscoped) — purge và các nhánh bài bị xoá giữa

@@ -80,6 +80,33 @@ type PageProgress struct {
 	DoneSeq int
 }
 
+// PageIssue là 1 trang coi như KHÔNG ĐỌC ĐƯỢC — text rỗng hoặc quá ngắn so
+// với ngưỡng. Cố ý KHÔNG có field Text: mục đích là để agent biết "trang nào
+// thiếu" (rồi nói thật với người dùng, hoặc đọc lại bằng ảnh), không phải để
+// đọc nội dung — kéo text về đây chỉ tổ phình context mà toàn ký tự vô nghĩa.
+type PageIssue struct {
+	// PageNum là số trang THẬT (PDF); 0 với loại file không phân trang.
+	PageNum int `json:"page_num"`
+	// Seq là thứ tự đọc — trích dẫn khi PageNum = 0, và là khoá sắp xếp.
+	Seq int `json:"seq"`
+	// Chars là số KÝ TỰ của trang sau khi bỏ khoảng trắng: bằng chứng định
+	// lượng cho LLM (0 = trang trắng/mất chữ hẳn, 12 = còn vài dòng sót).
+	Chars int `json:"chars"`
+	// LayoutScore là điểm bố cục đo lúc trích (0 = không đo) — phân biệt
+	// "trang bảng bị mất chữ" với "trang trắng thật".
+	LayoutScore float64 `json:"layout_score,omitempty"`
+}
+
+// ArticlePageIssues là VAI HẸP của page repo cho agent: chỉ hỏi "trang nào
+// không đọc được", không đụng đường ghi của worker. Tách khỏi
+// IArticlePageRepository để tool không kéo theo 6 method mà nó không dùng
+// (ISP) và test chỉ cần 1 hàm giả.
+type ArticlePageIssues interface {
+	// ListPageIssues trả các trang có text ngắn hơn minChars ký tự, theo
+	// thứ tự đọc. Trang không tồn tại thì trả rỗng, không lỗi.
+	ListPageIssues(ctx context.Context, articleID int64, minChars int) ([]PageIssue, error)
+}
+
 type IArticlePageRepository interface {
 	// CreateBatch lưu 1 lô mảnh trong transaction, ON CONFLICT DO NOTHING
 	// theo unique (article_id, seq) — lô ghi lại sau khi job chết là no-op
