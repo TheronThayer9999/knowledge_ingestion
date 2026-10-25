@@ -768,10 +768,11 @@ Tag model cụ thể kiểm bằng `ollama list` — họ qwen2.5-vl / qwen3-vl 
 
 Rẻ và tất định, xét theo thứ tự:
 
-1. **Tesseract confidence thấp** — hiện `OCRImage` chạy `tesseract ... stdout -l vie --psm 6` (`ocr.go:123`) **và vứt bỏ confidence**. Đổi sang `tsv` (`--psm 3 tsv`), tính trung bình `conf` trên các từ ≥ 3 ký tự; **< 60 ⇒ gọi VLM**. Đây là tín hiệu tốt nhất mà repo đang bỏ phí.
-2. **PSM 3 vs PSM 6**: comment trong `ocr.go:50-52` đã ghi "3 = tự dò bố cục (bảng, cột)" nhưng mặc định vẫn là 6. Trang bảng nên chạy PSM 3 trước, so kết quả, chỉ nhường VLM khi vẫn sai.
-3. Detector bảng ở §6.11-d báo có lưới nhưng L2 không dựng được bảng.
-4. Trang gần như không có text layer (scan) **và** có dấu hiệu nhiều hình.
+1. **Chữ viết tay / chữ ký / ghi chú tay** — Tesseract học trên chữ in nên viết tay gần như vô dụng; chỉnh `--psm` hay thêm model không cứu. Đây là ca **duy nhất** mà VLM là lựa chọn **đầu tiên**, không phải phương án dự phòng. Ngược lại hai ca **không** phải lý do gọi VLM: (a) *tài liệu tiếng Anh* — `ocr.lang = "vie+eng"` lo được chữ in cả hai ngôn ngữ, worker warn lúc boot nếu thiếu traineddata (`plans/2026-10-27-dot-4-ocr-vie-eng.md`); (b) *trang có bảng* — đi đường L2 tất định (§6.11).
+2. **Tesseract confidence thấp** — hiện `OCRImage` chạy `tesseract ... stdout -l <ocr.lang> --psm 6` (`ocr.go:123`) **và vứt bỏ confidence**. Đổi sang `tsv` (`--psm 3 tsv`), tính trung bình `conf` trên các từ ≥ 3 ký tự; **< 60 ⇒ gọi VLM**. Đây là tín hiệu tốt nhất mà repo đang bỏ phí.
+3. **PSM 3 vs PSM 6**: comment trong `ocr.go:50-52` đã ghi "3 = tự dò bố cục (bảng, cột)" nhưng mặc định vẫn là 6. Trang bảng nên chạy PSM 3 trước, so kết quả, chỉ nhường VLM khi vẫn sai.
+4. Detector bảng ở §6.11-d báo có lưới nhưng L2 không dựng được bảng.
+5. Trang gần như không có text layer (scan) **và** có dấu hiệu nhiều hình.
 
 #### e) Guardrails — bắt buộc, nếu không sẽ thành lỗ
 
