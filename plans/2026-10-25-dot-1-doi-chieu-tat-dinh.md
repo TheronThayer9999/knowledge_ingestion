@@ -34,10 +34,18 @@ cross-check đang bắt lỗi hay chỉ đang đốt token.
 
 ## Nghiệm thu
 
-- [ ] 10 ca test xanh, gồm: trùng hoàn toàn, chỉ khác khoảng trắng, khác dấu nhóm nghìn,
+- [x] 10 ca test xanh, gồm: trùng hoàn toàn, chỉ khác khoảng trắng, khác dấu nhóm nghìn,
       khác dấu thập phân, lệch 1 số, một bên rỗng, cả hai rỗng, khác hoa/thường,
       `%` tách rời, bảng phẳng hoá vs markdown.
-- [ ] `go build ./...`, `go vet ./...`, `golangci-lint run ./...`, `go test ./...` đều xanh.
+- [x] `go build ./...`, `go vet ./...`, `golangci-lint run ./...`, `go test ./...` đều xanh.
+
+## Kết quả
+
+- 13 ca case + 1 ca tất định + 10 ca `canonicalNumber`, tất cả xanh.
+- `golangci-lint run ./src/common/extractor/...` → 0 issues; `go test ./...` toàn repo xanh.
+- `golang.org/x/text` chuyển từ indirect sang direct (dùng `unicode/norm` cho NFC).
+- Ghi nhận khi làm: nhánh `một bên rỗng` phải liệt kê số của bên có text vào `OnlyInA` —
+  đây là hành vi đúng, không phải bug, và là thứ UI cần hiển thị khi có xung đột.
 
 ## Commit
 
