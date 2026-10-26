@@ -76,6 +76,8 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		authed.GET("/articles/:id", articleAPI.GetByID)
 		authed.GET("/articles/:id/sections", articleAPI.ListSections)
 		authed.GET("/articles/:id/tree", articleAPI.GetTree)
+		// Ký URL tải file gốc — đi thẳng xuống kho, không qua API.
+		authed.GET("/articles/:id/download", articleAPI.Download)
 		authed.PUT("/articles/:id", articleAPI.Update)
 		authed.DELETE("/articles/:id", articleAPI.Delete)
 		// Trạng thái pipeline gọn (1 query 4 cột) cho UI poll tiến trình —

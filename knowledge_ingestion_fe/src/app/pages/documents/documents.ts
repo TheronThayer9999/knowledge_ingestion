@@ -23,6 +23,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
 import {
+  articleHasFile,
   articleSource,
   articleStage,
   buildFolderTree,
@@ -32,6 +33,7 @@ import {
   statusKey,
   subtreeIds,
   type Article,
+  type ArticleDownload,
   type ArticleStage,
   type Category,
   type FolderNode,
@@ -475,6 +477,42 @@ export class Documents implements OnDestroy {
       },
       error: (error: unknown) => this.messages.errorFromApi(error, 'DOC_DELETE_ERROR'),
     });
+  }
+
+  /** Bài có file trong kho mới tải được (bài tạo từ liên kết thì không) */
+  protected hasFile(article: Article): boolean {
+    return articleHasFile(article);
+  }
+
+  /**
+   * Tải file gốc: xin URL ký sẵn rồi bấm một thẻ <a> ẩn. Không dùng
+   * window.open — popup blocker hay chặn cửa sổ bật ra từ callback bất đồng
+   * bộ, còn click vào anchor thì không bị coi là "mở cửa sổ mới".
+   */
+  protected downloadArticle(article: Article): void {
+    this.knowledge.getDownloadUrl(article.id).subscribe({
+      next: (file) => this.triggerDownload(file),
+      error: (error: unknown) => this.messages.errorFromApi(error, 'DOC_DOWNLOAD_ERROR'),
+    });
+  }
+
+  /**
+   * `download` chỉ là tên gợi ý: trang kho khác origin nên browser nghe theo
+   * Content-Disposition nằm trong chữ ký (backend đã mã RFC 5987, dấu tiếng
+   * Việt giữ nguyên). Thuộc tính này vẫn có ích với browser cổ không đọc
+   * `filename*`.
+   */
+  private triggerDownload(file: ArticleDownload): void {
+    const anchor = document.createElement('a');
+    anchor.href = file.url;
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    if (file.filename) {
+      anchor.download = file.filename;
+    }
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
   }
 
   protected async deleteFolder(folder: FolderView): Promise<void> {

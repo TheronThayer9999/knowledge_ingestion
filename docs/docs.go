@@ -520,6 +520,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/articles/{id}/download": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Signs a short-lived GET URL (5 minutes) so the browser pulls the file straight from object storage instead of streaming it through this API. The signature carries Content-Disposition attachment with the article name (RFC 5987, so Vietnamese diacritics survive). 400 for URL-source articles, 404 when the article is not mine",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "articles"
+                ],
+                "summary": "Get a download URL for an article's original file",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "article id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/articles/{id}/sections": {
             "get": {
                 "security": [

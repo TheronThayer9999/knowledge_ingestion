@@ -66,7 +66,10 @@ var functionBudgetAllowlist = []allowEntry{
 	{"src/common/extractor/xlsx.go::xlsxRows", 112, 30},
 	{"src/common/extractor/xlsx.go::xlsxSharedStrings", 48, 13},
 	{"src/config/config.go::Load", 269, 82},
-	{"src/controller/routers/router.go::NewRouter", 87, 1},
+	// Bảng route thuần (1 điểm quyết định): mỗi endpoint thêm là mỗi dòng dài
+	// ra — nợ này lớn theo API, không phải theo độ phức tạp, nên cho tăng
+	// thay vì cắt hàm ra từng mảnh vô nghĩa.
+	{"src/controller/routers/router.go::NewRouter", 89, 1},
 	{"src/controller/services/article_admin_service.go::(*articleAdminService).QueueStatus", 88, 9},
 	{"src/controller/services/article_purge_service.go::(*articlePurgeService).PurgeDeleted", 86, 12},
 	{"src/controller/services/category_service.go::(*categoryService).Update", 57, 19},

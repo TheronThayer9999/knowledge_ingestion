@@ -113,6 +113,38 @@ export interface ArticleList {
   total: number;
 }
 
+/**
+ * Bài chỉ tải được file gốc khi có blob trong kho (bài tạo từ URL thì không) —
+ * menu ẩn nút "Tải xuống" theo đúng cờ này thay vì để user bấm rồi nhận 400.
+ */
+export function articleHasFile(article: Article): boolean {
+  return article.storageKey.trim() !== '';
+}
+
+/** Vé tải file: URL đã ký (hết hạn sau `expiresAt`) + tên file browser sẽ lưu */
+export interface ArticleDownload {
+  url: string;
+  expiresAt: string;
+  filename: string;
+  contentType: string;
+}
+
+export interface ArticleDownloadDto {
+  url: string;
+  expires_at?: string;
+  filename?: string;
+  content_type?: string;
+}
+
+export function toArticleDownload(dto: ArticleDownloadDto): ArticleDownload {
+  return {
+    url: dto.url,
+    expiresAt: dto.expires_at ?? '',
+    filename: dto.filename ?? '',
+    contentType: dto.content_type ?? '',
+  };
+}
+
 /** Trạng thái pipeline gọn của 1 bài — endpoint poll chỉ trả đúng 4 field này */
 export interface ArticleStatus {
   id: number;

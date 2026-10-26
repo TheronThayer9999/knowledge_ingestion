@@ -128,6 +128,9 @@ func (s *purgeStubStorage) Exists(context.Context, string) (bool, error) { retur
 func (s *purgeStubStorage) PresignedURL(context.Context, string, string, time.Duration) (string, error) {
 	return "", nil
 }
+func (s *purgeStubStorage) PresignedGetURL(context.Context, string, string, time.Duration) (string, error) {
+	return "", nil
+}
 
 func TestPurgeDeleted(t *testing.T) {
 	tests := []struct {

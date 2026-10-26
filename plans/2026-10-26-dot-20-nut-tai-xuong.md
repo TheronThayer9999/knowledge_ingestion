@@ -61,4 +61,64 @@ link cross-origin khiến thuộc tính `download` của browser bị bỏ qua v
 
 ## Kết quả
 
-(chờ chạy xong)
+### Đã làm
+
+- `IStorage` thêm `PresignedGetURL(ctx, key, downloadAs, expiry)`; SeaweedFS ký bằng
+  `PresignGetObject` + `ResponseContentDisposition` (không sửa metadata object — header
+  GET-override nằm ngay trong chữ ký).
+- Bộ mã header tách sang `src/infrastructure/seaweedfs/disposition.go` vì đó là phần dễ
+  sai nhất: `attachment` (link cross-origin làm browser bỏ thuộc tính `download`), bản
+  ASCII `filename="…"` cho client cổ, bản `filename*=UTF-8''…` theo RFC 5987 cho tên có
+  dấu, fallback `"download"` khi tên thuần dấu (không có ASCII nào còn lại).
+- `PRESIGN_DOWNLOAD_EXPIRY = 5 phút` (ngắn hơn upload: chữ ký chỉ cần sống đủ cho một cú
+  click), `ArticleDownloadResponse{url, expires_at, filename, content_type}`,
+  `articleService.DownloadURL`, `GET /api/v1/articles/:id/download` + swagger đã regen.
+- `downloadFilename`: tên bài đã kèm đuôi thì dùng nguyên văn; bài cũ bị FE cắt đuôi thì
+  nối lại đuôi từ storage key — tải về vẫn mở đúng app.
+- FE: `getDownloadUrl` + `ArticleDownload`/`toArticleDownload`, `downloadArticle()` bấm
+  anchor ẩn (không `window.open`), mục "Tải xuống" trong **cả hai** menu, `@if hasFile`
+  ẩn với bài nguồn URL. Test FE mới: `articleHasFile` (3), `getDownloadUrl` map + thiếu
+  field (2) → 108/108 xanh.
+- **Lệch so với kế hoạch**: không thêm key `DOC_DOWNLOAD_NO_FILE` — nút đã bị ẩn với bài
+  nguồn URL nên đường 400 là bất khả dĩ trong UI, giữ một key không ai dùng là nợ vô ích.
+
+### Kiểm chứng
+
+- `go build` / `go vet` / `golangci-lint run ./...` → `0 issues.`; `go test ./...` → 20
+  package ok, 0 FAIL. Test mới: 6 case `DownloadURL` (ký đúng key/tên/hạn, nối lại đuôi,
+  URL-source 400 + không ký, bài người khác 404 + không ký, lỗi kho trả thẳng lên trên) và 3 case
+  `buildContentDisposition`.
+- `npm run lint` → All files pass linting; `npm test` → 19 files/108 tests; `npm run build`
+  OK. `npx prettier --write` các file đã sửa → không đổi gì thêm.
+- **Ngân sách hàm**: `NewRouter` 87 → 89 dòng vì thêm một dòng route — bảng route thuần
+  (1 điểm quyết định) phình theo số API, nên allowlist được nâng có comments giải thích
+  thay vì cắt hàm thành từng mảnh vô nghĩa.
+
+### E2E thật (API 9001 + SeaweedFS + Postgres dev)
+
+1. Login `dot19user` (id 87) → tạo danh mục `dot20-cat` (id 126) → presign batch +
+   PUT `quy_dinh_noi_bo.pdf` (200) → `POST /articles` với tên **"báo cáo nội bộ đợt 20.pdf"**
+   (25 ký tự / 34 byte UTF-8) → bài **id 69**, response trả về `name -eq` đúng chuỗi gửi lên.
+2. `GET /articles/69/download` → `filename` 25 ký tự/34 byte, `expires_at` = now + 5 phút,
+   `content_type: application/pdf`.
+3. `curl -o` chính cái URL đã ký → **HTTP 1.1 200 OK**,
+   `Content-Disposition: attachment; filename="bo co ni b t 20.pdf"; filename*=UTF-8''b%C3%A1o%20c%C3%A1o%20n%E1%BB%99i%20b%E1%BB%99%20%C4%91%E1%BB%A3t%2020.pdf`,
+   `Content-Length: 52659`, `Content-Type: application/pdf`; file tải về **SHA256 khớp
+   bản gốc** (`sha_match=True len=52659`).
+4. Phủ định: bài tạo từ `url` (id 70) → **400** `"tài liệu này lấy từ liên kết, không có
+   file để tải"`; user khác (id 88 `dot20other`) xin tải bài 69 → **404** "bài viết không
+   tồn tại" (không lộ sự tồn tại); sửa 1 ký tự của `X-Amz-Signature` → **403** từ
+   SeaweedFS (chứng tỏ đây là chữ ký thật, không phải URL public).
+5. Log: `article: ký URL tải file {trace_id, article_id, name, file, user_id, expires_ms}`
+   — tên tiếng Việt trong log đúng dấu; **trong 496 dòng log không có một dòng nào chứa
+   `X-Amz-Signature` hay field `url`** → chữ ký không rò ra log.
+
+### Dọn dẹp
+
+- Đã xóa bài 69 + 70 và danh mục 126 qua API. Worker không chạy trong lượt test nên blob
+  `uploads/01a1774e-…pdf` còn nằm lại bucket dev `app-uploads`; janitor purge sẽ dọn khi
+  worker chạy lại (quá `PURGE_GRACE_PERIOD`).
+- User `dot20other` (id 88) còn lại trong DB dev: repo chưa có route xóa user
+  (`DeleteUser` vẫn `panic("implement me")`) nên không xóa được bằng API — ghi nhận lại,
+  không tự code mới trong đợt này.
+- Đã dừng API (PID 22496) và xóa sạch file tạm `dot20*` trong TEMP.

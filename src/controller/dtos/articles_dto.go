@@ -70,6 +70,18 @@ type ArticleListResponse struct {
 	Total    int64              `json:"total" example:"10"`
 }
 
+// ArticleDownloadResponse là URL GET tạm (đã ký) để client tải file gốc thẳng từ
+// kho. filename là tên browser sẽ đặt cho file khi lưu (đã được phía kho nhét
+// vào Content-Disposition), gửi kèm để client tự đặt tên cho anchor download
+// thay vì suy ra từ key "uploads/<uuid>.pdf" vô nghĩa. content_type chỉ để
+// client hiển thị/đoán, không ảnh hưởng bytes tải về.
+type ArticleDownloadResponse struct {
+	URL         string    `json:"url" example:"http://localhost:8333/app-uploads/uploads/550e8400-e29b-41d4-a716-446655440000.pdf?X-Amz-Signature=…"`
+	ExpiresAt   time.Time `json:"expires_at" example:"2026-10-26T15:05:00+07:00"`
+	Filename    string    `json:"filename" example:"Quy định nội bộ.pdf"`
+	ContentType string    `json:"content_type" example:"application/pdf"`
+}
+
 // ToModel map request -> domain model — UserID do service gán từ token,
 // không tin client. Nguồn (URL hay StorageKey) service đã chốt đúng 1
 // trước khi tới đây.

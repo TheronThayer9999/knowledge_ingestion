@@ -139,6 +139,25 @@ func (s *Storage) PresignedURL(ctx context.Context, key string, contentType stri
 	return res.URL, nil
 }
 
+// PresignedGetURL ký URL GET tạm bằng PresignGetObject — client tải thẳng từ
+// SeaweedFS, API không phải stream 500MB qua process. ResponseContentDisposition
+// là header GET-override được S3 chấp nhận (nằm trong chữ ký), nên tên file
+// gắn vào đây chứ không sửa metadata của object.
+func (s *Storage) PresignedGetURL(ctx context.Context, key string, downloadAs string, expiry time.Duration) (string, error) {
+	presignClient := s3.NewPresignClient(s.client)
+	res, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket:                     aws.String(s.bucket),
+		Key:                        aws.String(key),
+		ResponseContentDisposition: aws.String(buildContentDisposition(downloadAs)),
+	}, func(o *s3.PresignOptions) {
+		o.Expires = expiry
+	})
+	if err != nil {
+		return "", fmt.Errorf("seaweedfs presign get %s: %w", key, err)
+	}
+	return res.URL, nil
+}
+
 // Exists hỏi kho bằng HeadObject — object có thì true, S3 báo NotFound thì
 // (false, nil), còn lại (mạng/quyền/bucket sai) là error thật.
 func (s *Storage) Exists(ctx context.Context, key string) (bool, error) {

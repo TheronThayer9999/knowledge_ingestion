@@ -638,6 +638,39 @@ paths:
       summary: Update an article
       tags:
       - articles
+  /api/v1/articles/{id}/download:
+    get:
+      description: Signs a short-lived GET URL (5 minutes) so the browser pulls the
+        file straight from object storage instead of streaming it through this API.
+        The signature carries Content-Disposition attachment with the article name
+        (RFC 5987, so Vietnamese diacritics survive). 400 for URL-source articles,
+        404 when the article is not mine
+      parameters:
+      - description: article id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Get a download URL for an article's original file
+      tags:
+      - articles
   /api/v1/articles/{id}/sections:
     get:
       description: 'Returns the PageIndex of one of my articles: sections (Dieu/chapter/phan)

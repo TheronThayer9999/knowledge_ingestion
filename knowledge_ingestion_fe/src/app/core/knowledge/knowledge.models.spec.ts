@@ -1,4 +1,9 @@
-import { articleSource, matchesArticleQuery, type Article } from './knowledge.models';
+import {
+  articleHasFile,
+  articleSource,
+  matchesArticleQuery,
+  type Article,
+} from './knowledge.models';
 
 /** Bài tối thiểu — chỉ cần đủ field của `Article`, test chỉ xét nguồn/tên */
 function makeArticle(overrides: Partial<Article> = {}): Article {
@@ -63,5 +68,21 @@ describe('matchesArticleQuery — tìm theo tên hoặc file', () => {
 
   it('không khớp gì thì loại bài', () => {
     expect(matchesArticleQuery(uploaded, 'khong-co-gi')).toBe(false);
+  });
+});
+
+// Nút "Tải xuống" chỉ hiện khi bài có blob — cờ này phải khớp đúng điều kiện
+// backend chặn 400 (storage_key rỗng là bài lấy từ liên kết).
+describe('articleHasFile — bài nào tải được file gốc', () => {
+  it('bài upload có storage key thì tải được', () => {
+    expect(articleHasFile(makeArticle({ storageKey: 'uploads/a.pdf' }))).toBe(true);
+  });
+
+  it('bài link ngoài không có gì để tải', () => {
+    expect(articleHasFile(makeArticle({ url: 'https://example.com/b' }))).toBe(false);
+  });
+
+  it('storage key toàn khoảng trắng coi như không có file', () => {
+    expect(articleHasFile(makeArticle({ storageKey: '   ' }))).toBe(false);
   });
 });

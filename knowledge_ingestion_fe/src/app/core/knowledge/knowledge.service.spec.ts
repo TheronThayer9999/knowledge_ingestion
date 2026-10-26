@@ -103,12 +103,10 @@ describe('KnowledgeService', () => {
       .uploadDocuments(BATCH, { categoryId: 7, docType: 'general' })
       .toPromise();
 
-    http
-      .expectOne(api('/uploads/presign/batch'))
-      .flush({
-        ...ENVELOPE_OK,
-        data: { items: [ticket('uploads/a.pdf'), ticket('uploads/b.pdf')] },
-      });
+    http.expectOne(api('/uploads/presign/batch')).flush({
+      ...ENVELOPE_OK,
+      data: { items: [ticket('uploads/a.pdf'), ticket('uploads/b.pdf')] },
+    });
     http.expectOne('https://s3.local/uploads/a.pdf').flush('', { status: 200, statusText: 'OK' });
     http.expectOne(api('/articles')).flush({ ...ENVELOPE_OK, data: articleDto(1, 'A') });
 
@@ -124,6 +122,47 @@ describe('KnowledgeService', () => {
     expect(outcomes[0].article?.id).toBe(1);
     expect(outcomes[1].article).toBeNull();
     expect(outcomes[1].error).toMatchObject({ status: 500 });
+    http.verify();
+  });
+
+  it('xin URL tải file: đúng route và map snake_case sang camelCase', async () => {
+    const result = service.getDownloadUrl(5).toPromise();
+
+    const req = http.expectOne(api('/articles/5/download'));
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      ...ENVELOPE_OK,
+      data: {
+        url: 'http://seaweedfs:8333/app-uploads/uploads/01a1.pdf?X-Amz-Signature=abc',
+        expires_at: '2026-10-26T15:05:00+07:00',
+        filename: 'Báo cáo nội bộ.pdf',
+        content_type: 'application/pdf',
+      },
+    });
+
+    await expect(result).resolves.toEqual({
+      url: 'http://seaweedfs:8333/app-uploads/uploads/01a1.pdf?X-Amz-Signature=abc',
+      expiresAt: '2026-10-26T15:05:00+07:00',
+      filename: 'Báo cáo nội bộ.pdf',
+      contentType: 'application/pdf',
+    });
+    http.verify();
+  });
+
+  // Backend không gửi field phụ (hoặc bản cũ) thì chuỗi rỗng còn hơn undefined
+  // rơi xuống template.
+  it('thiếu filename/expires_at vẫn map được', async () => {
+    const result = service.getDownloadUrl(6).toPromise();
+    http
+      .expectOne(api('/articles/6/download'))
+      .flush({ ...ENVELOPE_OK, data: { url: 'http://kho/x' } });
+
+    await expect(result).resolves.toEqual({
+      url: 'http://kho/x',
+      expiresAt: '',
+      filename: '',
+      contentType: '',
+    });
     http.verify();
   });
 });

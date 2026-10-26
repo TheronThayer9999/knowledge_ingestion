@@ -15,11 +15,14 @@ import {
 import { ApiService } from '../api/api.service';
 import {
   toArticle,
+  toArticleDownload,
   toArticleTree,
   toCategory,
   toPipelineStatus,
   toUploadTicket,
   type Article,
+  type ArticleDownload,
+  type ArticleDownloadDto,
   type ArticleList,
   type ArticleListDto,
   type ArticleTree,
@@ -42,7 +45,7 @@ import {
 /** Bước upload để UI hiện đúng tiến trình: xin vé → PUT kho → tạo article */
 export type UploadStage = 'presign' | 'upload' | 'create';
 
-/** Một file trong lô — `name` là tên tài liệu người dùng đã sửa (mặc định bỏ đuôi file) */
+/** Một file trong lô — `name` là tên tài liệu người dùng đặt (mặc định là nguyên văn tên file) */
 export interface UploadFileRequest {
   file: File;
   name: string;
@@ -171,6 +174,16 @@ export class KnowledgeService {
 
   deleteArticle(id: number): Observable<unknown> {
     return this.api.delete<unknown>(`/articles/${id}`);
+  }
+
+  /**
+   * Xin URL ký sẵn để tải file gốc. Backend trả 400 khi bài lấy từ liên kết
+   * (không có blob) — UI ẩn nút tải với bài đó nên đường này hiếm khi xảy ra.
+   */
+  getDownloadUrl(id: number): Observable<ArticleDownload> {
+    return this.api
+      .get<ArticleDownloadDto>(`/articles/${id}/download`)
+      .pipe(map(toArticleDownload));
   }
 
   /** Sửa tên/mô tả/loại và chuyển thư mục — nguồn file giữ nguyên */

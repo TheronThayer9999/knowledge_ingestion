@@ -35,4 +35,12 @@ type IStorage interface {
 	// (hoặc không gửi) thì S3 trả 403. Hết expiry thì URL vô hiệu; file chỉ
 	// tồn tại sau khi client PUT thành công.
 	PresignedURL(ctx context.Context, key string, contentType string, expiry time.Duration) (string, error)
+
+	// PresignedGetURL ký một URL GET có hạn expiry để client tải thẳng từ kho,
+	// không stream qua process API (file tối đa 500MB). downloadAs là TÊN FILE
+	// người dùng thấy khi lưu — implementation phải nhét nó vào header
+	// Content-Disposition: attachment, vì link cross-origin khiến browser bỏ qua
+	// thuộc tính download của thẻ <a>; tên có dấu phải mã theo RFC 5987
+	// (filename*=UTF-8''…). Trả error nếu kho từ chối ký.
+	PresignedGetURL(ctx context.Context, key string, downloadAs string, expiry time.Duration) (string, error)
 }

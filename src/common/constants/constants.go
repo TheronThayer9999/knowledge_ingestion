@@ -8,6 +8,12 @@ import "time"
 // PRESIGN_EXPIRY là thời hạn sống của URL upload — hết hạn client phải xin lại.
 const PRESIGN_EXPIRY = 15 * time.Minute
 
+// PRESIGN_DOWNLOAD_EXPIRY là thời hạn sống của URL tải file — ngắn hơn upload
+// vì chữ ký chỉ cần sống đủ cho một cú click: browser gửi request ngay khi nhận
+// response. Chữ ký càng ngắn thì nếu có lọt vào log hay lịch sử browser cũng
+// chóng hết dùng được.
+const PRESIGN_DOWNLOAD_EXPIRY = 5 * time.Minute
+
 // UPLOAD_PREFIX là "thư mục ảo" trong bucket, để file upload không trộn với file khác.
 const UPLOAD_PREFIX = "uploads/"
 

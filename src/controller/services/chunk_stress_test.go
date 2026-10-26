@@ -172,6 +172,9 @@ func (s *stressStorage) Exists(context.Context, string) (bool, error) { return t
 func (s *stressStorage) PresignedURL(context.Context, string, string, time.Duration) (string, error) {
 	return "", nil
 }
+func (s *stressStorage) PresignedGetURL(context.Context, string, string, time.Duration) (string, error) {
+	return "", nil
+}
 
 // ---- đo bộ nhớ đỉnh ----
 

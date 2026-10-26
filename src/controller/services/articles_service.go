@@ -32,6 +32,9 @@ type IArticleService interface {
 	// ListStatuses trả trạng thái pipeline của mọi bài mình sở hữu — UI
 	// poll tiến trình bằng câu nhẹ này thay vì tải lại cả danh sách.
 	ListStatuses(ctx context.Context) dtos.Result[dtos.ArticleStatusListResponse]
+	// DownloadURL ký URL GET cho file gốc của một bài upload — bài nguồn URL
+	// không có blob nên bị chặn ở đây.
+	DownloadURL(ctx context.Context, id int64) dtos.Result[*dtos.ArticleDownloadResponse]
 }
 
 type articleService struct {
@@ -148,6 +151,59 @@ func (s *articleService) GetByID(ctx context.Context, id int64) dtos.Result[*dto
 		return dtos.Fail[*dtos.ArticleResponse](err)
 	}
 	return dtos.Ok(dtos.ToArticleResponse(article))
+}
+
+// DownloadURL ký URL GET cho file gốc của bài — chủ sở hữu được xác minh qua
+// repo trước (bài của người khác 404 như không tồn tại), chỉ sau đó mới ký.
+// Bài nguồn URL không có blob trong kho nên trả 400 kèm lý do, không ký rỗng.
+// Log KHÔNG in URL: chữ ký là credential tạm của kho.
+func (s *articleService) DownloadURL(ctx context.Context, id int64) dtos.Result[*dtos.ArticleDownloadResponse] {
+	// Route đã qua auth middleware nên user_id chắc chắn có trong ctx.
+	userID, _ := s.currentUser.UserID(ctx)
+	article, err := s.articleRepo.GetByID(ctx, id, userID)
+	if err != nil {
+		if stderrors.Is(err, domain.ErrNotFound) {
+			return dtos.Fail[*dtos.ArticleDownloadResponse](errors.NewCustomHttpError(http.StatusNotFound, http.StatusNotFound, "bài viết không tồn tại"))
+		}
+		return dtos.Fail[*dtos.ArticleDownloadResponse](err)
+	}
+	key := strings.TrimSpace(article.StorageKey)
+	if key == "" {
+		return dtos.Fail[*dtos.ArticleDownloadResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "tài liệu này lấy từ liên kết, không có file để tải"))
+	}
+	expiry := constants.PRESIGN_DOWNLOAD_EXPIRY
+	name := downloadFilename(article)
+	url, err := s.storage.PresignedGetURL(ctx, key, name, expiry)
+	if err != nil {
+		logs.Warnw("article: ký URL tải lỗi", "trace_id", utils.TraceIDFromCtx(ctx),
+			"article_id", article.ID, "name", article.Name, "file", fileTag(article),
+			"user_id", userID, "error", err)
+		return dtos.Fail[*dtos.ArticleDownloadResponse](err)
+	}
+	logs.Infow("article: ký URL tải file", "trace_id", utils.TraceIDFromCtx(ctx),
+		"article_id", article.ID, "name", article.Name, "file", fileTag(article),
+		"user_id", userID, "expires_ms", expiry.Milliseconds())
+	return dtos.Ok(&dtos.ArticleDownloadResponse{
+		URL:         url,
+		ExpiresAt:   time.Now().Add(expiry),
+		Filename:    name,
+		ContentType: article.ContentType,
+	})
+}
+
+// downloadFilename chọn tên file browser sẽ lưu: tên bài (dot-19 giữ nguyên văn
+// nên thường đã kèm đuôi); bài tạo trước đó bị FE cắt đuôi thì nối lại đuôi từ
+// storage key để tải về vẫn mở đúng app. Tên rỗng không được phép vì header
+// Content-Disposition không có giá trị là header hỏng.
+func downloadFilename(article *domain.Article) string {
+	name := strings.TrimSpace(article.Name)
+	if name == "" {
+		name = "tai-lieu"
+	}
+	if utils.FileExt(name) != "" {
+		return name
+	}
+	return name + utils.FileExt(article.StorageKey)
 }
 
 // List liệt kê bài của mình theo đúng 1 bộ lọc: category_id hoặc

@@ -255,6 +255,12 @@
                     <mat-icon>visibility</mat-icon>
                     <span>{{ lang.t('DOC_ACTION_VIEW') }}</span>
                   </button>
+                  @if (hasFile(article)) {
+                    <button mat-menu-item type="button" (click)="downloadArticle(article)">
+                      <mat-icon>download</mat-icon>
+                      <span>{{ lang.t('DOC_ACTION_DOWNLOAD') }}</span>
+                    </button>
+                  }
                   <button mat-menu-item type="button" (click)="editArticle(article)">
                     <mat-icon>edit</mat-icon>
                     <span>{{ lang.t('DOC_ACTION_EDIT') }}</span>
@@ -309,6 +315,12 @@
                   <mat-icon>more_vert</mat-icon>
                 </button>
                 <mat-menu #cardMenu="matMenu">
+                  @if (hasFile(article)) {
+                    <button mat-menu-item type="button" (click)="downloadArticle(article)">
+                      <mat-icon>download</mat-icon>
+                      <span>{{ lang.t('DOC_ACTION_DOWNLOAD') }}</span>
+                    </button>
+                  }
                   <button mat-menu-item type="button" (click)="editArticle(article)">
                     <mat-icon>edit</mat-icon>
                     <span>{{ lang.t('DOC_ACTION_EDIT') }}</span>

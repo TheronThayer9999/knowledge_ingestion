@@ -59,6 +59,25 @@ func (a *ArticleAPI) GetByID(c *gin.Context) {
 	Render(c, a, a.svc.GetByID(c, p.ID))
 }
 
+// Download godoc
+// @Summary Get a download URL for an article's original file
+// @Description Signs a short-lived GET URL (5 minutes) so the browser pulls the file straight from object storage instead of streaming it through this API. The signature carries Content-Disposition attachment with the article name (RFC 5987, so Vietnamese diacritics survive). 400 for URL-source articles, 404 when the article is not mine
+// @Tags articles
+// @Produce json
+// @Param id path int true "article id"
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 400 {object} dtos.ResponseResource
+// @Failure 404 {object} dtos.ResponseResource
+// @Security BearerAuth
+// @Router /api/v1/articles/{id}/download [get]
+func (a *ArticleAPI) Download(c *gin.Context) {
+	var p dtos.IDParam
+	if !a.BindUri(c, &p, "id bài viết không hợp lệ") {
+		return
+	}
+	Render(c, a, a.svc.DownloadURL(c, p.ID))
+}
+
 // List godoc
 // @Summary List my articles
 // @Description Lists my articles filtered by exactly one of category_id or category_name
