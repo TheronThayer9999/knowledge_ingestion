@@ -41,6 +41,18 @@
 - Tool agent `list_sheets`/`read_sheet` (`src/agent/eino/`) đọc **`article_pages` đã trích** (`ParseSheetBlocks` trong `extractor/sheets.go` tách `## Sheet: <tên>` + dòng pipe), không mở lại blob: `list_sheets` trả tên/số hàng/cột, `read_sheet` đọc theo hàng với `from_row`/`max_rows` + `next_from_row` (trần 300 hàng/lần). Vai hẹp đọc là `domain.ArticlePageText`.
 - Instruction agent không cố định: `adk.ChatModelAgentConfig.Instruction` chỉ là bản render lúc dựng agent; mỗi lượt `promptInjector.BeforeAgent` (`src/agent/eino/agent.go`) ghi đè `runCtx.Instruction` từ `ctx` (`WithPromptVars` do `ChatAgent.Run` set: ngày hôm nay + `IsSpreadsheetQuestion`). Đây là hook chính thức của Eino (`handler.go`) — đừng nối fragment bằng tin nhắn system phụ hay nhét vào history.
 
+### Model theo phase — "vẫn thấy gọi model sau khi tiền xử lý xong" là bình thường
+
+| Phase | Gọi model nào | Số call | Log nhận diện |
+|---|---|---|---|
+| **0 extract** | Tesseract OCR (VLM chỉ khi `vlm.enabled`) — **không LLM** | 1/trang scan | `extract: bắt đầu bài` |
+| **1 index** | **bge-m3** qua `embedding.model` (Ollama), **không LLM** | 1 call `EmbedBatch`/đợt chunk + 1 call embed tên bài/đợt | `index: gọi embed` / `index: embed xong` (`model=bge-m3:latest`) |
+| **2 compile** | **LLM** = `llms.default_provider` (local: `9router`) + `prompts/compile_section.md` | **1 call/mục tài liệu** (cache Redis `compile:sum:*` 30 ngày) | `compile: gọi LLM tóm tắt mục` (`model=<tên model>`), hit cache → debug `compile: cache hit` |
+| **chat** | **LLM** theo provider của request + bge-m3 cho câu hỏi | 1+/lượt (thêm lượt tool/retry) | `chat: gọi agent` |
+
+- Chỉ compile và chat sinh lời gọi **LLM**; index chỉ sinh lời gọi **embedding** (bge-m3) — bảng `embed_cache` đã bỏ hẳn (không còn cache vector, rebuild dựa vào `index_done_chunks`). `worker.enhance_keywords` mặc định tắt (bật mới có LLM/chunk trong index).
+- Compile claim theo `compile_status IN (pending, processing)` nên bài đã `done` **không** bị compile lại; muốn nạp lại tóm tắt thì reset `compile_status`/xoá cache `compile:sum:*`.
+
 ## Conventions
 
 - Interfaces prefixed `I` (IConfig, IPingPongService, IDB); constructors take interfaces, fx binds interface → concrete (SOLID/DIP)
