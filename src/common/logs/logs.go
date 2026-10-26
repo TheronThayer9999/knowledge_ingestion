@@ -56,7 +56,7 @@ func Debug(args ...interface{}) {
 }
 
 func Debugw(msg string, kv ...interface{}) {
-	callLogger.Debugw(msg, kv...)
+	callLogger.Debugw(msg, normalizeFields(kv)...)
 }
 
 func Info(args ...interface{}) {
@@ -68,7 +68,7 @@ func Infof(template string, args ...interface{}) {
 }
 
 func Infow(msg string, kv ...interface{}) {
-	callLogger.Infow(msg, kv...)
+	callLogger.Infow(msg, normalizeFields(kv)...)
 }
 
 // InfowSkip như Infow nhưng lùi thêm skip frame khi xác định caller — dùng cho
@@ -79,7 +79,7 @@ func Infow(msg string, kv ...interface{}) {
 //
 //go:noinline
 func InfowSkip(skip int, msg string, kv ...interface{}) {
-	callLogger.WithOptions(zap.AddCallerSkip(skip)).Infow(msg, kv...)
+	callLogger.WithOptions(zap.AddCallerSkip(skip)).Infow(msg, normalizeFields(kv)...)
 }
 
 func Warn(args ...interface{}) {
@@ -91,25 +91,26 @@ func Warnf(template string, args ...interface{}) {
 }
 
 func Warnw(msg string, kv ...interface{}) {
-	callLogger.Warnw(msg, kv...)
+	callLogger.Warnw(msg, normalizeFields(kv)...)
 }
 
 // WarnwSkip như Warnw nhưng lùi thêm skip frame — xem InfowSkip.
 //
 //go:noinline
 func WarnwSkip(skip int, msg string, kv ...interface{}) {
-	callLogger.WithOptions(zap.AddCallerSkip(skip)).Warnw(msg, kv...)
+	callLogger.WithOptions(zap.AddCallerSkip(skip)).Warnw(msg, normalizeFields(kv)...)
 }
 
 func Error(err error, msg string, kv ...interface{}) {
-	callLogger.Errorw(msg, append([]interface{}{"error", err}, kv...)...)
+	callLogger.Errorw(msg, normalizeFields(append([]interface{}{"error", err}, kv...))...)
 }
 
 // ErrorSkip như Error nhưng lùi thêm skip frame — xem InfowSkip.
 //
 //go:noinline
 func ErrorSkip(skip int, err error, msg string, kv ...interface{}) {
-	callLogger.WithOptions(zap.AddCallerSkip(skip)).Errorw(msg, append([]interface{}{"error", err}, kv...)...)
+	callLogger.WithOptions(zap.AddCallerSkip(skip)).
+		Errorw(msg, normalizeFields(append([]interface{}{"error", err}, kv...))...)
 }
 
 func Errorf(template string, args ...interface{}) {

@@ -13,6 +13,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 )
@@ -173,9 +174,7 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 		}
 	}
 	if strings.TrimSpace(answer) == "" {
-		// Model free thỉnh thoảng trả content rỗng (hoặc dạng multi-part) —
-		// log rõ để chẩn đoán thay vì câm lặng trả answer rỗng.
-		logs.Warnw("eino agent: answer rỗng cuối lượt", "query", query)
+		warnEmptyAnswer(ctx, query)
 	}
 	var hits = make([]*domain.ScoredChunk, 0)
 	searched := false
@@ -188,4 +187,13 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 		Hits:      hits,
 		Searched:  searched,
 	}, nil
+}
+
+// warnEmptyAnswer báo lượt model trả answer rỗng (model free thỉnh thoảng vậy,
+// hoặc trả dạng multi-part) — log để chẩn đoán thay vì câm lặng. Đếm ký tự chứ
+// không in nguyên query: query lúc retry mang theo chỉ thị dài, đưa hết vào log
+// là che mất những dòng cần đọc (chính sách log: src/common/logs/fields.go).
+func warnEmptyAnswer(ctx context.Context, query string) {
+	logs.Warnw("eino agent: answer rỗng cuối lượt",
+		"trace_id", utils.TraceIDFromCtx(ctx), "query_chars", len([]rune(query)))
 }

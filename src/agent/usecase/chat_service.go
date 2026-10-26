@@ -154,8 +154,9 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 // Collector cùng request nên hit retry gom tiếp, không mất cites lượt đầu —
 // chỉ 1 retry mỗi loại để không bùng chi phí.
 func (s *chatService) run(ctx context.Context, agent *eino.ChatAgent, model string, dto *dtos.ChatRequest) (eino.RunResult, error) {
-	logs.Infow("chat: gọi agent", "model", model, "history", len(dto.History),
-		"message_chars", len(dto.Message))
+	logs.Infow("chat: gọi agent", "trace_id", utils.TraceIDFromCtx(ctx),
+		"model", model, "history", len(dto.History),
+		"message_chars", len([]rune(dto.Message)))
 	res, err := agent.Run(ctx, model, dto.History, dto.Message)
 	if err != nil {
 		return eino.RunResult{}, err
@@ -163,15 +164,21 @@ func (s *chatService) run(ctx context.Context, agent *eino.ChatAgent, model stri
 	retryNote := ""
 	switch {
 	case strings.TrimSpace(res.Answer) == "":
-		logs.Warnw("chat: answer rỗng, retry", "message", dto.Message)
+		// Log chỉ cần biết câu hỏi dài bao nhiêu — nội dung user đã có trong
+		// request, lặp lại vào log chỉ làm tràn dòng và phơi luôn chữ của user
+		// ở nơi người vận hành không cần đọc.
+		logs.Warnw("chat: answer rỗng, retry", "trace_id", utils.TraceIDFromCtx(ctx),
+			"message_chars", len([]rune(dto.Message)))
 		retryNote = emptyAnswerRetryNote
 	case len(res.Hits) == 0 && isFollowUp(dto.Message, dto.History):
-		logs.Warnw("chat: follow-up 0 hit, retry ép search", "message", dto.Message)
+		logs.Warnw("chat: follow-up 0 hit, retry ép search", "trace_id", utils.TraceIDFromCtx(ctx),
+			"message_chars", len([]rune(dto.Message)), "history", len(dto.History))
 		retryNote = followUpRetryNote
 	}
 	if retryNote != "" {
 		if res2, err2 := agent.Run(ctx, model, dto.History, dto.Message+retryNote); err2 != nil {
-			logs.Warnw("chat: retry lỗi, giữ kết quả đầu", "error", err2)
+			logs.Warnw("chat: retry lỗi, giữ kết quả đầu", "trace_id", utils.TraceIDFromCtx(ctx),
+				"error", err2)
 		} else {
 			res = res2
 		}

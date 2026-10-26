@@ -96,7 +96,12 @@ func (a *ArticleRepository) ExistsByURL(ctx context.Context, url string, userID 
 	if err := dbConn(ctx, a.db).Model(&domain.Article{}).
 		Where("url = ? AND user_id = ?", url, userID).
 		Count(&count).Error; err != nil {
-		logs.Warn("error occurred while checking if url exists: ", url)
+		// Không in nguyên url: trace_id + user_id là đủ để lần ra request, còn
+		// link người dùng dán vào không phải thứ cần đưa vào log. Dừng ở WARN vì
+		// logger gorm đã in "SQL error" kèm stack ở ERROR — thêm một dòng ERROR
+		// nữa là ngập log.
+		logs.Warnw("article: đếm bài theo url lỗi", "trace_id", utils.TraceIDFromCtx(ctx),
+			"user_id", userID, "error", err)
 		return false, err
 	}
 	return count > 0, nil
