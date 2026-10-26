@@ -85,6 +85,29 @@ export function articleStage(article: Article): ArticleStage {
   return 'done';
 }
 
+/**
+ * Định danh FILE nguồn của 1 bài — mirror `fileTag` bên Go: storage key với bài
+ * upload ("uploads/<uuid>.ext"), URL với bài link ngoài. `name` là tên người
+ * dùng đặt (sửa được) nên một mình nó không nói được file nào đang chạy.
+ */
+export function articleSource(article: Article): string {
+  return article.storageKey.trim() || article.url.trim();
+}
+
+/**
+ * So khớp 1 bài với từ khóa tìm kiếm: tên tài liệu HOẶC file nguồn — nhờ vậy
+ * dán storage key đọc từ dòng log có field `file` vào ô tìm kiếm là ra đúng bài.
+ */
+export function matchesArticleQuery(article: Article, term: string): boolean {
+  const query = term.trim().toLowerCase();
+  if (query === '') {
+    return true;
+  }
+  return [article.name, articleSource(article)].some((value) =>
+    value.toLowerCase().includes(query),
+  );
+}
+
 export interface ArticleList {
   articles: Article[];
   total: number;

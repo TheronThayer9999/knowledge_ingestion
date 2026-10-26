@@ -23,9 +23,11 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
 import {
+  articleSource,
   articleStage,
   buildFolderTree,
   docTypeKey as docTypeTranslationKey,
+  matchesArticleQuery,
   mergeArticleStatuses,
   statusKey,
   subtreeIds,
@@ -152,14 +154,14 @@ export class Documents implements OnDestroy {
     return buildFolderTree(this.categories()).map(decorate);
   });
 
-  /** Tài liệu đang hiển thị: lọc theo nhánh thư mục đang chọn + từ khóa */
+  /** Tài liệu đang hiển thị: lọc theo nhánh thư mục đang chọn + từ khóa (tên hoặc file) */
   protected readonly visible = computed<Article[]>(() => {
-    const term = this.search().trim().toLowerCase();
+    const term = this.search();
     const folder = this.selected();
     const allowed = folder === null ? null : subtreeIds(this.categories(), folder);
     return this.articles()
       .filter((article) => allowed === null || allowed.has(article.categoryId))
-      .filter((article) => term === '' || article.name.toLowerCase().includes(term))
+      .filter((article) => matchesArticleQuery(article, term))
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   });
 
@@ -330,6 +332,11 @@ export class Documents implements OnDestroy {
 
   protected docTypeKey(docType: string): TranslationKey {
     return docTypeTranslationKey(docType);
+  }
+
+  /** File nguồn (storage key / URL) hiện dưới tên — rỗng thì template ẩn dòng phụ */
+  protected source(article: Article): string {
+    return articleSource(article);
   }
 
   protected openUpload(): void {

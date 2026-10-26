@@ -37,3 +37,55 @@ là ra đúng tài liệu.
    - dòng bảng/card hiện storage key dưới tên, hover thấy key đầy đủ;
    - dán 1 storage key lấy từ DB vào ô tìm kiếm → còn đúng tài liệu đó;
    - dialog chi tiết vẫn hiện "File trong kho" như cũ.
+
+## Kết quả
+
+### Thay đổi đã làm
+
+| File | Việc |
+|---|---|
+| `core/knowledge/knowledge.models.ts` | `articleSource` + `matchesArticleQuery` (hàm thuần) |
+| `core/knowledge/knowledge.models.spec.ts` | 9 test: nguồn (key/URL/không có) + so khớp (tên, key, URL, rỗng) |
+| `pages/documents/documents.ts` | `visible()` dùng `matchesArticleQuery`; thêm `source(article)` cho template |
+| `pages/documents/documents.html` | Dòng bảng: bọc tên + `.doc-meta .doc-file` trong `.doc-name-wrap`; card lưới: `.card-meta .card-file` |
+| `pages/documents/documents.scss` | `.doc-name-wrap` (grid + `min-width: 0`) và `.doc-file/.card-file` (mono); xoá rule `.empty-body` |
+| `shared/i18n/vi.ts`, `en.ts` | `DOC_SEARCH_PLACEHOLDER` → "Tìm theo tên tài liệu hoặc file…" |
+
+### 2 lỗi phát sinh khi kiểm chứng
+
+1. **Mono bị mất do thứ tự rule**: `.doc-file/.card-file` đặt TRƯỚC nhóm
+   `.doc-meta, .card-meta, .content-count` nên shorthand `font: var(--text-style-xs)`
+   của nhóm reset `font-family` về Roboto (cùng specificity, rule sau thắng).
+   Browser bắt: computed `font-family` ra `Roboto…` chứ không phải mono. Sửa: chuyển
+   khối `.doc-file/.card-file` xuống SAU nhóm, kèm comment cảnh báo.
+2. **Vượt budget style 10 kB**: bản đầu thêm 4 khai báo trùng (`font`, `color`,
+   truncate) làm `documents.scss` lên 10.19 kB → 10.13 kB (warning `anyComponentStyle`).
+   Theo phương án gộp thay vì nâng budget: dùng lại class `.doc-meta`/`.card-meta`
+   cho dòng file (đã có font + màu + ellipsis), wrapper dùng `display: grid`, và xoá
+   `.empty-body { color: var(--color-muted) }` (thừa — `.empty` đã set color, `<p>`
+   con kế thừa) → build sạch, không còn warning.
+
+### E2E thật (API :9001 + `ng serve` :4200, tài khoản `feuser`)
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Dòng phụ dưới tên (2 bài `API Test A/B`) | `uploads/01a1768a-2a19-743f-9dc2-a31285c3bfdb.txt`, `…7440-b970-8b03d77b37bf.txt` |
+| Key dài | Cắt bằng "…", `title` giữ key đầy đủ; `scrollWidth 538 > clientWidth 373` |
+| Cột bảng | Không xô lệch: x-position các cột giữ nguyên `37 / 89 / 510 / 658 / 786`, `scrollWidth == clientWidth` |
+| `font-family` dòng file (bảng + lưới) | `ui-monospace, "SF Mono", Consolas, "Courier New", monospace`, 12px |
+| Search `01a1768a-2a19-743f` | 2 dòng → **1 dòng** (`API Test A`) — khớp key, không chỉ khớp tên |
+| Card lưới | Key nằm trong card, `scrollWidth 278 == clientWidth 278`, không tràn |
+| Dialog chi tiết | Vẫn hiện "File trong kho" (mono) |
+
+### Ghi nhận ngoài phạm vi
+
+- `mat-button-toggle` của toolbar view (list/grid) không mang `aria-label` trên host
+  dù template có binding — lỗi a11y CÓ SẴN từ trước, không sửa trong đợt này.
+- Chưa verify badge trạng thái đang xử lý vì 2 bài trong DB đều `done` (badge bị ẩn).
+
+### Verify
+
+- `npm run lint`: All files pass linting.
+- `npm test`: 19 file / 103 test pass (thêm 9 test cho `knowledge.models`).
+- `npm run build`: xanh, không còn warning budget.
+

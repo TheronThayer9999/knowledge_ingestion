@@ -328,10 +328,6 @@
   color: var(--color-on-surface);
 }
 
-.empty-body {
-  color: var(--color-muted);
-}
-
 // ---- Skeleton ----
 .list-skeleton {
   display: flex;
@@ -386,8 +382,7 @@
 .doc-head,
 .doc-row {
   display: grid;
-  grid-template-columns:
-    var(--doc-col-select) minmax(0, 1fr) 170px 150px 120px 96px;
+  grid-template-columns: var(--doc-col-select) minmax(0, 1fr) 170px 150px 120px 96px;
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-3);
@@ -460,12 +455,25 @@
   color: var(--color-on-surface);
 }
 
+// Tên + file nguồn xếp dọc trong ô tên; cột co được để key bị cắt "…"
+.doc-name-wrap {
+  display: grid;
+  min-width: 0;
+}
+
 // Chữ phụ của dòng bảng, card lưới và bộ đếm toolbar cùng một kiểu.
 .doc-meta,
 .card-meta,
 .content-count {
   font: var(--text-style-xs);
   color: var(--color-muted);
+}
+
+// File nguồn (key/URL) — mono để đối chiếu với field `file` trong log. Phải
+// đứng SAU nhóm trên: shorthand `font` reset font-family, đứng trước là mất mono.
+.doc-file,
+.card-file {
+  font-family: var(--font-mono);
 }
 
 .card-meta {

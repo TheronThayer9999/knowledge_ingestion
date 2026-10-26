@@ -106,7 +106,7 @@ export const VI_ENTRIES = {
   DOC_SUBTITLE: 'Sắp xếp theo thư mục, upload và xem cấu trúc tài liệu.',
   DOC_UPLOAD: 'Upload tài liệu',
   DOC_NEW_FOLDER: 'Thư mục mới',
-  DOC_SEARCH_PLACEHOLDER: 'Tìm theo tên tài liệu…',
+  DOC_SEARCH_PLACEHOLDER: 'Tìm theo tên tài liệu hoặc file…',
   DOC_VIEW_LIST: 'Dạng danh sách',
   DOC_VIEW_GRID: 'Dạng lưới',
   DOC_FOLDERS_TITLE: 'Thư mục',

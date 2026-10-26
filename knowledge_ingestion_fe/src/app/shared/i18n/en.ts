@@ -107,7 +107,7 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   DOC_SUBTITLE: 'Organize by folder, upload and inspect document structure.',
   DOC_UPLOAD: 'Upload document',
   DOC_NEW_FOLDER: 'New folder',
-  DOC_SEARCH_PLACEHOLDER: 'Search documents by name…',
+  DOC_SEARCH_PLACEHOLDER: 'Search documents by name or file…',
   DOC_VIEW_LIST: 'List view',
   DOC_VIEW_GRID: 'Grid view',
   DOC_FOLDERS_TITLE: 'Folders',
