@@ -25,6 +25,10 @@ type ChatRequest struct {
 	CategoryIDs []int64           `json:"category_ids,omitempty" binding:"omitempty,max=100,dive,gt=0"`
 	Limit       int               `json:"limit,omitempty" binding:"omitempty,gte=0"`
 	History     []ChatHistoryItem `json:"history,omitempty"`
+	// ConversationID gắn lượt chat vào một phiên đã lưu (S1): có id thì LỊCH SỬ
+	// NẠP TỪ DB và `history` ở trên bị bỏ qua — hai nguồn cùng lúc là hai sự thật.
+	// 0/không gửi = hành vi cũ: tin history client, không lưu lượt nào.
+	ConversationID int64 `json:"conversation_id,omitempty" binding:"omitempty,gt=0" example:"12"`
 }
 
 // ChatCite là 1 nguồn trích dẫn — frontend map thành chip/link, backend đánh

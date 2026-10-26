@@ -82,9 +82,21 @@ func loadAdapter() []fx.Option {
 		// Nhịp sống worker để API trả về UI biết "đang xử lý" hay "chờ vì
 		// worker đã tắt".
 		fx.Provide(repository.NewWorkerHeartbeatRepository),
+		// Phiên chat (S1): 2 repo conversations/messages — tách ra hàm riêng vì
+		// loadAdapter đã đầy ngân sách hàm (guardrail function_budget_test.go).
+		fx.Options(loadChatRepositories()...),
 		// VLM đọc ảnh (qwen-vl) — bind 2 vai hẹp cho agent dùng `Ask`; provider
 		// lazy nên không thành phụ thuộc bắt buộc lúc boot.
 		fx.Options(vlmOptions()...),
+	}
+}
+
+// loadChatRepositories: repo của phiên chat — để riêng khỏi loadAdapter cho
+// hàm đó nằm trong ngân sách (guardrail src/quality/function_budget_test.go).
+func loadChatRepositories() []fx.Option {
+	return []fx.Option{
+		fx.Provide(repository.NewConversationRepository),
+		fx.Provide(repository.NewChatMessageRepository),
 	}
 }
 
@@ -108,6 +120,10 @@ func loadService() []fx.Option {
 		fx.Provide(newChatPrompts),
 		fx.Provide(newProviderAgents),
 		fx.Provide(usecase.NewChatService),
+		// CRUD phiên cho API + cổng lưu hội thoại cho agent — CÙNG nghiệp vụ,
+		// hai vai hẹp (khuôn NewArticlePageRepository/NewArticlePageIssues).
+		fx.Provide(services.NewConversationService),
+		fx.Provide(services.NewChatSessionStore),
 	}
 }
 
@@ -143,6 +159,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewHealthAPI),
 		fx.Provide(apis.NewSearchAPI),
 		fx.Provide(apis.NewChatAPI),
+		fx.Provide(apis.NewConversationAPI),
 		fx.Provide(routers.NewRouter),
 	}
 }

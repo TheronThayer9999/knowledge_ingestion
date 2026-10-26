@@ -36,6 +36,13 @@ definitions:
           type: integer
         maxItems: 100
         type: array
+      conversation_id:
+        description: |-
+          ConversationID gắn lượt chat vào một phiên đã lưu (S1): có id thì LỊCH SỬ
+          NẠP TỪ DB và `history` ở trên bị bỏ qua — hai nguồn cùng lúc là hai sự thật.
+          0/không gửi = hành vi cũ: tin history client, không lưu lượt nào.
+        example: 12
+        type: integer
       history:
         items:
           $ref: '#/definitions/dtos.ChatHistoryItem'
@@ -129,6 +136,27 @@ definitions:
     required:
     - name
     type: object
+  dtos.CreateConversationRequest:
+    properties:
+      category_ids:
+        items:
+          type: integer
+        maxItems: 100
+        type: array
+      model:
+        example: google/gemma-4-31b-it:free
+        type: string
+      provider:
+        example: openrouter
+        type: string
+      thinking:
+        example: false
+        type: boolean
+      title:
+        example: Hỏi về phụ cấp công tác
+        maxLength: 120
+        type: string
+    type: object
   dtos.CreateUserRequest:
     properties:
       avatar:
@@ -198,6 +226,16 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  dtos.RenameConversationRequest:
+    properties:
+      title:
+        example: Phụ cấp công tác
+        maxLength: 120
+        minLength: 1
+        type: string
+    required:
+    - title
     type: object
   dtos.ResetScopeRequest:
     properties:
@@ -1073,6 +1111,204 @@ paths:
       summary: Chat hỏi đáp tri thức (markdown)
       tags:
       - chat
+  /api/v1/conversations:
+    get:
+      description: Mới nhất trước theo lượt cuối, kèm số message của từng phiên. `before`
+        là keyset con trỏ (id phiên cuối của trang trước).
+      parameters:
+      - description: số phiên, mặc định 20, tối đa 100
+        in: query
+        name: limit
+        type: integer
+      - description: id phiên con trỏ
+        in: query
+        name: before
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Danh sách phiên chat của tôi
+      tags:
+      - conversations
+    post:
+      consumes:
+      - application/json
+      description: Tạo phiên rỗng để chat nhiều lượt gắn vào (conversation_id). Mọi
+        field tuỳ chọn; title để trống thì lượt chat đầu tiên tự điền theo câu hỏi.
+      parameters:
+      - description: payload phiên
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.CreateConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Mở một phiên chat
+      tags:
+      - conversations
+  /api/v1/conversations/{id}:
+    delete:
+      description: Xoá mềm phiên (biến khỏi danh sách); message ở lại trong DB vì
+        chưa có purge cứng
+      parameters:
+      - description: conversation id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Xoá phiên chat
+      tags:
+      - conversations
+    get:
+      description: 404 nếu phiên không tồn tại HOẶC không phải của người đang đăng
+        nhập
+      parameters:
+      - description: conversation id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Một phiên chat
+      tags:
+      - conversations
+    patch:
+      consumes:
+      - application/json
+      description: Đổi title của phiên của chính mình
+      parameters:
+      - description: conversation id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: title mới
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.RenameConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Đổi tên phiên chat
+      tags:
+      - conversations
+  /api/v1/conversations/{id}/messages:
+    get:
+      description: 'Mở lại phiên cũ: trả message đã lưu KÈM cites (chip [^n] sống
+        lại). Phân trang ngược bằng `before`, kết quả oldest-first trong cửa sổ.'
+      parameters:
+      - description: conversation id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: số message, mặc định 50, tối đa 200
+        in: query
+        name: limit
+        type: integer
+      - description: id message con trỏ
+        in: query
+        name: before
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Lịch sử message của một phiên
+      tags:
+      - conversations
   /api/v1/ping:
     get:
       description: Returns pong with server timestamp

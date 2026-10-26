@@ -14,7 +14,7 @@ import (
 func migrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(domain.User{}, domain.Category{}, domain.Article{}, domain.ArticlePage{},
 		domain.EmbedCacheEntry{}, domain.OutboxEvent{}, domain.CategoryClosure{}, domain.ArticleSection{},
-		domain.RefreshToken{}, domain.WorkerHeartbeat{}); err != nil {
+		domain.RefreshToken{}, domain.WorkerHeartbeat{}, domain.Conversation{}, domain.ChatMessage{}); err != nil {
 		return err
 	}
 	// Bảng article_chunks đã bị bỏ hoàn toàn (phase chunk + embed gộp làm 1,
@@ -46,13 +46,11 @@ func migrate(db *gorm.DB) error {
 			return fmt.Errorf("chuẩn hoá %s='waiting' sang pending: %w", col, err)
 		}
 	}
-	// Index composite partial cho luồng list article (user_id + category_id
-	// + order created_at): WHERE deleted_at IS NULL vì mọi query gorm đều
-	// kèm điều kiện đó nên index gọn và Sort biến mất khi bảng lớn.
-	// AutoMigrate không dựng được partial index nên exec tay, IF NOT EXISTS
-	// để boot lại idempotent.
-	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_owner_list ON articles (user_id, category_id, created_at DESC) WHERE deleted_at IS NULL`).Error; err != nil {
-		return fmt.Errorf("failed to create articles owner index: %w", err)
+	// Index cho các luồng list: articles owner-scope + sidebar/lịch sử phiên chat.
+	// Gộp vào một hàm vì migrate() đã đầy ngân sách (guardrail
+	// src/quality/function_budget_test.go).
+	if err := migrateIndexes(db); err != nil {
+		return err
 	}
 	// Seq: thứ tự đọc của mảnh, tách khỏi page_num (số trang thật để trích
 	// dẫn). Cần vì file txt bị chia thành nhiều mảnh cùng page_num = 0 —
@@ -254,6 +252,31 @@ func hasConstraint(db *gorm.DB, table, name string) bool {
 		WHERE table_schema = current_schema() AND table_name = ? AND constraint_name = ?`,
 		table, name).Scan(&n).Error
 	return err == nil && n > 0
+}
+
+// migrateIndexes dựng mấy index mà AutoMigrate không tạo được: partial (phải
+// kèm WHERE deleted_at IS NULL) và composite theo đúng thứ tự cột cần cho
+// keyset. Mọi câu IF NOT EXISTS nên boot lại idempotent.
+//
+// WHERE deleted_at IS NULL ăn cho mọi query gorm vì soft-delete scope luôn kèm
+// điều kiện đó, nên index gọn và Sort biến mất khi bảng lớn.
+func migrateIndexes(db *gorm.DB) error {
+	// List article: user_id + category_id + order created_at.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_owner_list ON articles (user_id, category_id, created_at DESC) WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("failed to create articles owner index: %w", err)
+	}
+	// Sidebar luôn là `WHERE user_id = ? AND deleted_at IS NULL ORDER BY
+	// last_message_at DESC, id DESC` — cùng lý do partial như articles ở trên,
+	// và `id DESC` phải nằm trong index vì keyset `(last_message_at, id) <
+	// (SELECT ...)` so sánh cả cặp.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_conversations_owner_list ON conversations (user_id, last_message_at DESC, id DESC) WHERE deleted_at IS NULL`).Error; err != nil {
+		return fmt.Errorf("tạo index danh sách phiên chat: %w", err)
+	}
+	// Đọc lịch sử 1 phiên: `WHERE conversation_id = ? ORDER BY id DESC LIMIT n`.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_messages_conversation_id_id ON messages (conversation_id, id)`).Error; err != nil {
+		return fmt.Errorf("tạo index message theo phiên: %w", err)
+	}
+	return nil
 }
 
 // migrateQueueColumns chuyển cột queue cũ (chunk_*, embed_*) sang cột của

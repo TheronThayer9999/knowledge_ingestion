@@ -21,6 +21,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	adminAPI *apis.ArticleAdminAPI, embedCacheAPI *apis.EmbedCacheAdminAPI,
 	consistencyAPI *apis.ConsistencyAPI, healthAPI *apis.HealthAPI,
 	searchAPI *apis.SearchAPI, chatAPI *apis.ChatAPI,
+	conversationAPI *apis.ConversationAPI,
 	cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
 	trace middlewares.ITraceMiddleware, rl middlewares.IRateLimiter) *Router {
 	if cfg.GetApp().Env == "production" {
@@ -41,16 +42,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	engine.GET("/health", healthAPI.Check)
 
 	v1 := engine.Group("/api/v1")
-	{
-		v1.GET("/ping", api.Ping)
-		v1.GET("/pong", api.Pong)
-		v1.POST("/users", userAPI.Create)
-		v1.POST("/auth/login", rl.Handler(), userAPI.Login)
-		// Refresh/logout xác thực bằng chính refresh token (không cần access
-		// token), nên để public: access hết hạn vẫn logout/refresh được.
-		v1.POST("/auth/refresh", userAPI.Refresh)
-		v1.POST("/auth/logout", userAPI.Logout)
-	}
+	registerPublicRoutes(v1, api, userAPI, rl)
 
 	// Route cần đăng nhập — Handler verify token với DB mỗi request
 	// nên đổi pass/khóa acc có hiệu lực ngay. Thêm middleware mới
@@ -100,7 +92,36 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		}
 		authed.POST("/search", searchAPI.Query)
 		authed.POST("/chat", chatAPI.Chat)
+		registerConversationRoutes(authed, conversationAPI)
 	}
 
 	return &Router{Engine: engine}
+}
+
+// registerPublicRoutes là nhóm không cần đăng nhập: ping/pong, đăng ký, đăng
+// nhập (có rate limit) và refresh/logout — hai đường sau tự xác thực bằng
+// chính refresh token nên access hết hạn vẫn dùng được.
+//
+// Tách khỏi NewRouter vì hàm đó đã chạm ngân sách (guardrail
+// src/quality/function_budget_test.go).
+func registerPublicRoutes(v1 *gin.RouterGroup, api *apis.PingPongAPI, userAPI *apis.UserAPI, rl middlewares.IRateLimiter) {
+	v1.GET("/ping", api.Ping)
+	v1.GET("/pong", api.Pong)
+	v1.POST("/users", userAPI.Create)
+	v1.POST("/auth/login", rl.Handler(), userAPI.Login)
+	v1.POST("/auth/refresh", userAPI.Refresh)
+	v1.POST("/auth/logout", userAPI.Logout)
+}
+
+// registerConversationRoutes ghi nhóm route phiên chat của chính user (S1).
+// Tách khỏi NewRouter vì hàm đó đã chạm ngân sách (guardrail
+// src/quality/function_budget_test.go) — KHÔNG gate admin: ai cũng có phiên
+// riêng, service đã scope theo user_id lấy từ token.
+func registerConversationRoutes(authed *gin.RouterGroup, api *apis.ConversationAPI) {
+	authed.POST("/conversations", api.Create)
+	authed.GET("/conversations", api.List)
+	authed.GET("/conversations/:id", api.Get)
+	authed.PATCH("/conversations/:id", api.Rename)
+	authed.DELETE("/conversations/:id", api.Delete)
+	authed.GET("/conversations/:id/messages", api.Messages)
 }

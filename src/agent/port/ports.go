@@ -22,3 +22,38 @@ type IChatter interface {
 type IUserResolver interface {
 	UserID(ctx context.Context) (int64, bool)
 }
+
+// ChatSession là những gì một phiên chat cần biết trước khi chạy một lượt:
+// lịch sử (đã cắt cửa sổ) + phạm vi/provider/model đã lưu của phiên.
+type ChatSession struct {
+	ConversationID int64
+	History        []dtos.ChatHistoryItem
+	CategoryIDs    []int64
+	Provider       string
+	Model          string
+	Thinking       bool
+}
+
+// ChatTurn là một lượt thành công cần ghi xuống: câu hỏi + câu trả lời đã chuẩn
+// hoá (sau normalizeCitations) + cites + phạm vi hiệu lực của lượt này.
+type ChatTurn struct {
+	ConversationID int64
+	UserID         int64
+	Question       string
+	Answer         string
+	Cites          []*dtos.ChatCite
+	CategoryIDs    []int64
+	Provider       string
+	Model          string
+	Thinking       bool
+}
+
+// IChatSessions là cổng lưu hội thoại — agent KHAI BÁO cái nó cần (Load +
+// AppendTurn), services là người implement, loader nối 2 đầu. Đúng khuôn
+// IUserResolver: agent không import repository/gorm, không lật tầng.
+type IChatSessions interface {
+	// Load đọc phiên của chính userID (không phải chủ → domain.ErrNotFound).
+	Load(ctx context.Context, conversationID, userID int64) (*ChatSession, error)
+	// AppendTurn ghi 1 lượt (2 message + touch phiên) trong cùng transaction.
+	AppendTurn(ctx context.Context, turn *ChatTurn) error
+}
