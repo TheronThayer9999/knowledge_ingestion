@@ -30,9 +30,11 @@ type ChartFromCiteArgs struct {
     N     int    `json:"n"    jsonschema:"..."` // số nguồn [^n] đang có trong lượt
     Kind  string `json:"kind" jsonschema:"..."` // bar | line | pie
     Title string `json:"title" jsonschema:"..."`
+    Column string `json:"column,omitempty" jsonschema:"..."` // tên cột (header) cần vẽ, tùy chọn
 }
 ```
 
+- `column` là **tên cột model đọc được từ hàng header**, không phải một con số: model vẫn không có đường nào đưa số vào spec, nó chỉ nói vẽ cột nào; giá trị luôn do backend cắt từ chunk.
 - `n` là **số trích dẫn model nhìn thấy**, không phải `article_id`/`chunk_index` — model không được quyền đụng ID kỹ thuật (mục 10 prompt, Đợt 22).
 - Trả về cho model JSON **ngắn**: `{ok, n, kind, title, points: [{label, value}], caption, note}`. Model chỉ cần biết có bao nhiêu điểm và nhãn là gì để viết câu chữ; **spec đầy đủ không quay lại model** (tránh model copy số sang chỗ khác rồi sửa sai).
 - Tool ghi chart vào collector (`AddChart`) — `ChatResponse.charts` dựng từ đó, không dựng từ lời model.
@@ -62,6 +64,7 @@ Luật cắt series (quyết định ở đây để code không phải đoán):
 
 - Tách dòng theo `\n`; chỉ nhận dòng là hàng bảng thật (`|` ≥ 3 ô) — hàng `## Sheet:` và hàng phân cách `|---|` bị loại.
 - Với mỗi hàng: nhãn = ô không phải số đầu tiên; giá trị = **cột số có nhiều hàng lấy được số nhất** (chọn 1 cột duy nhất cho cả series — không trộn cột, vì trộn là vẽ láo). Ô chứa `Tổng cộng`/`Cộng` bị loại khỏi series để không vẽ hai lần một tổng.
+- Khi model không truyền `column`: chọn cột có nhiều hàng lấy được số nhất; nhiều cột cùng nhiều nhất thì chọn cột có tổng giá trị tuyệt đối lớn nhất, vẫn hoà nữa thì cột trái nhất — thứ tự ưu tiên cố định để lần chạy sau vẽ đúng cột lần trước. `note` LUÔN nói rõ đã chọn cột nào (kèm tên cột lấy từ hàng header nếu có) để model sửa được bằng cách gọi lại với `column` — bảng lương thật trong fixture Đợt 25 có tới 6 cột số (ngày công, lương ngày, lương cơ bản, phụ cấp, tổng thực nhận, thuế), nên để code tự đoán mù là vẽ láo đúng kiểu §6.9 cảnh báo.
 - `pie`: cần nhãn + giá trị, không cần thứ tự. `bar`: như pie nhưng giữ thứ tự hàng. `line`: chỉ nhận khi các nhãn **tăng dần được thành dãy số hoặc ngày/tháng** (`01/07/2025`, `Q3`, `2024`, `Tháng 10`) — không đủ điều kiện thì rơi về `bar` kèm note "kind line không hợp với dữ liệu phân loại, đã vẽ bar".
 - Trần 12 điểm, sàn 2 điểm. Ngoài khoảng ⇒ từ chối, note cho model.
 
@@ -129,7 +132,7 @@ Từ chối là **kết quả bình thường**, không phải lỗi: tool trả
 
 ## 7. Tiêu chí hoàn thành
 
-- [ ] Không có đường nào để số từ model vào spec (chỉ `n`/`kind`/`title` là đầu vào model).
+- [ ] Không có đường nào để số từ model vào spec (chỉ `n`/`kind`/`title`/`column` là đầu vào model).
 - [ ] `charts` có mặt trong `ChatResponse`, trong DB (`messages.charts`), và khi mở lại phiên.
 - [ ] Unit test phủ định dạng số tiếng Việt + các nhánh từ chối; `go build`/`vet`/`lint`/`test` xanh.
 - [ ] `expert_eval --selftest` đạt, `CHART_DATA_UNSOURCED` khoá được bằng chứng lệch số.
