@@ -1,0 +1,187 @@
+{
+ "meta": {
+  "base": "http://127.0.0.1:9001/api/v1",
+  "user": "eva344856d",
+  "category_ids": [
+   130
+  ],
+  "sessions": {},
+  "providers": [
+   "9router",
+   "nvidia",
+   "openrouter"
+  ],
+  "batch": 4,
+  "rpm": 30,
+  "concurrency": 2,
+  "file": "docs_test_case_and_data/testcase/test_case_complex_data.md",
+  "governor_waits": 0,
+  "total_secs": 536.7
+ },
+ "rows": [
+  {
+   "id": "Case X-01",
+   "provider": "9router",
+   "answered_by": "",
+   "question": "File bảng lương quý 3 có mấy sheet chứa dữ liệu, kể tên?",
+   "expected": "3 sheet có nội dung: Luong, Phu_cap, Ghi_chu. Sheet thứ tư khai trong workbook là So_lieu_cho_cap_nhat nhưng không có dòng nào nên không xuất hiện trong nội dung đọc được.",
+   "conversation_id": 28,
+   "secs": 116.0,
+   "n_cites": 5,
+   "answer": "File bảng lương quý 3 có **3 sheet** chứa dữ liệu, tên lần lượt là:\n\n1. **Luong** (7 hàng)\n2. **Phu_cap** (5 hàng)\n3. **Ghi_chu** (6 hàng)\n\n(Theo kết quả đọc cấu trúc file:, sheet_count = 3)",
+   "error": "",
+   "l0": [],
+   "l1": {
+    "factual": "PASS",
+    "unsourced": []
+   },
+   "l2": {
+    "shape": "5/6",
+    "failed": [
+     "citation_density"
+    ],
+    "chars": 190
+   },
+   "verdict": "PASS"
+  },
+  {
+   "id": "Case X-02",
+   "provider": "nvidia",
+   "answered_by": "",
+   "question": "Tổng thực nhận của toàn bảng lương quý 3 là bao nhiêu?",
+   "expected": "29.970.000 VNĐ, lấy từ cột Tổng thực nhận của dòng Tổng cộng. Lưu ý tổng cột Nhận ròng là 27.346.500 VNĐ, không phải con số này.",
+   "conversation_id": 29,
+   "secs": 146.8,
+   "n_cites": 10,
+   "answer": "Tổng thực nhận của toàn bảng lương Quý 3/2025 – Khối Văn phòng là **29.970.000 VNĐ**.\n\nTheo Sheet Luong của bảng lương:\n* Tổng cộng Lương cơ bản 25.370.000 VNĐ, Phụ cấp 4.600.000 VNĐ\n* Tổng thực nhận 29.970.000 VNĐ, Thuế TNCN 2.623.500 VNĐ, Nhận ròng 27.346.500 VNĐ[^1]\n\nKỳ tính lương ghi trong Sheet Ghi_chu là Quý 3/2025 (01/07/2025 - 30/09/2025)[^1].",
+   "error": "",
+   "l0": [],
+   "l1": {
+    "factual": "PASS",
+    "unsourced": [
+     "2.623.500",
+     "25.370.000",
+     "4.600.000"
+    ]
+   },
+   "l2": {
+    "shape": "6/6",
+    "failed": [],
+    "chars": 353
+   },
+   "verdict": "PASS"
+  },
+  {
+   "id": "Case X-03",
+   "provider": "openrouter",
+   "answered_by": "",
+   "question": "Vì sao NV05 chỉ được phụ cấp ăn trưa 600.000 trong khi NV01 được 800.000?",
+   "expected": "Vì điều kiện hưởng khác nhau: phụ cấp ăn trưa 800.000/tháng áp dụng khi làm việc tại văn phòng từ 22 ngày công trở lên, dưới 22 ngày công thì 600.000/tháng. NV01 có 22,5 ngày công; NV05 chỉ 20 ngày công và nghỉ 5 ngày trong quý.",
+   "conversation_id": 30,
+   "secs": 178.1,
+   "n_cites": 10,
+   "answer": "Theo quy định phụ cấp trong tài liệu, NV01 (Nguyễn Thị Lan) làm việc 22.5 ngày công, đạt điều kiện \"làm việc tại văn phòng từ 22 ngày công trở lên\" nên được phụ cấp ăn trưa 800.000 VND/tháng [^5][^6]. Còn NV05 (Hoàng Thu Trang) chỉ làm việc 20 ngày công (nghỉ 5 ngày trong quý), thuộc trường hợp \"làm việc tại văn phòng dưới 22 ngày công\" nên chỉ được 600.000 VND/tháng [^5][^6].\n\nNguyên nhân chênh lệch là ngưỡng 22 ngày công: NV01 đạt ngưỡng cao, NV05 không đạt.",
+   "error": "",
+   "l0": [],
+   "l1": {
+    "factual": "FAIL:22,5",
+    "unsourced": [
+     "22.5"
+    ]
+   },
+   "l2": {
+    "shape": "6/6",
+    "failed": [],
+    "chars": 464
+   },
+   "verdict": "FAIL1"
+  },
+  {
+   "id": "Case X-04",
+   "provider": "9router",
+   "answered_by": "",
+   "question": "NV03 có được hưởng phụ cấp không, số liệu trong file có nhất quán không?",
+   "expected": "Không nhất quán. Sheet Luong để trống ô Phụ cấp của NV03 (thực nhận 3.870.000 VNĐ đúng bằng lương cơ bản), trong khi sheet Phu_cap ghi NV03 được phụ cấp ăn trưa 600.000 VNĐ/tháng vì dưới 22 ngày công và nghỉ 4 ngày trong quý. Cần kế toán xác nhận, không tự chọn một trong hai.",
+   "conversation_id": 31,
+   "secs": 166.6,
+   "n_cites": 11,
+   "answer": "NV03 **đủ điều kiện hưởng phụ cấp**, nhưng số liệu trong file **không nhất quán**.\n\n**1. NV03 được hưởng phụ cấp không?**\n\nCó. Theo Sheet Phu_cap, NV03 (Lê Minh Ngọc) được liệt kê hưởng **Phụ cấp ăn trưa 600.000 VNĐ/tháng**, với điều kiện \"Làm việc tại văn phòng dưới 22 ngày công\" và ghi chú \"NV03 nghỉ 4 ngày trong quý\" [^2]. Trong Sheet Luong, NV03 có **21.5 ngày công**, thực sự dưới 22 ngày, nên đủ điều kiện hưởng khoản này [^1].\n\n**2. Số liệu có nhất quán không?**\n\nKhông. Có các điểm mâu thuẫn giữa Sheet Luong và Sheet Phu_cap:\n\n- Sheet Luong để **trống cột Phụ cấp** của NV03 (hiển thị như 0), và Tổng thực nhận của NV03 chỉ bằng Lương cơ bản (3.870.000 VNĐ), không cộng 600.000 VNĐ phụ cấp [^1].\n- Cột tổng cộng Phụ cấp trong Sheet Luong là 4.600.000 VNĐ (= 800.000 + 1.200.000 + 0 + 2.000.000 + 600.000), đã tính NV03 là 0, nên **thiếu 600.000 VNĐ** nếu tính theo Sheet Phu_cap (phải là 5.200.000 VNĐ) [^1][^2].\n- Cột tổng cộng Tổng thực nhận là 29.970.000 VNĐ, cũng **thiếu 600.000 VNĐ** so với trường hợp bổ sung phụ cấp cho NV03 (phải là 30.570.000 VNĐ) [^1][^2].\n\n**Cách kiểm tra nhanh:** Lương cơ bản NV03 = 21,5 ngày × 180.000 VNĐ = 3.870.000 VNĐ (khớp với Sheet Luong) [^1]. Nếu bổ sung phụ cấp ăn trưa 600.000 VNĐ, Tổng thực nhận của NV03 nên là 4.470.000 VNĐ.\n\n**Khuyến nghị:** Cần xác nhận với Phòng Nhân sự (người lập bảng, cập nhật 05/10/2025) [^2] xem cột Phụ cấp của NV03 trong Sheet Luong bị bỏ sót hay Sheet Phu_cap cần điều chỉnh, đồng thời cập nhật lại Tổng thực nhận và các cột tổng cộng tương ứng.",
+   "error": "",
+   "l0": [],
+   "l1": {
+    "factual": "PASS",
+    "unsourced": [
+     "1.200.000",
+     "180.000",
+     "2.000.000",
+     "21,5",
+     "21.5",
+     "29.970.000",
+     "30.570.000",
+     "4.470.000"
+    ]
+   },
+   "l2": {
+    "shape": "6/6",
+    "failed": [],
+    "chars": 1529
+   },
+   "verdict": "PASS"
+  },
+  {
+   "id": "Case X-05",
+   "provider": "nvidia",
+   "answered_by": "",
+   "question": "Thuế TNCN trong bảng lương áp dụng tỷ lệ bao nhiêu phần trăm?",
+   "expected": "Hai mức: 10% (bậc 1) và 5% (bậc thấp). Đối chiếu sheet Luong thì NV01, NV02, NV04 chịu 10%; NV03 và NV05 chịu 5%.",
+   "conversation_id": 32,
+   "secs": 242.5,
+   "n_cites": 10,
+   "answer": "Trong file **[x] bang_luong_q3** – Bảng lương Quý 3/2025 – Khối Văn phòng, kỳ tính lương Quý 3/2025 (01/07/2025 - 30/09/2025) [^1]:\n\n* Sheet **Ghi_chu**\n  * Tỷ lệ thuế TNCN bậc 1 | 10% [^1]\n  * Tỷ lệ thuế TNCN bậc thấp | 5% [^1]\n\nSheet **Luong** – BẢNG LƯƠNG QUÝ 3/2025 - KHỐI VĂN PHÒNG cho thấy mức thuế được áp dụng thực tế:\n\n* NV01 Nguyễn Thị Lan: Tổng thực nhận 5.300.000 VNĐ, Thuế TNCN 530.000 VNĐ [^3]\n* NV02 Trần Văn Hưng: Tổng thực nhận 7.200.000 VNĐ, Thuế TNCN 720.000 VNĐ [^3]\n* NV04 Phạm Gia Bảo: Tổng thực nhận 10.000.000 VNĐ, Thuế TNCN 1.000.000 VNĐ [^3]\n* NV03 Lê Minh Ngọc: Tổng thực nhận 3.870.000 VNĐ, Thuế TNCN 193.500 VNĐ [^3]\n* NV05 Hoàng Thu Trang: Tổng thực nhận 3.600.000 VNĐ, Thuế TNCN 180.000 VNĐ [^3]\n\nTổng cộng Thuế TNCN 2.623.500 VNĐ trên tổng thực nhận 29.970.000 VNĐ [^3].\n\nNhư vậy bảng lương này áp dụng hai mức Thuế TNCN:\n* 10% cho bậc 1 – tương ứng các trường hợp NV01, NV02, NV04;\n* 5% cho bậc thấp – tương ứng các trường hợp NV03, NV05.",
+   "error": "",
+   "l0": [],
+   "l1": {
+    "factual": "PASS",
+    "unsourced": [
+     "1.000.000",
+     "10.000.000",
+     "193.500",
+     "2.623.500",
+     "29.970.000",
+     "3.600.000",
+     "3.870.000",
+     "5.300.000"
+    ]
+   },
+   "l2": {
+    "shape": "6/6",
+    "failed": [],
+    "chars": 971
+   },
+   "verdict": "PASS"
+  },
+  {
+   "id": "Case X-06",
+   "provider": "openrouter",
+   "answered_by": "",
+   "question": "Hạn chốt lương của kỳ này là ngày nào và bảng do ai lập?",
+   "expected": "Hạn chốt lương là ngày 05 của tháng kế tiếp; bảng do Phòng Nhân sự lập, cập nhật ngày 05/10/2025. Kỳ tính lương là Quý 3/2025 từ 01/07/2025 đến 30/09/2025.",
+   "conversation_id": 33,
+   "secs": 33.4,
+   "n_cites": 10,
+   "answer": "Hạn chốt lương là ngày 05 của tháng kế tiếp, và bảng lương được lập bởi Phòng Nhân sự (cập nhật lần cuối ngày 05/10/2025). [^2]\n\nTheo Sheet: Ghi_chu của tài liệu, kỳ tính lương là Quý 3/2025 (01/07/2025 – 30/09/2025), hạn chốt lương quy định là \"Ngày 05 của tháng kế tiếp\", và người lập bảng là \"Phòng Nhân sự - cập nhật ngày 05/10/2025\". [^2] Với kỳ này kết thúc vào 30/09/2025, tháng kế tiếp là tháng 10/2025, tương ứng hạn chốt rơi vào ngày 05/10/2025 (suy luận từ ngày kết thúc kỳ và quy định \"ngày 05 của tháng kế tiếp\").",
+   "error": "",
+   "l0": [],
+   "l1": {
+    "factual": "PASS",
+    "unsourced": []
+   },
+   "l2": {
+    "shape": "6/6",
+    "failed": [],
+    "chars": 526
+   },
+   "verdict": "PASS"
+  }
+ ]
+}

@@ -57,6 +57,25 @@ def norm_vi(s: str) -> str:
     return re.sub(r"\s+", " ", s.lower().strip())
 
 
+def num_variants(raw: str) -> set[str]:
+    """Every spelling of one number token that a correct answer may legitimately use.
+
+    A real batch run exposed two false negatives: the expected text says
+    "22,5" (Vietnamese decimal comma) while the model writes "22.5", and
+    "29.970.000" may come back as "29970000" or "29,970,000". Comparing the
+    variant SET instead of the raw token keeps grading format-agnostic."""
+    digits = re.sub(r"[^\d]", "", raw)
+    variants = {raw, digits}
+    if len(digits) > 3:
+        variants.add(f"{digits[:-3]}.{digits[-3:]}")
+        variants.add(f"{digits[:-3]},{digits[-3:]}")
+    dec = re.fullmatch(r"(\d+)([.,])(\d{1,3})", raw)
+    if dec:
+        other = "," if dec.group(2) == "." else "."
+        variants.add(dec.group(1) + other + dec.group(3))
+    return variants
+
+
 def num_requirements(expected: str) -> list[frozenset[str]]:
     """Mỗi số trong đáp án mong đợi -> 1 yêu cầu là TẬP biến thể chấp nhận được:
     30.000 -> {30.000, 30000}; 07 -> {07, 7}. Đủ khi answer chứa ÍT NHẤT một
@@ -65,9 +84,9 @@ def num_requirements(expected: str) -> list[frozenset[str]]:
     for m in re.finditer(r"\d[\d.,]*", expected):
         raw = m.group().rstrip(".,")
         digits = re.sub(r"[^\d]", "", raw)
-        variants = {raw, digits}
+        variants = num_variants(raw)
         if len(digits) > 3:  # kiểu nghìn 30000 <-> 30.000
-            variants.add(f"{digits[:-3]}.{digits[-3:]}")
+            variants |= num_variants(digits)
         key = digits
         if key not in seen:
             seen.add(key)

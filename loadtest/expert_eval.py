@@ -36,7 +36,8 @@ from pathlib import Path
 import requests
 
 from e2e_testcases import (DEFAULT_DOCS, auth, create_category, grade, login,
-                           norm_vi, parse_cases, wait_index_done)
+                           norm_vi, num_variants, parse_cases,
+                           wait_index_done)
 from seed import register
 
 HERE = Path(__file__).resolve().parent
@@ -53,7 +54,8 @@ META_OPENER_RE = re.compile(
 # Lộ nội bộ hệ thống: tên tool, tên collection, điểm similarity.
 PLUMBING_RE = re.compile(
     r"(article_chunks|chunk_index|read_article|list_sheets|read_sheet|"
-    r"search_documents|compile_tree|similarity|score[:=] ?0?\.\d)", re.I)
+    r"search_documents|compile_tree|similarity|score[:=] ?0?\.\d|"
+    r"sheet_count|row_count|page_count|column_count|top_k|point_id|kb_id)", re.I)
 MARKER_RE = re.compile(r"\[\^(\d+)\]")
 NUM_RE = re.compile(r"\d[\d.,]*")
 SELF_SUMMARY_RE = re.compile(r"(tóm lại|nói chung là|như (vậy|trên)[,.])", re.I)
@@ -140,6 +142,7 @@ def check_layer1(task: dict, data: dict, which: str) -> dict:
     # `hay` KHÔNG được chứa answer: chứa answer thì mọi số trong answer đều
     # "có nguồn" một cách giả tạo và phép thử mất nghĩa.
     hay = norm_vi(f"{snippets} {expected}")
+    hay_nums = {v for tok in NUM_RE.findall(hay) for v in num_variants(tok)}
     unsourced = []
     for raw in NUM_RE.findall(answer):
         digits = re.sub(r"[^\d]", "", raw)
@@ -147,10 +150,10 @@ def check_layer1(task: dict, data: dict, which: str) -> dict:
             continue  # số nhỏ (điều/khoản/trang) không đủ để kết luận bịa
         if len(digits) == 4 and 1900 <= int(digits) <= 2100:
             continue  # năm: ngày tháng trong tài liệu dày đặc, soi không bổ ích
-        variants = {raw, digits}
-        if len(digits) > 3:
-            variants.add(f"{digits[:-3]}.{digits[-3:]}")
-        if not any(v in hay for v in variants):
+        variants = num_variants(raw)
+        # So theo tập biến thể chứ không theo chuỗi con: answer viết "22.5"
+        # trong khi snippet ghi "22,5" là cùng một số, không phải số bịa.
+        if not (variants & hay_nums) and not any(v in hay for v in variants):
             unsourced.append(raw)
     return {"factual": verdict, "unsourced": sorted(set(unsourced))[:8]}
 
@@ -290,6 +293,13 @@ def selftest() -> int:
     dangling = {"answer": "Mức phí là 8.000 VNĐ[^7].", "cites": cites,
                 "question_type": "lookup", "_provider": "nvidia"}
     task = {"expected": "8.000 VNĐ/bản/lần", "kind": "single"}
+    # Batch thật lộ hai chỗ bộ chấm trước đây báo sai: dấu thập phân phẩy/chấm
+    # (X-03) và biến thể nội bộ tool lọt vào answer (X-01).
+    dec = {"answer": "NV01 làm việc 22.5 ngày công.", "cites": [],
+           "question_type": "lookup", "_provider": "nvidia"}
+    dec_task = {"expected": "NV01 có 22,5 ngày công", "kind": "single"}
+    leak = {"answer": "File có 3 sheet[^1] (sheet_count = 3).", "cites": cites,
+            "question_type": "lookup", "_provider": "nvidia"}
 
     cases = [
         ("chuyên gia -> L0 sạch", check_layer0(expert, "nvidia") == []),
@@ -306,6 +316,15 @@ def selftest() -> int:
                                          for e in check_layer0(dangling, "nvidia"))),
         ("answer rỗng -> EMPTY", check_layer0({"answer": "", "cites": cites}, "nvidia") == ["EMPTY_ANSWER"]),
         ("parse pair", len(parse_pairs(CASES_DIR / "context_test.md")) == 4),
+        ("thập phân 22,5 == 22.5", grade(dec_task, dec) == "PASS"),
+        ("21.5 không bị coi là số bịa",
+         check_layer1({"expected": "", "kind": "single"},
+                      {"answer": "NV03 có 21.5 ngày công[^1]",
+                       "cites": [{"n": 1, "snippet": "NV03 | 21,5 ngày công"}],
+                       "question_type": "lookup", "_provider": "nvidia"},
+                      "expected")["unsourced"] == []),
+        ("sheet_count bị bắt là lộ nội bộ",
+         "no_plumbing_leak" in check_layer2(task, leak)["failed"]),
     ]
     bad = [name for name, ok in cases if not ok]
     for name, ok in cases:
@@ -313,7 +332,8 @@ def selftest() -> int:
     if bad:
         print(f"\nTỰ TEST BỘ CHẤM SÓT {len(bad)} mục: {bad}")
         return 1
-    print("\nTỰ TEST BỘ CHẤM: đạt 11/11 mục (không gọi LLM nào).")
+    print(f"\nTỰ TEST BỘ CHẤM: đạt {len(cases)}/{len(cases)} mục "
+          "(không gọi LLM nào).")
     return 0
 
 
@@ -339,7 +359,11 @@ def eval_task(base, token, task, provider, category_ids, args, session_id) -> li
                "question": task[qkey], "expected": task.get(akey, ""),
                "conversation_id": session_id, "secs": round(secs, 1),
                "n_cites": len((data or {}).get("cites") or []),
-               "answer": (data or {}).get("answer", ""), "error": err}
+               "answer": (data or {}).get("answer", ""),
+               # Lưu nguyên cites để báo cáo chấm lại được offline: sửa rubric
+               # thì khỏi phải gọi lại LLM một lần nữa.
+               "cites": (data or {}).get("cites") or [],
+               "error": err}
         if err or data is None:
             sub["l0"] = ["ERROR"]
             sub["verdict"] = "ERROR"

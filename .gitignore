@@ -14,6 +14,6 @@ __pycache__/
 tmp_*.log
 tmp_*.err
 # log chạy eval/apis/worker tại chỗ (mẻ test, không phải artifact)
-loadtest/_*.log
+loadtest/_*
 *~
 .qoder
