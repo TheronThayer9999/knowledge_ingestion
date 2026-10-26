@@ -13,6 +13,8 @@ Người dùng yêu cầu 4 việc, chốt lại thành một đợt:
 
 Ràng buộc thêm: mọi commit message bằng **tiếng Anh**.
 
+**Bổ sung sau khi chốt phạm vi (hỏi–đáp trực tiếp):** đợt này gồm **cả logic UI/UX của tính năng phiên chat ở FE** (Đợt 25b gộp vào đây), **nhiều test case tự nghĩ**, **data phức tạp sinh bằng script Python stdlib** (chat với Excel là mũi chính), và **tài liệu demo ghi tại `docs_test_case_and_data/testcase/`**. Người dùng tự test UI — tôi không mở browser, chỉ để lại checklist.
+
 ## 2. Nghiên cứu OSS — phát hiện và đối chiếu
 
 Nguồn đã đọc trực tiếp (không suy đoán từ trí nhớ):
@@ -66,7 +68,7 @@ Lớp 2 **không** dùng LLM-as-judge trong đợt này: thêm một LLM chấm 
 Viết lại mục `# 10. Hình thức` thành `# 10. Hình thức: trả lời như một chuyên gia` theo §3 (thêm ~8-10 gạch, giữ 5 gạch cũ). Không đánh số lại mục nào → không ảnh hưởng các tham chiếu "mục 0/1/8/9/11" trong file.
 
 ### 5.2 `loadtest/expert_eval.py` (mới)
-Harness chạy lô, **import lại** helper của `e2e_testcases.py` (`login`, `auth`, `ask_chat`, `parse_cases`, `num_requirements`, `norm_vi`) — không fork logic upload/index-wait/rotation đã có.
+Harness chạy lô, **import lại** helper của `e2e_testcases.py` (`login`, `auth`, `register`, `create_category`, `presign_and_upload`, `wait_index_done`, `parse_cases`, `num_requirements`, `norm_vi`) — không fork logic upload/index-wait đã có.
 
 CLI:
 ```
@@ -79,7 +81,10 @@ python expert_eval.py --providers 9router nvidia openrouter \
 - **Xoay provider theo câu** (`--providers` round-robin như `e2e_testcases.py:230`), **tắt fallback xoay provider** (`--fallbacks` rỗng) để lỗi provider hiện đúng là lỗi provider, không bị provider khác cứu và làm bẩn so sánh.
 - **Chạy có `conversation_id`:** mỗi provider mở một phiên riêng qua `POST /conversations`, mọi câu của provider đó đi vào phiên → vừa test đường S1/S4 thật, vừa **bịt kín khoảng hở Đợt 24** (chưa từng chứng minh `cites` khác rỗng bằng chứng live). Điều kiện tiền đề: tài liệu phải được **upload + index cho chính user chạy eval** (vector scope theo `user_id` — bài học đã có trong memory), nên harness bắt buộc `--docs` + chờ `index_status=done`, không cho `--skip-upload` khi chưa có vector cho user đó.
 - Kết quả: `loadtest/expert_eval_results.json` (mỗi câu: provider đã trả lời, verdict 3 lớp, cites count, secs, conversation_id, message_id, answer) + bảng tổng hợp theo provider in ra console. Exit code ≠ 0 nếu có ERROR hoặc fail Lớp 0.
-- **Không bao giờ in API key:** key đọc từ `configs/config.local.json` (file gitignored) chỉ khi cần; kết quả chỉ ghi tên provider/model.
+- **Không đụng API key:** mọi lượt gọi LLM đi qua `/chat` của chính server — harness **không đọc `configs/config.local.json`**, nên không có đường nào để key rò vào log/report. Report chỉ ghi tên provider/model.
+- **User eval mới tinh** (`register` username `ev<hex>`): toàn bộ bài upload, category, phiên chat nằm trong một user dễ dọn, không lẫn với dữ liệu user khác (bài học Đợt 24: vector của user 8 `index_status=done` nhưng Qdrant không còn point nào).
+- **Hai kiểu case** (đã đọc file thật): `test_case.md` — block `### Case N` 1 lượt; `context_test.md` — block `### Pair X` có `Q1/Q2` + `Đáp án Q2 (khi có context)` và `Dấu hiệu mất context`. Pair chạy **hai lượt trong cùng một phiên, lượt sau không gửi history từ client** → đây chính là phép thử "server là nguồn lịch sử" bằng LLM thật, không phải fake.
+- **`--concurrency` mặc định 1**, nhận tối đa 4 (kẹp cứng + in cảnh báo): mỗi `/chat` tự nó đã là 8-10 lượt LLM trong 60-300 giây, nên chạy tuần tự đã dưới trần 40 req/phút rất xa; tăng concurrency là để rút ngắn thời gian, không phải để bấm nhanh hơn trần.
 
 ### 5.3 `docs_test_case_and_data/testcase/expert_answer_rubric.md` (mới)
 Rubric §5 dưới dạng checklist để người đọc chấm nhanh 3-5 câu tiêu biểu per provider, và để sau này biến thành judge tự động.
@@ -90,7 +95,71 @@ Rubric §5 dưới dạng checklist để người đọc chấm nhanh 3-5 câu 
 ### 5.5 `RAG_RESEARCH.md`
 Thêm mục **§6.7.1 Đối chiếu OSS (Đợt 25)** với bảng phát hiện §2 + đường dẫn nguồn, để lần sau làm S2/S5 không phải đọc lại 4 repo.
 
-**Không làm đợt này** (ghi rõ để khỏi lan man): `usage` per message; allowlist trường cites; `context_summary` cho S2; Memory-style store; LLM-as-judge; FE sidebar lịch sử (vẫn là Đợt 25b trong backlog).
+**Không làm đợt này** (ghi rõ để khỏi lan man): `usage` per message; allowlist trường cites; `context_summary` cho S2; Memory-style store; LLM-as-judge.
+
+## 5A. UI/UX logic cho phiên chat ở FE (Đợt 25b gộp vào)
+
+Hiện trạng đã đọc code: `pages/chat/chat.ts` (290 dòng) **không biết gì về phiên** — `turns` chỉ là signal trên RAM, `reset()` xoá RAM, `HISTORY_LIMIT = 12` gửi history từ client (`core/chat/chat.service.ts:22-35`), sidebar hiện là "panel tiện ích" (phạm vi + phiên mới). BE đã đủ 6 route `/conversations*`.
+
+**Quyết định contract (mấu chốt, chốt ở đây để không phải đổi DTO/swagger):**
+
+- FE **tạo phiên bằng `POST /conversations` ngay trước lượt gửi đầu tiên** (lazy — bấm "Phiên mới" chưa tạo row nào), giữ `conversation_id`, và từ đó **mọi lượt chỉ gửi `conversation_id`, không gửi `history`**. Lý do: server là nguồn lịch sử duy nhất (§6.7 xung đột #1), và cách này không cần thêm `conversation_id` vào `ChatResponse` → không đụng swagger/DTO, không thêm gate mới.
+- `history` của client chỉ còn đường legacy (khi `conversation_id = 0`) — code FE không đi vào nhánh đó nữa, giữ nguyên BE cho client cũ.
+- Scope (category) chọn trên UI được ghi lúc tạo phiên; đổi scope giữa phiên là **thao tác có chủ đích** thì BE đã xử lý (per-message `effective_category_ids`, Đợt 24) — UI hiển thị phạm vi trên từng lượt đã lưu.
+
+**Hành vi UI chốt theo bộ (đối chiếu Open WebUI/Dify ở §2):**
+
+| Vùng | Hành vi | Lý do / repo tham chiếu |
+|---|---|---|
+| Sidebar phiên | Danh sách newest-first theo `last_message_at`, vô hạn bằng "Tải thêm" (`?before=<id>` keyset), mỗi mục hiện title + thời gian tương đối + số message | Dify/OWUI cùng xếp theo mốc message mới nhất; cursor keyset tránh nhảy bản ghi khi có lượt mới |
+| Phiên đang mở | Highlight mục đang xem; mở lại là **nạp `GET /conversations/:id/messages`** (reverse newest-first thành ASC), không đoán lại cites | chip `[^n]` (Đợt 23) phải sống lại đúng số cũ |
+| Đổi tên | Inline rename bằng `PATCH`; title tự sinh từ lượt đầu nếu để trống → sau lượt đầu phải **refresh dòng sidebar** để thấy title mới | Dify auto-title |
+| Xoá | Confirm dialog (dùng `shared/feedback/confirm-dialog` đã có) rồi `DELETE`; phiên biến mất khỏi sidebar, khung chat trở về "Phiên mới" | xoá mềm, message giữ lại ở DB (Đợt 24) — UI không được nói "đã xoá vĩnh viễn" |
+| Đang trả lời | Nút Gửi thành Dừng (đã có); **khoá đổi phiên/xoá khi `sending`** để không mất lượt giữa chừng | tránh ghi dở |
+| Rỗng/lỗi | Sidebar rỗng → một dòng hướng dẫn; lỗi tải danh sách → retry inline, không toast đè 5 lần; 404 khi mở phiên bị xoá → toast + về phiên mới | `errorFromApi` đã có sẵn |
+| Lặp lại | Bấm chip `[^n]` trong lượt cũ sau khi reload: nguồn lấy từ `cites` đã lưu, không gọi lại search | đã chốt ở §6.7 xung đột #2 |
+| Responsive | Sidebar là panel gấp được (`panelOpen` đã có) — màn hẹp tự gập, không che khung chat | giữ hành vi hiện hữu |
+| Accessibility | Danh sách phiên là `nav` + nút thật, điều hướng bằng phím; không dùng `id`/`data-*` (sanitizer cắt — bài học đã có memory) | Đợt 23 dùng delegate + textContent |
+
+## 5B. Data phức tạp (mũi chính: chat với Excel)
+
+Repo **chưa có fixture `.xlsx`/`.pptx` nào** (đã kiểm tra bằng glob), và máy chưa cài `openpyxl`/`python-pptx` (đã kiểm tra bằng `python -c import` → ModuleNotFoundError). Nên `loadtest/make_complex_fixtures.py` **tự sinh bằng stdlib** (`zipfile` + XML thô, `inlineStr` để không cần sharedStrings) — chạy lại được, không phụ thuộc mạng. Bộ sinh ra, đặt trong `loadtest/fixtures_complex/`:
+
+| File | Tính chất cần có | Ép hành vi gì |
+|---|---|---|
+| `bang_luong_q3.xlsx` (nhiều sheet: `Luong`, `Phu_cap`, `Ghi chu`) | số thập phân, % , ngày, ô rỗng, sheet trống, tiêu đề 2 dòng | `list_sheets`/`read_sheet` chọn đúng sheet; hỏi gộp phải đọc ≥2 sheet |
+| `hop_dong_thue_mat.xlsx` | cùng tên cột ở 2 sheet, số tiền khác nhau | không được cộng nhầm sheet; phải nêu rõ đọc sheet nào |
+| `quy_che_phi_v2.xlsx` vs `quy_che_phi_v1.xlsx` | cùng quy định, mức khác nhau, file có ngày mới hơn | xử lý xung đột/bản mới (prompt đã có luật, chưa từng được test bằng dữ liệu) |
+| `bang_ke_toan_multi_sheet.xlsx` | bảng dài > 1 màn, có dòng tổng | trích dẫn phải trỏ sheet+dòng, không được tự đếm |
+| `quy_dinh_nhieu_phu_luc.pdf` | Điều có khoản dẫn chiếu sang Phụ lục A/B | mắt xích suy luận nhiều tầng |
+| `scan_vua_text_vua_anh.pdf` nếu làm được | nửa text-layer, nửa cần OCR | nhánh OCR + text trộn |
+
+Vì chưa có fixture nào tồn tại, đây là **code sinh dữ liệu mới** — script phải tự kiểm chứng file mình sinh (mở lại bằng `zipfile`, đọc `xl/workbook.xml` đếm sheet) và in bảng để người đọc biết data gồm gì. Điều kiện tiền đề bắt buộc: worker (`go run ./cmd/worker`) phải chạy để extract+index; với user eval mới tinh thì vector của chính user đó được tạo nên `cites` khác rỗng (bịt đúng khoảng hở Đợt 24 — bài học "vector scope theo user_id").
+
+## 5C. Bộ test case + tài liệu demo
+
+`docs_test_case_and_data/testcase/chat_session_uiux_va_demo.md` (tiếng Việt, để demo cho user luôn), gồm:
+
+1. **Bảng hành vi mong đợi** của từng mục trong §5A (input → trạng thái UI → dữ liệu DB).
+2. **Test case phiên chat** (đánh số `S-01`…): mở/nạp/đổi tên/xoá/phân trang/404 phiên của người khác/phiên bị xoá giữa lúc đang gõ/hai tab cùng một phiên/không gửi history khi có `conversation_id`.
+3. **Test case đa phương tiện phức tạp** (`X-01`…): Excel nhiều sheet, sheet trống, hai file xung đột, phụ lục, số thập phân/percentage/ngày, "cộng dồn cột này sang sheet kia" (bẫy), "file này có mấy sheet" (phải dùng tool, không đoán).
+4. **Test case chất lượng câu trả lời chuyên gia** (`Q-01`…) chấm theo rubric §4: BLUF, giải thích thuật ngữ, điều kiện trước phán quyết, không sáo ngữ, độ dài tương xứng.
+5. **Kịch bản demo 10 phút** cho user: data nào upload, câu hỏi nào bấm trước, điểm nhấn nào chỉ vào (chip trích dẫn, mở lại phiên cũ, Excel multi-sheet, hai quy định xung đột).
+6. Checklist để bạn tự test UI (tôi không mở browser theo ràng buộc đã chốt).
+
+## 5D. File FE sẽ đụng tới (theo pattern đã có trong repo)
+
+| File | Việc |
+|---|---|
+| `core/chat/chat.models.ts` | thêm model `Conversation` / `ChatMessageSaved` + mapper `toConversation(...)` theo khuôn `toChatAnswer` |
+| `core/chat/conversation.service.ts` (mới) | list/create/rename/delete/messages qua `ApiService` (nhân pattern `knowledge.service.ts`), trả domain model chứ không trả DTO |
+| `core/chat/chat.service.ts` | `send(...)` nhận thêm `conversationId`; có id thì **không gửi `history`** (server là nguồn duy nhất) |
+| `pages/chat/chat.ts` | state phiên (id đang mở, danh sách, cursor "Tải thêm"), nạp lại phiên, rename inline, xoá + confirm, khoá khi `sending`; sau lượt đầu refresh sidebar để ăn title tự sinh |
+| `pages/chat/chat.html` / `.scss` | mục phiên trong panel đang có (`panelOpen`), nút đổi tên/xoá, dòng "Tải thêm", empty state, hiển thị `effective_category_ids` trên lượt đã lưu |
+| `shared/i18n/vi.ts` + `en.ts` | key mới — bộ dịch type-safe (`TranslationKey`), thiếu key là lỗi build chứ không âm thầm |
+| `core/chat/conversation.service.spec.ts` (mới) | vitest cho mapper + các request (HttpTestingController theo khuôn `knowledge.service.spec.ts`) |
+
+Ràng buộc FE đã biết từ các đợt trước: `npm run lint` (ESLint 9 flat, angular-eslint + a11y — template phải có `aria-*` cho nút icon), **không** tự format bằng lint (format bằng `npx prettier --write`), budget component style trong `angular.json` (chat.scss đã 584 dòng → thêm style phải gọn, ưu tiên reuse token có sẵn), sanitizer cắt `id`/`data-*` nên thôi dùng delegate + textContent như Đợt 23.
 
 ## 6. Cách kiểm chứng
 
@@ -108,6 +177,9 @@ Thêm mục **§6.7.1 Đối chiếu OSS (Đợt 25)** với bảng phát hiện
 - [ ] `prompts/chat_system.md` mục 10 rewritten, không mâu thuẫn 12 ví dụ, không đổi số thứ tự mục khác.
 - [ ] `loadtest/expert_eval.py` chạy được theo lô, xoay 9router/nvidia/openrouter, tôn trọng trần 40 req/phút, có bằng chứng log chứng minh nhịp.
 - [ ] Rubric file + verdict 3 lớp in ra được.
+- [ ] `loadtest/make_complex_fixtures.py` sinh được `.xlsx` nhiều sheet (tự kiểm chứng bằng cách mở lại bằng `zipfile` + đếm sheet trong `xl/workbook.xml`).
+- [ ] FE: sidebar phiên chạy theo đúng bảng hành vi §5A; `npm run lint` + `npm test` + `npm run build` xanh (tôi **không** tự mở browser test UI — người dùng tự test theo checklist).
+- [ ] Tài liệu demo `docs_test_case_and_data/testcase/chat_session_uiux_va_demo.md` có đủ: bảng hành vi · test case S/X/Q · kịch bản demo 10 phút · checklist UI.
 - [ ] **`cites` khác rỗng được chứng minh live** (nợ của Đợt 24) hoặc báo rõ vì sao vẫn chưa.
 - [ ] Verify Go xanh, `codegraph sync` (nếu sửa Go), `swag init` chỉ nếu đổi annotation.
 - [ ] `## Kết quả` điền + archive plan + thêm dòng `plans/README.md`, commit message **tiếng Anh**.
