@@ -28,7 +28,7 @@
   padding: var(--space-5);
   border-radius: var(--radius-card);
   background: var(--color-surface);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--elevation-1);
   overflow-y: auto;
 }
 
@@ -86,7 +86,7 @@
   min-height: 0;
   border-radius: var(--radius-card);
   background: var(--color-surface);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--elevation-1);
   overflow: hidden;
 }
 

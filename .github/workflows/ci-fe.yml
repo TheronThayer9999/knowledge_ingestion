@@ -32,7 +32,7 @@ jobs:
       - name: index.html khong duoc con link Google Fonts CDN
         run: |
           if grep -Eq 'fonts\.(googleapis|gstatic)\.com' src/index.html; then
-            echo "::error::index.html con link Google Fonts CDN - them font vao angular.json > styles (xem ARCHITECTURE.md)" >&2
+            echo "::error::index.html con link Google Fonts CDN - them @import vao src/styles/_fonts.scss (xem ARCHITECTURE.md)" >&2
             exit 1
           fi
       - uses: actions/setup-node@v5

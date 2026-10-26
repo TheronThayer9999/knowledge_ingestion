@@ -1,0 +1,55 @@
+// Color — toàn bộ là alias của token M3 (--mat-sys-*) nên 4 palette ×
+// light/dark tự đổi theo, KHÔNG hex cứng trong component.
+//
+// Vai trò theo spec (giá trị thực tế của palette azure, light):
+//   nền trang  = --color-page-background  #f4f3f6  (xám rất nhẹ, không trắng rọi)
+//   card       = --color-card-background  #ffffff  (trắng, nổi trên nền trang)
+//   chữ chính  = --color-on-surface       #1a1b1f  (KHÔNG phải đen tuyệt đối)
+//   chữ phụ    = --color-muted            #44474e  (đậm hơn #5f6368 một chút
+//                                                  để đủ 4.5:1 trên nền card)
+//   viền       = --color-outline-variant  ~#d8dae1 (rất nhạt, không viền đen)
+:root {
+  // Màu cốt lõi
+  --color-primary: var(--mat-sys-primary);
+  --color-on-primary: var(--mat-sys-on-primary);
+  --color-surface: var(--mat-sys-surface);
+  --color-on-surface: var(--mat-sys-on-surface);
+  --color-muted: var(--mat-sys-on-surface-variant);
+  --color-danger: var(--mat-sys-error);
+
+  // Nền phân tầng: trang nhạt hơn card, card trắng (kiểu Drive/Gmail).
+  // Dark mode đảo chiều tự nhiên: trang tối nhất, card nổi lên một bậc.
+  --color-page-background: light-dark(var(--mat-sys-surface-container-low), var(--mat-sys-surface));
+  --color-card-background: light-dark(
+    var(--mat-sys-surface-container-lowest),
+    var(--mat-sys-surface-container)
+  );
+
+  // Viền: bản làm nhạt của outline-variant (pha với nền trang) — mọi đường
+  // kẻ trong app dùng token này, đừng dùng outline đậm.
+  --color-outline-variant: color-mix(
+    in srgb,
+    var(--mat-sys-outline-variant) 60%,
+    var(--mat-sys-surface)
+  );
+  // tên cũ, vẫn là thứ component đang dùng — trỏ về viền nhạt
+  --color-border: var(--color-outline-variant);
+
+  // Surfaces phân tầng cho card/panel/sidebar
+  --color-surface-container: var(--mat-sys-surface-container);
+  --color-surface-container-high: var(--mat-sys-surface-container-high);
+  --color-outline: var(--mat-sys-outline);
+  --color-primary-container: var(--mat-sys-primary-container);
+  --color-on-primary-container: var(--mat-sys-on-primary-container);
+  --color-secondary-container: var(--mat-sys-secondary-container);
+  --color-on-secondary-container: var(--mat-sys-on-secondary-container);
+  --color-tertiary-container: var(--mat-sys-tertiary-container);
+  --color-on-tertiary-container: var(--mat-sys-on-tertiary-container);
+  --color-error-container: var(--mat-sys-error-container);
+  --color-on-error-container: var(--mat-sys-on-error-container);
+
+  // Điểm nhấn nhạt theo tông primary: mục nav đang chọn, hover chip, badge số.
+  // --faint = nền hover rất mờ, --soft = nền "đang chọn" (pill như Gmail).
+  --color-accent-soft: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+  --color-accent-faint: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
+}

@@ -62,7 +62,9 @@ src/main.ts
   nhất là `THEME_PALETTES`; hợp đồng `THEME_STORAGE_KEY` + `THEME_CLASS_PREFIX`
   do `theme.service.spec.ts` khóa lại (thêm palette xem playbook F)
 - `index.html` phần `<head>` font — Roboto + Material Icons **tự host** qua npm
-  (`@fontsource/roboto`, `material-icons`) và khai báo trong `angular.json > styles`.
+  (`@fontsource/roboto`, `material-icons`), `@import` trong `src/styles/_fonts.scss`;
+  `angular.json > styles` giữ đúng MỘT entry `styles.scss` (esbuild tự phân giải
+  bare specifier từ `node_modules`, không cần ghi đường dẫn cài đặt).
   CẤM thêm link Google Fonts CDN trở lại: môi trường chặn CDN làm `mat-icon` in ra
   chữ (`space_dashboard`) thay vì icon. CI `ci-fe.yml` grep tên host để chặn.
 
@@ -97,9 +99,9 @@ dùng `--content-viewport-height`.
 + 1 block `.theme-<id>` trong `styles.scss`. `index.html` KHÔNG phải sửa — script FOUC chỉ
 áp định dạng `theme-<palette>` và palette lạ tự rơi về mặc định của `:root`.
 
-**G. Cần thêm chữ/cỡ font mới (weight, subset)**: thêm dòng `node_modules/@fontsource/roboto/<subset>-<weight>.css`
-vào `styles` của `angular.json` — KHÔNG tải font bằng tay, KHÔNG dùng link CDN, và giữ đúng
-4 độ đậm trong token (`--text-style-*` chỉ dùng 400/600, M3 cần thêm 300/500/700).
+**G. Cần thêm chữ/cỡ font mới (weight, subset)**: thêm dòng `@import '@fontsource/roboto/<subset>-<weight>.css';`
+vào `src/styles/_fonts.scss` — KHÔNG tải font bằng tay, KHÔNG dùng link CDN, KHÔNG ghi đường dẫn
+`node_modules/...` vào `angular.json`.
 
 **H. Mỗi lớp tự bắt lỗi riêng** — sửa gì thì chạy cái đó:
 lệch menu/route → `npm test` · dựng chrome ngoài shell → `npm run lint` ·

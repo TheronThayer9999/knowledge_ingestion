@@ -1,0 +1,20 @@
+// Shape — thang 5 bậc theo spec, cộng 3 token ngữ nghĩa để component chọn
+// theo VAI TRÒ thay vì chọn độ tròn tuỳ ý.
+//   control = nút/chip/ô tìm kiếm đã chọn (pill như Gmail)
+//   field   = ô nhập, textarea, dropdown (8px — tròn vừa, không lệch kiểu input)
+//   card    = card, panel, dialog, sheet (16px)
+:root {
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  --radius-control: var(--radius-full);
+  --radius-field: var(--radius-sm);
+  --radius-card: var(--radius-lg);
+
+  // Viền: 1px nhạt là chuẩn; 2px chỉ dùng cho trạng thái đang chọn/focus.
+  --border-width: 1px;
+  --border-width-strong: 2px;
+}

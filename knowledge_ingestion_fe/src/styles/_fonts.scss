@@ -1,0 +1,27 @@
+// ============================================================================
+// Font TỰ HOST (không dùng link Google Fonts trong index.html).
+//
+// Vì sao viết @import ở đây thay vì liệt kê "node_modules/..." trong
+// angular.json > styles: esbuild builder của @angular/build phân giải
+// bare specifier ("@fontsource/...", "material-icons/...") từ node_modules
+// khi gặp @import trong SCSS, nên angular.json giữ đúng MỘT entry
+// styles.scss — gọn, không lộ đường dẫn cài đặt, không phải sửa 2 nơi.
+//
+// Chỉ tải subset thật dùng (vi + en → latin, vietnamese) và các weight
+// thật dùng (400 body / 500 title-subtitle / 600 strong / 700 <strong>
+// trong markdown). Thêm weight/subset mới thì thêm @import dòng mới ở đây.
+// ============================================================================
+
+@import '@fontsource/roboto/latin-400.css';
+@import '@fontsource/roboto/latin-500.css';
+@import '@fontsource/roboto/latin-600.css';
+@import '@fontsource/roboto/latin-700.css';
+@import '@fontsource/roboto/vietnamese-400.css';
+@import '@fontsource/roboto/vietnamese-500.css';
+@import '@fontsource/roboto/vietnamese-600.css';
+@import '@fontsource/roboto/vietnamese-700.css';
+
+// Icon font ligature cho <mat-icon> ("space_dashboard" → glyph).
+// Project dùng bộ Material Icons classic, KHÔNG phải Material Symbols:
+// đổi bộ icon là đổi cả tên glyph trong template — không phải việc của đợt làm da.
+@import 'material-icons/iconfont/filled.css';

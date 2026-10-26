@@ -1,0 +1,14 @@
+// Trạng thái tương tác — focus ring nhìn thấy được ở mọi theme.
+// --focus-ring dùng trực tiếp với `outline` (không viết lại độ dày/màu ở
+// component; component chỉ quyết định có outline-offset bao nhiêu).
+:root {
+  --focus-ring-width: 2px;
+  --focus-ring-color: var(--color-primary);
+  --focus-ring-offset: 2px;
+  --focus-ring: var(--focus-ring-width) solid var(--focus-ring-color);
+
+  // lớp phủ mờ khi hover/chạm trên nền sáng (Material state layer thu gọn)
+  --state-hover-opacity: 0.06;
+  --state-pressed-opacity: 0.12;
+  --state-disabled-opacity: 0.42;
+}

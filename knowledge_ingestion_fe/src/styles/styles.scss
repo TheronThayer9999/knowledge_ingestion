@@ -1,6 +1,7 @@
 @use '@angular/material' as mat;
 @use './tokens';
 @use './reset';
+@use './fonts';
 @use './page-head';
 
 @mixin app-theme($primary, $tertiary) {
@@ -41,7 +42,17 @@ html {
 }
 
 body {
-  font-family: var(--font-ui);
+  // thang chữ chuẩn của app: body 14/400 (shorthand `font:` đặt luôn
+  // line-height và họ font, nên không nơi nào thừa 16px mặc định)
+  font: var(--text-style-sm);
+  color: var(--color-on-surface);
+}
+
+// Vòng focus nhìn thấy được trên MỌI phần tử tương tác (bàn phím).
+// Material tự vẽ ring cho một số control, phần còn lại rơi vào rule này.
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 // Nội dung markdown do AI sinh (bind [innerHTML]) — style phải global vì
@@ -90,7 +101,7 @@ body {
     padding: 0 var(--space-1);
     border-radius: var(--radius-xs);
     background: var(--color-surface-container-high);
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.85em;
   }
 

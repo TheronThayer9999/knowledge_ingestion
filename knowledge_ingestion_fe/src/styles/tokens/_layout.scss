@@ -1,0 +1,48 @@
+// Layout — hình thể APP SHELL và kích thước chuẩn của control/dòng/dialog.
+// Trang con KHÔNG tự suy ra chiều cao header/padding của shell, và KHÔNG tự
+// đặt cao nút/cao dòng lẻ — lấy từ token ở đây.
+:root {
+  // ---- APP SHELL (dashboard-layout) ----
+  --toolbar-height: 64px;
+  --content-padding: var(--space-5);
+  // chiều cao vùng content khi trang cần khung cao đúng (chat, sticky offset...)
+  --content-viewport-height: calc(100dvh - var(--toolbar-height) - var(--content-padding) * 2);
+  // offset cho phần tử sticky trong trang (vd panel thư mục) — nằm dưới topbar.
+  // Trang KHÔNG tự calc(var(--toolbar-height) + …) nữa, dùng token này.
+  --content-sticky-offset: calc(var(--toolbar-height) + var(--space-4));
+  --sidebar-width: 264px;
+  --sidebar-width-rail: 76px;
+  --account-menu-max-width: 260px;
+
+  // ---- Bề rộng khối nội dung ----
+  --content-max-width: 560px;
+  --content-max-width-page: 1280px;
+  // panel tiện ích trang chat (phạm vi/phiên mới) — hẹp để card chat rộng
+  --utility-panel-width: 280px;
+  // cụm empty state + chip gợi ý của chat
+  --suggestions-max-width: 480px;
+
+  // ---- Mật độ thoải mái (kiểu Google, không sát mép) ----
+  --control-height: 48px; // ô soạn chat, dropdown phạm vi
+  --button-height: 40px; // nút chuẩn (flat/stroked) — cao 40px theo spec
+  --button-height-sm: 32px; // nút dẹt trong toolbar/card
+  --icon-button-size: 40px; // nút chỉ có icon (vùng chạm vẫn đủ 40px)
+  --list-row-height: 52px; // dòng bảng tài liệu, dòng danh sách
+  --avatar-size: 40px;
+  --avatar-size-toolbar: 36px;
+
+  // ---- Dialog theo cỡ nội dung ----
+  --dialog-width-sm: 420px;
+  --dialog-width-md: 560px;
+  --dialog-width-lg: 720px;
+
+  // ---- Z-index: thang tầng duy nhất ----
+  // lớp nổi BÊN TRONG card (nút gập panel của trang chat...) — thấp hơn mọi
+  // --z-* khác, chỉ tạo stacking context cục bộ trong card của nó.
+  --z-card-float: 1;
+  --z-toolbar: 10;
+  --z-sidenav: 15;
+  --z-drawer: 20;
+  --z-toast: 30;
+  --z-dialog: 40;
+}

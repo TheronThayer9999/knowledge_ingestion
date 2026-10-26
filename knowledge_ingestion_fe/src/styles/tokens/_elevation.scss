@@ -1,0 +1,8 @@
+// Elevation — 3 mức-shadow nhẹ theo Material (không viền đen đậm).
+//   1 = card thường, 2 = hover/dropdown, 3 = dialog/snackbar.
+// Component KHÔNG tự viết box-shadow rời rạc.
+:root {
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 6%), 0 1px 3px 1px rgb(0 0 0 / 8%);
+  --elevation-2: 0 1px 2px rgb(0 0 0 / 6%), 0 2px 6px 2px rgb(0 0 0 / 8%);
+  --elevation-3: 0 4px 8px 3px rgb(0 0 0 / 9%), 0 1px 3px rgb(0 0 0 / 12%);
+}

@@ -1,4 +1,4 @@
-// Trang quản trị tài liệu — chỉ dùng token từ src/styles/_tokens.scss.
+// Trang quản trị tài liệu — chỉ dùng token từ src/styles/tokens/.
 @use '../../../styles/mixins' as *;
 
 :host {
@@ -508,7 +508,7 @@
 
 .doc-card:hover {
   border-color: var(--color-outline);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--elevation-2);
 }
 
 .card-open {

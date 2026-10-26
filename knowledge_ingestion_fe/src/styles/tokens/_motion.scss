@@ -1,0 +1,31 @@
+// Motion — 150–250ms, easing chuẩn Material (ease-out vào / ease-in ra).
+// Component KHÔNG tự đặt thời lượng hay easing rời rạc.
+:root {
+  --duration-fast: 150ms; // hover, màu nền, border
+  --duration-base: 200ms; // mở/đóng panel, elevation
+  --duration-slow: 250ms; // di chuyển kích thước, drawer
+
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --easing-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1); // xuất hiện
+  --easing-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15); // biến mất
+}
+
+// Người dùng bật "giảm chuyển động" trên hệ điều hành → tắt animation toàn
+// app bằng cách về 0 chính token (component đang dùng token sẽ tự ngừng)
+// và phủ thêm một lớp cho animation không đi qua token (ripple, shimmer...).
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

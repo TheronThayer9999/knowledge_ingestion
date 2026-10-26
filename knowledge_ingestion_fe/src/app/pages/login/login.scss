@@ -18,7 +18,7 @@
   width: 100%;
   max-width: 400px;
   padding: var(--space-6);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--elevation-2);
 }
 
 .login-header {
@@ -30,7 +30,7 @@
   place-items: center;
   width: var(--space-6);
   height: var(--space-6);
-  border-radius: var(--radius-round);
+  border-radius: var(--radius-full);
   background: var(--color-primary-container);
   color: var(--color-on-primary-container);
 }

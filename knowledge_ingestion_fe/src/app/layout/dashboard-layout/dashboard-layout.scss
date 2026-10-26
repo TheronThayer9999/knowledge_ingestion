@@ -1,4 +1,4 @@
-// Khung dashboard — chỉ dùng token từ src/styles/_tokens.scss.
+// Khung dashboard — chỉ dùng token từ src/styles/tokens/.
 :host {
   display: block;
 }
@@ -86,7 +86,7 @@
 .nav-link.is-active {
   background: var(--color-accent-soft);
   color: var(--color-on-surface);
-  font-weight: 600;
+  font-weight: var(--text-weight-strong);
 }
 
 .nav-link.is-active mat-icon {
@@ -144,7 +144,7 @@
   place-items: center;
   width: var(--avatar-size-toolbar);
   height: var(--avatar-size-toolbar);
-  border-radius: var(--radius-round);
+  border-radius: var(--radius-full);
   background: var(--color-primary);
   color: var(--color-on-primary);
   font: var(--text-style-xs-strong);

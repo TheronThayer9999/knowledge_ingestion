@@ -1,0 +1,43 @@
+// Typography — 4 cỡ chữ × 2 độ đậm, đóng gói thành style hoàn chỉnh để dùng
+// với shorthand `font:` (không đặt font-size/dòng đơn lẻ trong component).
+//
+// Ánh xạ vai trò trong spec → token ở đây (ĐỪNG thêm tên mới song song):
+//   title 22px/500    = --text-style-lg
+//   subtitle 16px/500 = --text-style-base-strong
+//   body 14px/400     = --text-style-sm
+//   caption 12px/400  = --text-style-xs
+// Độ đậm mạnh của mọi cỡ là 500 (medium) — 600/700 làm giao diện "nặng",
+// chỉ browser default <strong>/<b> trong markdown mới dùng 700.
+:root {
+  // Roboto tự host (xem _fonts.scss); system-ui là lớp đệm khi font chưa kịp tải
+  --font-ui: Roboto, system-ui, 'Helvetica Neue', sans-serif;
+  // font máy khách cho nội dung câu trả lời của trợ lý
+  --font-serif: 'Times New Roman', Times, serif;
+  // chữ mono cho code/bảng số — chỉ font có sẵn của máy, không phải tải thêm
+  --font-mono: ui-monospace, 'SF Mono', Consolas, 'Courier New', monospace;
+
+  --text-size-xs: 12px;
+  --text-size-sm: 14px;
+  --text-size-base: 16px;
+  --text-size-lg: 22px;
+
+  // độ đậm — component cần font-weight đơn lẻ (chữ trong nav, badge) thì lấy
+  // 2 token này, không viết 500/600 bằng tay
+  --text-weight-regular: 400;
+  --text-weight-strong: 500;
+
+  --text-style-xs: 400 var(--text-size-xs)/16px var(--font-ui);
+  --text-style-xs-strong: 500 var(--text-size-xs)/16px var(--font-ui);
+  --text-style-sm: 400 var(--text-size-sm)/20px var(--font-ui);
+  --text-style-sm-strong: 500 var(--text-size-sm)/20px var(--font-ui);
+  --text-style-base: 400 var(--text-size-base)/24px var(--font-ui);
+  --text-style-base-strong: 500 var(--text-size-base)/24px var(--font-ui);
+  --text-style-lg: 500 var(--text-size-lg)/28px var(--font-ui);
+  // riêng ô soạn chat: line-height 22px để cao đúng --control-height (48px)
+  --text-style-input: 400 var(--text-size-sm)/22px var(--font-ui);
+
+  // Glyph icon: 20px (nav, chip) → 24px (nút icon-only, empty state lớn)
+  --icon-size-sm: 18px;
+  --icon-size-md: 20px;
+  --icon-size-lg: 24px;
+}

@@ -13,7 +13,8 @@ body {
 
 body {
   margin: 0;
-  background: var(--color-surface);
+  // nền trang xám rất nhạt để card trắng nổi lên (kiểu Drive/Gmail)
+  background: var(--color-page-background);
   color: var(--color-on-surface);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

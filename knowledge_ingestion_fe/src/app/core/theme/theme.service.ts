@@ -1,27 +1,34 @@
 import { DOCUMENT } from '@angular/common';
 import { computed, inject, Injectable, signal } from '@angular/core';
+import {
+  DEFAULT_THEME_PALETTE,
+  THEME_CLASS_PREFIX,
+  THEME_PALETTES,
+  THEME_STORAGE_KEY,
+  type ThemeMode,
+  type ThemePalette,
+  type ThemeState,
+} from './theme.model';
 
 /**
- * Nguồn DUY NHẤT của danh sách palette. Script chống FOUC trong index.html
- * cố ý KHÔNG lặp lại danh sách này — nó chỉ áp định dạng `theme-<palette>`,
- * giá trị lạ không có rule CSS tương ứng sẽ tự rơi về palette mặc định của
- * `:root` (xem styles.scss), nên thêm palette chỉ cần sửa 2 chỗ: mảng này +
- * block `.theme-<palette>` trong styles.scss.
+ * Danh sách palette + hợp đồng storage/class nằm ở `theme.model.ts` (nguồn
+ * duy nhất, có test khoá bộ key). Re-export lại để nơi dùng cũ
+ * (settings, theme-switcher, spec) không phải đổi đường import.
+ *
+ * Script chống FOUC trong index.html cố ý KHÔNG lặp lại danh sách palette —
+ * nó chỉ áp định dạng `theme-<palette>`, giá trị lạ không có rule CSS tương
+ * ứng sẽ tự rơi về palette mặc định của `:root` (xem styles.scss), nên thêm
+ * palette chỉ cần sửa 2 chỗ: mảng THEME_PALETTES + block `.theme-<palette>`.
  */
-export const THEME_PALETTES = ['azure', 'rose-red', 'magenta-violet', 'cyan-orange'] as const;
-
-export type ThemePalette = (typeof THEME_PALETTES)[number];
-export type ThemeMode = 'light' | 'dark';
-
-interface ThemeState {
-  palette: ThemePalette;
-  mode: ThemeMode;
-}
-
-// Hợp đồng giữa ThemeService và script FOUC trong index.html
-export const THEME_STORAGE_KEY = 'ki.theme';
-export const THEME_CLASS_PREFIX = 'theme-';
-export const DEFAULT_THEME_PALETTE: ThemePalette = 'azure';
+export {
+  DEFAULT_THEME_PALETTE,
+  THEME_CLASS_PREFIX,
+  THEME_PALETTES,
+  THEME_STORAGE_KEY,
+  type ThemeMode,
+  type ThemePalette,
+  type ThemeState,
+} from './theme.model';
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {

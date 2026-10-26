@@ -1,0 +1,16 @@
+// Design tokens của app — NGUỒN DUY NHẤT của màu/bo góc/khoảng cách/bóng/
+// chuyển động/hình thể. Chia file theo nhóm cho dễ tra, tất cả vẫn chảy ra
+// một :root qua `@use './tokens'` trong styles.scss.
+//
+// Quy ước:
+// - mọi style phải dùng token ở đây, KHÔNG hardcode hex/px rời rạc;
+// - token màu là alias của --mat-sys-* (palette + sáng/tối tự áp);
+// - thêm token mới = thêm vào đúng nhóm, không đặt tên song song với tên đã có.
+@use './color';
+@use './elevation';
+@use './layout';
+@use './motion';
+@use './shape';
+@use './spacing';
+@use './states';
+@use './typography';

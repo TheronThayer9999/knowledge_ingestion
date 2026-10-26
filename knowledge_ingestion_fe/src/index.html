@@ -34,9 +34,10 @@
       })();
     </script>
     <!-- Font Roboto + Material Icons TỰ HOST qua npm (@fontsource/roboto,
-         material-icons) và khai báo trong angular.json > styles. KHÔNG thêm lại
-         link Google Fonts vào đây: môi trường chặn CDN sẽ làm mat-icon in ra
-         chữ thay vì icon, và CI (ci-fe.yml) đang chặn bằng grep tên host. -->
+         material-icons), khai báo ở src/styles/_fonts.scss — angular.json chỉ
+         có một entry styles.scss. KHÔNG thêm lại link Google Fonts vào đây:
+         môi trường chặn CDN sẽ làm mat-icon in ra chữ thay vì icon, và CI
+         (ci-fe.yml) đang chặn bằng grep tên host. -->
   </head>
   <body>
     <app-root></app-root>
