@@ -167,17 +167,24 @@ func TestChatMessageRepositoryWindows(t *testing.T) {
 	})
 
 	// 5 message liên tiếp (hỏi/đáp ×2 + hỏi) — 1 lần Append như AppendTurn làm.
+	// Message 2 mang MỘT MẢNG cites thật (dạng normalizeCitations trả ra) để khoá
+	// chiều ghi–đọc jsonb object mà không phải chờ LLM kiếm được hit.
+	const citesJSON = `[{"n":1,"article_id":8,"page_num":4,"chunk_index":2,"snippet":"Điều 13"}]`
 	msgs := make([]*domain.ChatMessage, 0, 5)
 	for i := range 5 {
 		role := domain.MessageRoleUser
+		cites := "[]"
 		if i%2 == 1 {
 			role = domain.MessageRoleAssistant
+		}
+		if i == 1 {
+			cites = citesJSON
 		}
 		msgs = append(msgs, &domain.ChatMessage{
 			ConversationID:       conv.ID,
 			Role:                 role,
 			Content:              fmt.Sprintf("message %d", i+1),
-			Cites:                "[]",
+			Cites:                cites,
 			EffectiveCategoryIDs: "[3]",
 		})
 	}
@@ -238,5 +245,26 @@ func TestChatMessageRepositoryWindows(t *testing.T) {
 	// Append danh sách rỗng là no-op, không được phát sinh INSERT hỏng.
 	if err := repo.Append(ctx, nil); err != nil {
 		t.Errorf("Append(nil) = %v, want nil", err)
+	}
+
+	// Đọc lại cites của message 2 và giải mã như mapper API vẫn làm: mảng object
+	// jsonb phải về đủ n/article_id/snippet — mở lại phiên là chip [^n] sống lại.
+	two, err := repo.ListRecent(ctx, conv.ID, 4)
+	if err != nil || len(two) != 4 {
+		t.Fatalf("ListRecent(4) = %d dòng err %v, want 4", len(two), err)
+	}
+	var got []struct {
+		N         int    `json:"n"`
+		ArticleID int64  `json:"article_id"`
+		Snippet   string `json:"snippet"`
+	}
+	if err := json.Unmarshal([]byte(two[0].Cites), &got); err != nil {
+		t.Fatalf("cites %q không parse được: %v", two[0].Cites, err)
+	}
+	if len(got) != 1 || got[0].N != 1 || got[0].ArticleID != 8 || got[0].Snippet != "Điều 13" {
+		t.Errorf("cites đọc về = %+v, want [{1 8 ...Điều 13}]", got)
+	}
+	if two[3].Cites != "[]" {
+		t.Errorf("cites của hàng không có nguồn = %q, want []", two[3].Cites)
 	}
 }

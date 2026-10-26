@@ -150,7 +150,7 @@ func TestResolveSessionPassesUserID(t *testing.T) {
 
 // TestResolveSessionPropagatesNotFound: phiên của người khác trả về từ repo là
 // domain.ErrNotFound, resolveSession phải để lỗi đi nguyên để Chat dịch ra 404
-// qua sessionError — tự吞 lỗi thành nil là im lặng mất lịch sử.
+// qua sessionError — tự nuốt lỗi thành nil là im lặng mất lịch sử.
 func TestResolveSessionPropagatesNotFound(t *testing.T) {
 	store := &chatSessionStub{loadErr: domain.ErrNotFound}
 	svc := &chatService{sessions: store}

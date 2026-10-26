@@ -136,4 +136,81 @@ chỉ kiểm chứng được bằng unit test với fake, và **nói rõ trong 
 
 ## Kết quả
 
-(điền sau khi xong việc)
+**Đã ship** (S1 + S4, chỉ backend — 6 file mới, 6 file sửa):
+
+| Layer | File |
+|---|---|
+| domain | `chat_conversation.go` — `Conversation`, `ChatMessage`, `IConversationRepository`, `IChatMessageRepository` |
+| repository | `chat_conversation_repository.go` (keyset row-value), `chat_message_repository.go` (`ListRecent` DESC+LIMIT rồi `slices.Reverse`) |
+| port | `agent/port/ports.go` — `IChatSessions` + `ChatSession`/`ChatTurn` |
+| service | `chat_session_service.go` — `NewConversationService` (CRUD) + `NewChatSessionStore` (port), `AppendTurn` gọn trong 1 `InTx` |
+| dto | `conversation_dto.go`; `chat_dto.go` thêm `ConversationID` |
+| api/router/loader | `conversation_api.go`, `registerConversationRoutes`, `loadChatRepositories` |
+| migrate | AutoMigrate 2 bảng + `idx_conversations_owner_list` (partial, exec tay) + `idx_messages_conversation_id` |
+
+Sai so với plan ở 2 điểm nhỏ, đều là lúc viết plan chưa chắc tên: file test repo
+là `chat_repository_test.go` (gom cả 2 repo vào một harness `newPageIssuesTestDB`),
+và service có **hai** constructor thay vì một `NewChatSessionService`.
+
+**Kiểm tra tĩnh**: `go build ./...`, `go vet ./...`, `golangci-lint run ./...`
+(0 issues), `go test ./...` xanh toàn bộ. Guardrail `src/quality` từng báo 4 chỗ
+vượt ngân sách (`Chat` 66 dòng, `NewRouter` 98, `migrate` 115, `loadAdapter` 61) —
+cả 4 đều xử bằng **tách hàm** (`compose`, `registerConversationRoutes`,
+`registerPublicRoutes`, `migrateIndexes`, `loadChatRepositories`), không nâng trần.
+`swag init` đã chạy (4 path `/conversations*` có trong swagger.json), `codegraph sync`
+xong (11 added / 12 modified).
+
+**Test mới**: 8 test service với fake (`chat_session_service_test.go`) khoá THỨ TỰ
+ghi `messages.Append(2) → TouchMessageTime → SetTitleIfEmpty → TouchScope`,
+rằng row user `cites=[]`, row assistant mang `article_id`, và Append lỗi thì dừng
+ngay không touch; 11 test pure-function trong `chat_service_session_test.go` khoá
+`plan()`/`resolveSession()`/`persist()`; 2 test DB thật (`chat_repository_test.go`)
+khoá keyset, UPDATE có điều kiện, `ListRecent` cắt newest trả oldest, GROUP BY count,
+và jsonb mảng cites đi–về nguyên vẹn.
+
+**E2E sống** (Ollama + Postgres + Qdrant docker, user `up1a18ddu00` có 8 bài index,
+category 16): tạo phiên id=16 title rỗng → chat lượt 1 "Quy định nội bộ của công ty
+nói về vấn đề gì?" → **chat lượt 2 "Vậy tài liệu đó có mấy trang?" với `history`
+KHÔNG gửi lên**, model trả lời đúng cả hai file `quy_dinh_noi_bo.pdf` / `quy_dinh_bo_sung.pdf`
+và số trang 2 — chứng tỏ ngữ cảnh đến từ `messages` trong DB (nghiệm thu sống còn)
+→ `GET /conversations` thấy title tự điền = câu hỏi lượt 1, `message_count=4`,
+`scope=[16]` → `PATCH` đổi tên OK → `PATCH "   "` → **400** → đọc phiên bằng token
+user khác → **404** → `POST /chat conversation_id=999999999` → **404** → `DELETE`
+rồi `GET` → **404**, row DB vẫn còn (`deleted_at` set, messages giữ nguyên 4 dòng).
+`psql`: `role` user/assistant xen kẽ đúng, `cites=[]` trên cả 4 dòng (xác bên dưới),
+`effective_category_ids=[16]`, `provider=ollama` ghi theo từng message.
+
+**Không hồi quy đường cũ**: `POST /chat` không `conversation_id` + gửi `history`
+tự client → 200 và model vẫn hiểu "tài liệu đó" từ history của client; `psql` xác
+nhận **0** conversation/message mới bị ghi thêm.
+
+**Lượt lỗi không ghi**: `POST /chat provider="provider-khong-ton-tai"` kèm
+`conversation_id=22` → 400 kèm danh sách provider đang có, `select count(*) from
+messages where conversation_id=22` = **0**. Dọn lại toàn bộ row E2E (0 conversation,
+0 message ở cuối phiên kiểm tra).
+
+**Hai lỗi thật tìm ra trong lúc làm** (đã sửa, đều có test khoá):
+1. `persist()` chỉ chặn `session == nil`, không chặn `s.sessions == nil` → panic
+   nil-pointer khi cổng lưu tắt; test `TestResolveSessionNilStoreRunsChatWithoutPersistence`
+   bắt được, sửa thành chặn cả hai (cùng khuôn `resolveSession`).
+2. Postgres **chuẩn hoá jsonb**: ghi `[3,9]` đọc về là `[3, 9]` (có khoảng trắng).
+   Không phải bug code, nhưng là bug của *giả định* trong test — hợp đồng đúng là
+   "giải mã ra đúng danh sách id", không phải chuỗi byte-đ-byte. Test sửa theo
+   hướng decode, và comment trong repo nói rõ điểm này.
+
+**Chưa kiểm chứng được (nói thẳng)**: vòng E2E *có* `cites` khác rỗng — hàng đợi
+vector của dev DB hiện **rỗng** (`POST /search` của user 8 trả `total: 0` dù không
+chọn category), nên 4 message lưu xuống đều `cites=[]` đúng như model trả về.
+Không rebuild vector vì `rebuild-vectors` chỉ đưa bài về hàng đợi index — phải
+`go run ./cmd/worker`, mà worker sẽ claim luôn cả cụm bài 7.036 chunk dotnet-fundamentals
+trên máy dev. Chiều ghi–đọc jsonb mảng cites object (`n/article_id/page_num/snippet`)
+thay vào đó đã khoá bằng test DB thật trong `chat_repository_test.go`. Con chip
+`[^n]` mở lại phiên vì thế mới chắc ở tầng repository + mapper, chưa chắc trên UI
+(Đợt 25 mới có UI để bấm).
+
+**Còn để lại cho đợt sau**: S3 (budget tool-result, C1) → S2 (nén luỹ tiến) →
+S5 (regenerate/fork) → S6 (xuất hội thoại); `trace`/`token_in/out` chờ `RunResult`
+expose usage; `pinned`; purge cứng message khi xoá phiên (giờ chỉ soft delete
+conversation, message thành mồ côi theo đúng nghĩa đen); sidebar FE đọc
+`GET /conversations` + `GET /:id/messages` (Đợt 25).
+

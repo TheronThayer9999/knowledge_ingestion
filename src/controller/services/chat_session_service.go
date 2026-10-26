@@ -175,6 +175,9 @@ func (s *chatSessionService) Delete(ctx context.Context, id int64) dtos.Result[*
 	if err != nil {
 		return dtos.Fail[*dtos.ConversationResponse](err)
 	}
+	// message_count của response sau khi xoá là 0: đếm lại sau khi vừa đóng phiên
+	// là vô nghĩa (sidebar bỏ hẳn hàng đó ra), còn đếm trước khi xoá thì thêm 1
+	// query không ai dùng.
 	return dtos.Ok(resp)
 }
 
