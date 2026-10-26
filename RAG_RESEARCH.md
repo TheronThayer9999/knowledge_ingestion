@@ -522,6 +522,37 @@ Thứ tự đúng: **S1 → S4 → S3 → S2** (lưu được → ghi đúng ph�
 
 Tham chiếu triển khai: Hermes Agent (mục 4.1) đã có đúng bộ lệnh này ở tầng CLI — `/compress`, `/usage`, `/undo`, `/retry` — và tìm lại hội thoại cũ bằng FTS5 thay vì vector.
 
+### 6.7.1 Đối chiếu implementation thật của Dify / Open WebUI / RAGFlow / LangGraph
+
+Đọc trực tiếp source (không đọc blog tổng kết) để xem họ **cắt bài toán ở đâu**:
+
+| | Đơn vị sở hữu session | Message lưu kiểu gì | Tiêu đề / nén lịch sử | Phân trang lịch sử | Căn cứ (cite) lưu ở đâu |
+|---|---|---|---|---|---|
+| **Dify** (`api/models/model.py`) | `conversations` gắn `app_id` + `from_source` + `from_end_user_id`/`from_account_id` | Bảng `messages` một row/lượt: `query`, `message` (JSON), `answer`, `parent_message_id`, `message_tokens`/`answer_tokens`, `provider_response_latency`, `status`+`error` | `conversations.name` + `summary` + `dialogue_count` (đếm số lượt ngay trên session) | Theo `created_at`/`updated_at`, index **partial** `WHERE is_deleted IS false`; xoá mềm bằng cột `is_deleted` bool | `messages.message_metadata` (JSON text) → property `retriever_resources`; **không có cột riêng cho citation**, kèm bảng `dataset_retriever_resources` để audit |
+| **Open WebUI** (`models/chats.py`) | Bảng `chat` **một row = một phiên**, `user_id` + `share_id` + `folder_id` + `pinned`/`archived` | **Không có bảng message**: tất cả nằm trong cột `chat` JSON (`history.messages` là dict theo id), `current_message_id` được nâng lên cột | `title` + `summary` (cột) | `updated_at` desc; index `(user_id, updated_at desc, id)`; tìm kiếm xuyên JSON bằng `json_each(chat, '$.history.messages')` | Nằm trong JSON của message, không có cấu trúc query được |
+| **RAGFlow** (`http_api_reference`) | Session **đứng dưới chat assistant**: `/chats/{chat_id}/sessions`, POST nhận `{name, user_id?}` — tạo **eager**, có tên ngay, `user_id` do caller tự truyền | `reference` trả về **trong stream**: `delta.reference.chunks.{n}` (content, document_id/name, dataset_id, `positions`, 3 loại similarity) + `doc_aggs` | `name` sửa bằng `PATCH .../sessions/{session_id}` | `?page=&page_size=&orderby=&desc=&sort=` — offset, **không** keyset | Reference là một phần của message đã stream, tức bắt buộc persist nguyên cấu trúc để mở lại không mất |
+| **LangGraph** (`checkpoint-postgres/base.py`) | `thread_id` (+ `checkpoint_ns`), **không có user/org** — thuộc việc của app | Snapshot state, không có row message: `checkpoints(thread_id, ns, checkpoint_id, parent_checkpoint_id, checkpoint JSONB, metadata JSONB)`, `checkpoint_blobs(... channel, version, blob)`, `checkpoint_writes(task_id, idx)` | Không có khái niệm title/summary | Đi theo `checkpoint_id` (ULID time-ordered) + `parent_checkpoint_id` → time travel/branch miễn phí | Không có: citation nằm trong channel values của state |
+
+**Đối chiếu với cái mình đã làm (Đợt 24–25)**
+
+| Điểm | Họ | Mình |
+|---|---|---|
+| Message một row/lượt | Dify, RAGFlow | ✅ `chat_messages` + `seq` |
+| Server là nguồn lịch sử duy nhất | Dify, RAGFlow, LangGraph | ✅ `conversation_id`, bỏ client `history` |
+| Phân trang | RAGFlow offset, LangGraph id-desc | ✅ keyset `before` như LangGraph (ổn hơn offset khi table phình) |
+| Cite | Dify nhét metadata, RAGFlow có cấu trúc | ✅ `cites` **jsonb có cột riêng**, query được |
+| Tiêu đề | Dify `name`, RAGFlow đặt tên ngay khi tạo | ✅ auto-title từ câu hỏi đầu (`SetTitleIfEmpty`) |
+| Xoá | Dify `is_deleted` bool, OWUI archive | ✅ `deleted_at` (soft delete, `gorm.DeletedAt`) |
+| Token/latency/cost per message | Dify có đủ | ❌ chưa lưu — cần cho `--rpm` và dashboard |
+| Branch/regenerate | Dify `parent_message_id`, LangGraph parent checkpoint, OWUI `currentId` | ❌ chưa; `seq` đang là tuyến tính |
+| Nén luỹ tiến (C2) | Dify `summary`, OWUI `summary` | ❌ chưa (S2, đúng thứ tự đã chốt: S1 → S4 → S3 → S2) |
+
+**Ba quyết định của họ đáng học mà mình chưa làm**
+
+1. Dify tách `dialogue_count` và `summary` **lên session**: đọc danh sách phiên không cần `count(*)` trên `messages`. Mình đã có `message_count` (đúng ý này) nhưng chưa có `summary`.
+2. RAGFlow persist **nguyên cấu trúc `reference`** (chunks + doc_aggs + similarity) chứ không chỉ chuỗi trích dẫn, nên mở lại phiên là render được source panel y như lúc vừa trả lời. `cites` jsonb của mình mới đủ cho chip + nhảy trang, chưa giữ `score`/`doc_aggs` — thêm khi làm source panel.
+3. LangGraph chứng minh: nếu muốn *time travel* (quay lại lượt cũ, rẽ nhánh), chi phí nằm ở **con trỏ cha**, không ở bảng message. `parent_message_id` + `seq` hiện tại đủ để thêm S5 mà không đổi storage.
+
 ### 6.8 Audit thư viện cho từng hạng mục
 
 Cột "Trạng thái": **có sẵn** = thêm dependency là dùng; **đã có trong repo** = không thêm gì; **chưa có** = phải tự viết hoặc đổi hướng.
