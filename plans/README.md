@@ -47,11 +47,12 @@ theo số Đợt.
 
 | Đợt | Ngày | Nội dung | Kế hoạch |
 |---|---|---|---|
-| 24 | 2026-10-26 | Session chat lưu DB — S1 + S4 theo `RAG_RESEARCH.md` §6.7 (backend) | [file](2026-10-26-dot-24-session-chat-db-s1-s4.md) |
+| 24 | 2026-10-26 | Session chat lưu DB — S1 + S4 theo `RAG_RESEARCH.md` §6.7 (backend) | [file](archive/2026-10/2026-10-26-dot-24-session-chat-db-s1-s4.md) | `b6df004` |
+| 25 | 2026-10-26 | Trả lời như chuyên gia (mục 10 prompt) + eval đa provider theo lô 9router/nvidia/openrouter, trần 40 req/phút | [file](2026-10-26-dot-25-tra-loi-nhu-chuyen-gia-va-eval-da-provider.md) |
 
 ## Còn chờ (đã ghi backlog, chưa có file kế hoạch)
 
-Đợt 25 sidebar lịch sử chat trên FE (nối Đợt 24, trái theo ý đã chốt) · Đợt 26 retry
+Đợt 25b sidebar lịch sử chat trên FE (nối Đợt 24, trái theo ý đã chốt) · Đợt 26 retry
 bài failed từ UI · Đợt 27 hết `panic("implement me")` trong `UserRepository` · Đợt 28
 prompt biết scope · Đợt 29 QoS (semaphore/429/metrics) · Đợt 30 outbox-RabbitMQ và
 VLM · Đợt 31 trang tìm kiếm FE · Đợt 32 Auth P1 (refresh cookie HttpOnly + CSRF + UI
