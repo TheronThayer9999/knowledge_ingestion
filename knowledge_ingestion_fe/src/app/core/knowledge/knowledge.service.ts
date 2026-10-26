@@ -1,6 +1,17 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { concatMap, forkJoin, map, Observable, of, switchMap, tap } from 'rxjs';
+import {
+  catchError,
+  concatMap,
+  forkJoin,
+  from,
+  map,
+  Observable,
+  of,
+  switchMap,
+  tap,
+  toArray,
+} from 'rxjs';
 import { ApiService } from '../api/api.service';
 import {
   toArticle,
@@ -30,6 +41,35 @@ import {
 
 /** Bước upload để UI hiện đúng tiến trình: xin vé → PUT kho → tạo article */
 export type UploadStage = 'presign' | 'upload' | 'create';
+
+/** Một file trong lô — `name` là tên tài liệu người dùng đã sửa (mặc định bỏ đuôi file) */
+export interface UploadFileRequest {
+  file: File;
+  name: string;
+}
+
+/** Kết quả từng file: hoặc article, hoặc lỗi — một file hỏng không giết cả lô */
+export interface UploadFileOutcome {
+  file: File;
+  article: Article | null;
+  error: unknown;
+}
+
+/**
+ * Tiến trình upload: `index === null` là bước của cả lô (presign ký 1 request cho
+ * mọi file), có index là bước của riêng file đó trong lô gửi lên.
+ */
+export interface UploadProgress {
+  index: number | null;
+  stage: UploadStage;
+}
+
+/** Thông tin chung của cả lô — mọi file dùng chung thư mục/loại/mô tả */
+export interface UploadBatchMeta {
+  categoryId: number;
+  docType: string;
+  description?: string;
+}
 
 /** Trần phân trang của backend (`utils.MaxListLimit`) */
 const PAGE_SIZE = 100;
@@ -151,38 +191,65 @@ export class KnowledgeService {
     return this.api.put<ArticleDto>(`/articles/${id}`, body).pipe(map(toArticle));
   }
 
-  /** Upload trọn luồng: presign → PUT thẳng kho → tạo article trỏ tới storage_key */
-  uploadDocument(
-    file: File,
-    meta: { name: string; categoryId: number; docType: string; description?: string },
-    onStage?: (stage: UploadStage) => void,
-  ): Observable<Article> {
-    onStage?.('presign');
-    return this.presign(file).pipe(
-      tap(() => onStage?.('upload')),
-      concatMap((ticket) =>
-        this.putObject(ticket, file).pipe(
-          tap(() => onStage?.('create')),
-          concatMap(() =>
-            this.createArticle({
-              name: meta.name,
-              categoryId: meta.categoryId,
-              contentType: ticket.contentType,
-              storageKey: ticket.key,
-              docType: meta.docType ? (meta.docType as DocType) : undefined,
-              description: meta.description,
-            }),
+  /**
+   * Upload nhiều file trong một lượt: 1 request presign cho cả lô rồi PUT + tạo
+   * article lần lượt từng file. File nào lỗi thì ghi lỗi vào outcome của file đó
+   * và lô vẫn chạy tiếp; presign lỗi là cả lô lỗi (backend validate trọn lô trước
+   * khi ký nên không có chuyện ký nửa chừng).
+   */
+  uploadDocuments(
+    files: UploadFileRequest[],
+    meta: UploadBatchMeta,
+    onProgress?: (progress: UploadProgress) => void,
+  ): Observable<UploadFileOutcome[]> {
+    onProgress?.({ index: null, stage: 'presign' });
+    return this.presignMany(files.map((item) => item.file)).pipe(
+      concatMap((tickets) =>
+        from(tickets.map((ticket, index) => ({ ticket, index }))).pipe(
+          concatMap(({ ticket, index }) =>
+            this.uploadOne(files[index], meta, ticket, index, onProgress),
           ),
+          toArray(),
         ),
       ),
     );
   }
 
-  /** Xin vé upload — multipart field tên `file` đúng như handler backend đọc */
-  private presign(file: File): Observable<UploadTicket> {
+  /** Một file: PUT lên kho rồi tạo article trỏ tới storage_key */
+  private uploadOne(
+    item: UploadFileRequest,
+    meta: UploadBatchMeta,
+    ticket: UploadTicket,
+    index: number,
+    onProgress?: (progress: UploadProgress) => void,
+  ): Observable<UploadFileOutcome> {
+    onProgress?.({ index, stage: 'upload' });
+    return this.putObject(ticket, item.file).pipe(
+      tap(() => onProgress?.({ index, stage: 'create' })),
+      concatMap(() =>
+        this.createArticle({
+          name: item.name,
+          categoryId: meta.categoryId,
+          contentType: ticket.contentType,
+          storageKey: ticket.key,
+          docType: meta.docType ? (meta.docType as DocType) : undefined,
+          description: meta.description,
+        }),
+      ),
+      map((article) => ({ file: item.file, article, error: null })),
+      catchError((error: unknown) => of({ file: item.file, article: null, error })),
+    );
+  }
+
+  /** Xin vé cho cả lô — multipart field tên `files` đúng như handler batch đọc */
+  private presignMany(files: File[]): Observable<UploadTicket[]> {
     const form = new FormData();
-    form.append('file', file, file.name);
-    return this.api.post<UploadTicketDto>('/uploads/presign', form).pipe(map(toUploadTicket));
+    for (const file of files) {
+      form.append('files', file, file.name);
+    }
+    return this.api
+      .post<{ items: UploadTicketDto[] }>('/uploads/presign/batch', form)
+      .pipe(map((res) => (res.items ?? []).map(toUploadTicket)));
   }
 
   /** PUT thô lên S3-compatible gateway — Content-Type phải khớp chữ ký của vé */

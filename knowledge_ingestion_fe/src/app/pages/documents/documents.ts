@@ -338,17 +338,17 @@ export class Documents implements OnDestroy {
       this.openFolderDialog(null, true);
       return;
     }
-    const ref = this.dialog.open<UploadDialog, UploadDialogData, Article>(UploadDialog, {
+    const ref = this.dialog.open<UploadDialog, UploadDialogData, Article[]>(UploadDialog, {
       data: { categories: this.categories(), defaultCategoryId: this.selected() },
       maxWidth: '94vw',
       autoFocus: 'first-tabbable',
     });
-    ref.afterClosed().subscribe((article) => {
-      if (!article) {
+    ref.afterClosed().subscribe((articles) => {
+      if (!articles?.length) {
         return;
       }
       this.messages.success('DOC_UPLOAD_SUCCESS');
-      this.selected.set(article.categoryId);
+      this.selected.set(articles[0].categoryId);
       this.load();
     });
   }
