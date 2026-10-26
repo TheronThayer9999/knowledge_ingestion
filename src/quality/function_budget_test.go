@@ -27,8 +27,11 @@ const (
 	maxFuncCX    = 12
 )
 
-// budget là số đo đã được chấp nhận cho một hàm đang vượt ngân sách.
-type budget struct {
+// allowEntry là một dòng nợ kỹ thuật: hàm đang vượt ngân sách + mức đã đo.
+// Dùng slice thay map để thứ tự còn quan sát được (map của Go không giữ thứ tự
+// nên không thể canh "danh sách phải sắp theo key").
+type allowEntry struct {
+	Key   string
 	Lines int
 	CX    int
 }
@@ -40,19 +43,66 @@ type budget struct {
 //     nên danh sách chỉ ngắn đi, không dài ra.
 //
 // Key = "đường/dẫn/file.go::TênHàm", method ghi dạng "(*Type).Method".
-var functionBudgetAllowlist = map[string]budget{}
+var functionBudgetAllowlist = []allowEntry{
+	{"cmd/examples/main.go::main", 67, 4},
+	{"cmd/examples/main.go::runAgent", 71, 8},
+	{"cmd/worker/main.go::main", 96, 4},
+	{"src/agent/eino/agent.go::(*ChatAgent).Run", 67, 17},
+	{"src/agent/eino/knowledge_search.go::NewKnowledgeSearchTool", 78, 14},
+	{"src/agent/eino/list_unreadable_pages.go::NewListUnreadablePagesTool", 76, 15},
+	{"src/agent/eino/model.go::(*retryTransport).RoundTrip", 55, 17},
+	{"src/agent/eino/read_article.go::NewReadArticleTool", 96, 19},
+	{"src/agent/eino/read_context.go::NewArticleInfoTool", 73, 17},
+	{"src/agent/eino/read_context.go::NewReadContextTool", 68, 13},
+	{"src/agent/eino/read_sheet.go::NewReadSheetTool", 83, 18},
+	{"src/agent/retrieval/hybrid_search.go::(*HybridSearcher).SearchHybrid", 67, 15},
+	{"src/agent/usecase/chat_service.go::(*chatService).Chat", 68, 9},
+	{"src/common/chunker/section.go::findHeadings", 37, 20},
+	{"src/common/chunker/template.go::DetectType", 16, 15},
+	{"src/common/extractor/compare.go::compareTokens", 37, 17},
+	{"src/common/extractor/despace.go::joinLine", 67, 16},
+	{"src/common/extractor/docx.go::extractDocx", 166, 48},
+	{"src/common/extractor/pdf.go::extractPDFPages", 89, 14},
+	{"src/common/extractor/pptx.go::pptxParagraphs", 40, 13},
+	{"src/common/extractor/xlsx.go::xlsxRows", 112, 30},
+	{"src/common/extractor/xlsx.go::xlsxSharedStrings", 48, 13},
+	{"src/config/config.go::Load", 269, 82},
+	{"src/controller/routers/router.go::NewRouter", 87, 1},
+	{"src/controller/services/article_admin_service.go::(*articleAdminService).QueueStatus", 88, 9},
+	{"src/controller/services/article_purge_service.go::(*articlePurgeService).PurgeDeleted", 86, 12},
+	{"src/controller/services/articles_service.go::(*articleService).Create", 52, 13},
+	{"src/controller/services/category_service.go::(*categoryService).Update", 57, 19},
+	{"src/controller/services/user_service.go::(*userService).Refresh", 67, 14},
+	{"src/infrastructure/postgres/migrate.go::migrate", 102, 15},
+	{"src/infrastructure/postgres/migrate.go::migrateCategoryClosure", 61, 9},
+	{"src/infrastructure/qdrant/connection.go::(*connection).ensureCollection", 68, 17},
+	{"src/infrastructure/vlm/ollama/client.go::(*Reader).chat", 63, 13},
+	{"src/loader/worker.go::LoadWorkerInfra", 142, 15},
+}
+
+// allowlistByKey dựng bảng tra một lần cho mỗi lượt chạy test.
+func allowlistByKey() map[string]allowEntry {
+	out := make(map[string]allowEntry, len(functionBudgetAllowlist))
+	for _, e := range functionBudgetAllowlist {
+		out[e.Key] = e
+	}
+	return out
+}
 
 // TestFunctionBudget quét mọi hàm non-test trong repo và chặn hàm quá to.
 func TestFunctionBudget(t *testing.T) {
 	root := filepath.Join("..", "..")
-	seen := make(map[string]bool, len(functionBudgetAllowlist))
+	allowed := allowlistByKey()
+	seen := make(map[string]bool, len(allowed))
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			if skipDir(d.Name()) {
+			// Root là "../.." nên d.Name() == "..": nếu skip theo tên thì walk
+			// bỏ luôn cả gốc và test xanh rỗng.
+			if path != root && skipDir(d.Name()) {
 				return fs.SkipDir
 			}
 			return nil
@@ -60,20 +110,20 @@ func TestFunctionBudget(t *testing.T) {
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		return checkFile(t, root, path, seen)
+		return checkFile(t, root, path, allowed, seen)
 	})
 	if err != nil {
 		t.Fatalf("duyệt cây mã: %v", err)
 	}
-	for key := range functionBudgetAllowlist {
-		if !seen[key] {
-			t.Errorf("allowlist còn %q nhưng hàm không còn vượt ngân sách (hoặc đã đổi tên) — xoá entry", key)
+	for _, e := range functionBudgetAllowlist {
+		if !seen[e.Key] {
+			t.Errorf("allowlist còn %q nhưng hàm không còn vượt ngân sách (hoặc đã đổi tên) — xoá entry", e.Key)
 		}
 	}
 }
 
 // checkFile parse 1 file rồi so từng hàm với ngân sách.
-func checkFile(t *testing.T, root, path string, seen map[string]bool) error {
+func checkFile(t *testing.T, root, path string, allowed map[string]allowEntry, seen map[string]bool) error {
 	t.Helper()
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, 0)
@@ -99,15 +149,15 @@ func checkFile(t *testing.T, root, path string, seen map[string]bool) error {
 		key := rel + "::" + funcName(fn)
 		seen[key] = true
 
-		allowed, listed := functionBudgetAllowlist[key]
 		where := fmt.Sprintf("%s:%d", rel, fset.Position(fn.Pos()).Line)
+		all, listed := allowed[key]
 		switch {
 		case !listed:
 			t.Errorf("%s %s: %d dòng, %d điểm quyết định (ngân sách %d/%d) — tách stage rồi mới thêm allowlist nếu thật sự cần",
 				where, funcName(fn), lines, cx, maxFuncLines, maxFuncCX)
-		case lines > allowed.Lines || cx > allowed.CX:
+		case lines > all.Lines || cx > all.CX:
 			t.Errorf("%s %s: %d dòng, %d điểm — vượt mức đã ghi trong allowlist (%d/%d), hàm đang phình thêm",
-				where, funcName(fn), lines, cx, allowed.Lines, allowed.CX)
+				where, funcName(fn), lines, cx, all.Lines, all.CX)
 		}
 	}
 	return nil
@@ -171,10 +221,16 @@ func receiverType(e ast.Expr) string {
 // cùng xoá entry).
 func TestFunctionBudgetAllowlistSorted(t *testing.T) {
 	keys := make([]string, 0, len(functionBudgetAllowlist))
-	for k := range functionBudgetAllowlist {
-		keys = append(keys, k)
+	for _, e := range functionBudgetAllowlist {
+		keys = append(keys, e.Key)
 	}
 	if !slices.IsSorted(keys) {
 		t.Fatalf("allowlist phải sắp theo key: %v", keys)
+	}
+	if slices.Contains(slices.Compact(slices.Clone(keys)), "") {
+		t.Fatal("allowlist có key rỗng")
+	}
+	if len(slices.Compact(slices.Clone(keys))) != len(keys) {
+		t.Fatal("allowlist có key trùng")
 	}
 }
