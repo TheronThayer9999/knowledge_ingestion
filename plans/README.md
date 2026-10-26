@@ -49,7 +49,7 @@ theo số Đợt.
 
 | Đợt | Ngày | Nội dung | Kế hoạch |
 |---|---|---|---|
-| — | — | (đang viết kế hoạch Đợt 26 — chart do LLM chọn loại, server dựng số) | — |
+| 26 | 2026-10-27 | Chart dựng từ chunk đã dẫn, LLM chọn loại biểu đồ, server dựng số | [kế hoạch](2026-10-27-dot-26-chart-tu-chunk-da-dan-va-llm-chon-loai.md) |
 
 ## Còn chờ (đã ghi backlog, chưa có file kế hoạch)
 
