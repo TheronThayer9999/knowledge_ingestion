@@ -28,6 +28,7 @@ routers (route table, exposes Engine)
 - The authenticated identity flows from middleware into services via **`ICurrentUser`** (reads `user_id` from the request context, .NET `IHttpContextAccessor` style) — services never see gin.
 - Errors: `common/errors.Error` carries `Code` (body) + `HttpCode`; services wrap client-visible errors with `NewCustomHttpError`, everything else becomes a 500 via `Render` without leaking internals.
 - Config (`-configs` flag, default `./configs/config.json`, `APP_CONFIG_PATH` env overrides the flag) is injected everywhere via `config.IConfig`.
+- Secrets never go into the tracked `configs/config.json`: pass provider keys via `<PROVIDER>_API_KEY` (e.g. `OLLAMA_API_KEY`, `GROQ_API_KEY`) or keep them in `configs/config.local.json` (gitignored). A provider with an empty key is skipped at boot with a warn — the app still starts.
 - DB `AutoMigrate` + S3 **bucket ensure** run at startup — **fail-fast** if Postgres/SeaweedFS is unreachable (run Docker, or point hosts to `127.0.0.1` for local dev).
 
 ## Quickstart

@@ -16,10 +16,12 @@ file hiện tại chỉ chặn việc lộ tiếp, không làm key cũ an toàn 
 
 ## Vì sao để rỗng là an toàn với code hiện tại
 
-`config.Load` đã hỗ trợ `os.Getenv(strings.ToUpper(name) + "_API_KEY")` ghi đè
-`api_key` (src/config/config.go:344), và `BuildProviderAgents` bỏ qua provider thiếu
-key kèm warn `agent: bỏ qua provider (thiếu cấu hình)` — app vẫn boot, chỉ provider
-`ollama` không dùng được cho tới khi cấp key qua env.
+`config.Load` đã hỗ trợ `os.Getenv(strings.ToUpper(name) + "_API_KEY")` ghi đè `api_key`
+(src/config/config.go:344), nên không cần sửa code để cấp key lại. App vẫn boot bình
+thường: provider type `openai` thiếu key thì bị bỏ qua kèm warn
+`agent: bỏ qua provider (thiếu cấu hình)`; provider type `ollama` vẫn nạp (local Ollama
+vốn không cần key) nhưng không còn header Authorization — nên request tới
+`https://ollama.com` sẽ 401 cho tới khi cấp `OLLAMA_API_KEY`.
 
 ## Không làm (cần user quyết)
 
@@ -33,6 +35,35 @@ key kèm warn `agent: bỏ qua provider (thiếu cấu hình)` — app vẫn boo
 ## Kiểm chứng
 
 1. `go build ./... && go vet ./... && golangci-lint run ./...`, `go test ./...`.
-2. Chạy `go run ./cmd/apis -configs ./configs/config.json`: app phải vẫn lên, log có
-   warn bỏ qua provider `ollama`, các provider khác vẫn nạp.
+2. Chạy `go run ./cmd/apis -configs ./configs/config.json`: app phải vẫn lên (provider
+   `ollama` nạp được nhưng không có Authorization — chỉ 401 khi thực sự gọi).
 3. `git grep` key cũ trong working tree: không còn kết quả.
+
+## Kết quả
+
+### Đã làm
+
+- `configs/config.json`: `llms.providers.ollama.api_key` từ key thật → `""`. Không đụng
+  provider nào khác, không đổi `default_provider`.
+- `README.md`: thêm gạch đầu dòng ngay dưới mục Config — secret không nằm trong file
+  track, cấp qua `<PROVIDER>_API_KEY` hoặc `configs/config.local.json`; provider thiếu
+  key bị bỏ qua lúc boot (app vẫn lên).
+
+### Kiểm chứng
+
+| Việc | Kết quả |
+|---|---|
+| `go build ./...` / `go vet ./...` / `golangci-lint run ./...` | OK / OK / `0 issues.` |
+| `go test ./...` | tất cả package pass (gồm `src/config`, `src/quality`) |
+| `git grep BCuo3MJrpLB5Wv7WkssXu2Yc` | không còn kết quả trong working tree |
+| Chạy `dot17_apis.exe -configs ./configs/config.json` | `llm selected {ollama, gemma4:31b}` → warn bỏ qua `openrouter`, `groq`, `9router`, `nvidia` (`api_key is required`) → `application started {config: ./configs/config.json}` |
+
+### Hệ quả cần biết
+
+- Provider `ollama` (type `ollama`) **vẫn được nạp** vì local Ollama không cần key —
+  chỉ là không còn header Authorization, nên gọi `https://ollama.com` sẽ 401. Muốn
+  dùng lại Ollama Cloud: `$env:OLLAMA_API_KEY="<key mới>"` rồi chạy lại (env đè file).
+- Key cũ **vẫn nằm trong lịch sử git** (commit `5a59c07`) ⇒ **phải revoke + tạo key mới**
+  trên ollama.com. Mình không rotate được và không tự viết lại lịch sử git.
+- Máy dev đang dùng `configs/config.local.json` (gitignored, default `9router`) nên
+  không bị ảnh hưởng.

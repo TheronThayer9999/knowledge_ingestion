@@ -46,7 +46,7 @@
         "type": "ollama",
         "model": "gemma4:31b",
         "base_url": "https://ollama.com",
-        "api_key": "8d4f151981584769a9c58b9e7b499e73.BCuo3MJrpLB5Wv7WkssXu2Yc",
+        "api_key": "",
         "temperature": 0,
         "max_tokens": 4096,
         "timeout_sec": 120
