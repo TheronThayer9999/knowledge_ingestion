@@ -82,6 +82,10 @@ func (s *articleExtractService) ExtractPending(ctx context.Context) (int, error)
 	if err != nil {
 		return 0, err
 	}
+	if len(articles) > 0 {
+		logs.Infow("extract: nhận lô bài", "trace_id", traceID,
+			"count", len(articles), "articles", articleTags(articles))
+	}
 	var extracted atomic.Int64
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, constants.EXTRACT_POOL_SIZE)
@@ -122,11 +126,23 @@ loop:
 	return n, nil
 }
 
+// articleTags rút "id:tên" của cả lô vừa claim để một dòng log là biết kỳ quét
+// đang chạm file nào — chỉ có id thì phải tra DB mới biết là file gì.
+func articleTags(articles []*domain.Article) []string {
+	tags := make([]string, 0, len(articles))
+	for _, article := range articles {
+		tags = append(tags, fmt.Sprintf("%d:%s", article.ID, article.Name))
+	}
+	return tags
+}
+
 // extractClaimed xử lý 1 bài đã claim: lỗi thì MarkExtractError, xong thì
 // MarkExtractDone (ghi text + done trong 1 câu). Ghi bằng detached ctx để được
 // dù job hết timeout; job hết timeout (ctx hủy) thì bỏ qua không đánh lỗi oan
 // (đánh lỗi oan sẽ đốt hết attempts rồi failed bài đang chỉ cần thử lại).
 func (s *articleExtractService) extractClaimed(ctx context.Context, traceID string, article *domain.Article, done *atomic.Int64) {
+	logs.Infow("extract: bắt đầu bài", "trace_id", traceID,
+		"article_id", article.ID, "name", article.Name)
 	// KHÔNG tạo dbCtx dùng chung ở đây: OCR 1 file scan 500 trang tốn hàng
 	// chục phút, ctx 30s tạo sớm chết trước khi tới lượt ghi done/error.
 	if err := s.extractOneSafe(ctx, traceID, article); err != nil {
@@ -140,7 +156,7 @@ func (s *articleExtractService) extractClaimed(ctx context.Context, traceID stri
 				s.releaseClaims(ctx, traceID, []int64{article.ID})
 			} else {
 				logs.Infow("extract: job hết giờ, để lease trả bài",
-					"trace_id", traceID, "article_id", article.ID)
+					"trace_id", traceID, "article_id", article.ID, "name", article.Name)
 			}
 			return
 		}
@@ -152,19 +168,19 @@ func (s *articleExtractService) extractClaimed(ctx context.Context, traceID stri
 			attempts = utils.MaxQueueAttempts
 		}
 		logs.Warnw("extract: bỏ qua bài, thử lại theo backoff",
-			"trace_id", traceID,
-			"article_id", article.ID, "storage_key", article.StorageKey, "error", err)
+			"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+			"storage_key", article.StorageKey, "error", err)
 		det := worker.Detach(ctx)
 		defer det.Close()
 		if merr := s.articleRepo.MarkExtractError(det.Ctx, article.ID, attempts); merr != nil {
-			logs.Error(merr, "extract: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID)
+			logs.Error(merr, "extract: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
 		}
 		return
 	}
 	det := worker.Detach(ctx)
 	defer det.Close()
 	if err := s.articleRepo.MarkExtractDone(det.Ctx, article.ID); err != nil {
-		logs.Error(err, "extract: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID)
+		logs.Error(err, "extract: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
 		return
 	}
 	done.Add(1)
@@ -195,7 +211,8 @@ func (s *articleExtractService) extractOneSafe(ctx context.Context, traceID stri
 	defer func() {
 		if rec := recover(); rec != nil {
 			logs.Error(fmt.Errorf("panic: %v", rec), "extract: panic khi xử lý bài",
-				"trace_id", traceID, "article_id", article.ID, "stack", string(debug.Stack()))
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+				"stack", string(debug.Stack()))
 			err = fmt.Errorf("panic khi extract bài %d: %v", article.ID, rec)
 		}
 	}()
@@ -289,7 +306,7 @@ func (r *extractRun) loadSaved() error {
 	}
 	if len(saved) > 0 {
 		logs.Infow("extract: tiếp tục từ mảnh đã trích",
-			"trace_id", r.traceID, "article_id", r.article.ID,
+			"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name,
 			"pieces_done", len(saved))
 	}
 	return nil
@@ -313,7 +330,7 @@ func (r *extractRun) flushTail() error {
 	// Log mỗi lô: job nặng chạy vài chục phút, không có dòng nào thì lúc chết
 	// không biết đang ở trang nào.
 	logs.Infow("extract: tiến trình",
-		"trace_id", r.traceID, "article_id", r.article.ID,
+		"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name,
 		"pages_written", r.sinceFlush, "elapsed_ms", time.Since(r.start).Milliseconds())
 	r.sinceFlush = 0
 	return nil
@@ -390,10 +407,10 @@ func (r *extractRun) saveMeta(pageCount int, version, effective string) error {
 	defer det.Close()
 	if err := r.svc.articleRepo.UpdateMetadata(det.Ctx, r.article.ID, pageCount, version, effective); err != nil {
 		logs.Warnw("extract: không lưu metadata được (bỏ qua)",
-			"trace_id", r.traceID, "article_id", r.article.ID, "error", err)
+			"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name, "error", err)
 	}
 	logs.Infow("extract: xong 1 bài",
-		"trace_id", r.traceID, "article_id", r.article.ID,
+		"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name,
 		"pages", pageCount, "new_pages", len(r.fresh),
 		"elapsed_ms", time.Since(r.start).Milliseconds())
 	return nil

@@ -94,6 +94,10 @@ func (s *articleCompileService) CompilePending(ctx context.Context) (int, error)
 	if err != nil {
 		return 0, err
 	}
+	if len(articles) > 0 {
+		logs.Infow("compile: nhận lô bài", "trace_id", traceID,
+			"count", len(articles), "articles", articleTags(articles))
+	}
 	var compiled atomic.Int64
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, constants.COMPILE_POOL_SIZE)
@@ -132,13 +136,15 @@ loop:
 // ctx như indexClaimed: canceled thì trả về pending, hết giờ (deadline) thì
 // để lease reclaim, lỗi thật mới đếm attempts.
 func (s *articleCompileService) compileClaimed(ctx context.Context, traceID string, article *domain.Article, done *atomic.Int64) {
+	logs.Infow("compile: bắt đầu bài", "trace_id", traceID,
+		"article_id", article.ID, "name", article.Name)
 	if err := s.compileOneSafe(ctx, traceID, article); err != nil {
 		if ctx.Err() != nil {
 			if stderrors.Is(ctx.Err(), context.Canceled) {
 				s.releaseClaims(ctx, traceID, []int64{article.ID})
 			} else {
 				logs.Infow("compile: job hết giờ, để lease trả bài",
-					"trace_id", traceID, "article_id", article.ID)
+					"trace_id", traceID, "article_id", article.ID, "name", article.Name)
 			}
 			return
 		}
@@ -148,22 +154,22 @@ func (s *articleCompileService) compileClaimed(ctx context.Context, traceID stri
 		if s.vectors.IsPermanentError(err) {
 			attempts = utils.MaxQueueAttempts
 			logs.Warnw("compile: lỗi vĩnh viễn, failed luôn",
-				"trace_id", traceID, "article_id", article.ID, "error", err)
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name, "error", err)
 		} else {
 			logs.Warnw("compile: bỏ qua bài, thử lại theo backoff",
-				"trace_id", traceID, "article_id", article.ID, "error", err)
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name, "error", err)
 		}
 		det := worker.Detach(ctx)
 		defer det.Close()
 		if merr := s.articleRepo.MarkCompileError(det.Ctx, article.ID, attempts); merr != nil {
-			logs.Error(merr, "compile: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID)
+			logs.Error(merr, "compile: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
 		}
 		return
 	}
 	det := worker.Detach(ctx)
 	defer det.Close()
 	if err := s.articleRepo.MarkCompileDone(det.Ctx, article.ID); err != nil {
-		logs.Error(err, "compile: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID)
+		logs.Error(err, "compile: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
 		return
 	}
 	done.Add(1)
@@ -194,7 +200,8 @@ func (s *articleCompileService) compileOneSafe(ctx context.Context, traceID stri
 	defer func() {
 		if rec := recover(); rec != nil {
 			logs.Error(fmt.Errorf("panic: %v", rec), "compile: panic khi xử lý bài",
-				"trace_id", traceID, "article_id", article.ID, "stack", string(debug.Stack()))
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+				"stack", string(debug.Stack()))
 			err = fmt.Errorf("panic khi compile bài %d: %v", article.ID, rec)
 		}
 	}()
@@ -221,7 +228,8 @@ func (s *articleCompileService) compileOne(ctx context.Context, traceID string, 
 		if err := s.sectionRepo.Replace(det.Ctx, article.ID, nil); err != nil {
 			return fmt.Errorf("dọn section cũ: %w", err)
 		}
-		logs.Infow("compile: bài không có mục nào", "trace_id", traceID, "article_id", article.ID)
+		logs.Infow("compile: bài không có mục nào", "trace_id", traceID,
+			"article_id", article.ID, "name", article.Name)
 		return nil
 	}
 	rows := make([]*domain.ArticleSection, 0, len(sections))
@@ -239,7 +247,7 @@ func (s *articleCompileService) compileOne(ctx context.Context, traceID string, 
 		if err != nil {
 			return fmt.Errorf("đọc nội dung mục %q: %w", sec.Name, err)
 		}
-		summary, err := s.summarize(ctx, traceID, article.ID, sec.Name, text)
+		summary, err := s.summarize(ctx, traceID, article, sec.Name, text)
 		if err != nil {
 			return fmt.Errorf("tóm tắt mục %q: %w", sec.Name, err)
 		}
@@ -261,7 +269,7 @@ func (s *articleCompileService) compileOne(ctx context.Context, traceID string, 
 		return fmt.Errorf("ghi article_sections: %w", err)
 	}
 	logs.Infow("compile: xong 1 bài", "trace_id", traceID, "article_id", article.ID,
-		"sections", len(rows), "elapsed_ms", time.Since(start).Milliseconds())
+		"name", article.Name, "sections", len(rows), "elapsed_ms", time.Since(start).Milliseconds())
 	return nil
 }
 
@@ -286,27 +294,29 @@ func (s *articleCompileService) sectionText(ctx context.Context, filter domain.S
 // LLM rồi ghi cache — cùng pattern enhancer.Keywords nhưng chi phí thật ở đây
 // là lời gọi LLM. Cache không quyết định tính đúng: đọc/ghi lỗi thì log + gọi
 // thẳng LLM, kết quả vẫn ghi DB.
-func (s *articleCompileService) summarize(ctx context.Context, traceID string, articleID int64, name, text string) (string, error) {
+func (s *articleCompileService) summarize(ctx context.Context, traceID string, article *domain.Article, sectionName, text string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", nil
 	}
-	key := s.cacheKey(name, text)
+	key := s.cacheKey(sectionName, text)
 	if s.cache != nil {
 		v, err := s.cache.Get(ctx, key).Result()
 		if err == nil && v != "" {
 			return v, nil
 		}
 		if err != nil && !stderrors.Is(err, redis.Nil) {
-			logs.Error(err, "compile: đọc cache lỗi, gọi LLM thẳng", "trace_id", traceID, "article_id", articleID)
+			logs.Error(err, "compile: đọc cache lỗi, gọi LLM thẳng",
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name)
 		}
 	}
-	summary, err := s.summarizer.Summarize(ctx, name, text)
+	summary, err := s.summarizer.Summarize(ctx, sectionName, text)
 	if err != nil {
 		return "", err
 	}
 	if s.cache != nil && summary != "" {
 		if err := s.cache.Set(ctx, key, summary, s.cacheTTL).Err(); err != nil {
-			logs.Error(err, "compile: ghi cache lỗi (không chặn kết quả)", "trace_id", traceID, "article_id", articleID)
+			logs.Error(err, "compile: ghi cache lỗi (không chặn kết quả)",
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name)
 		}
 	}
 	return summary, nil
