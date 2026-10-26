@@ -17,11 +17,14 @@
   min-height: 0;
 }
 
-// ---- Panel tiện ích (bên phải card chat) ----
+// ---- Panel tiện ích (bên TRÁI card chat) ----
 // Card cùng bo góc/độ cao với card chat; nền trắng + 1 mức shadow rất nhẹ,
-// KHÔNG viền + shadow cùng lúc
+// KHÔNG viền + shadow cùng lúc. Panel đi trước card dù DOM đặt sau (order: -1)
+// để thứ tự focus vẫn là khung chat → tiện ích, còn mắt thấy sidebar trái như
+// OWUI/Dify.
 .side-panel {
   display: flex;
+  order: -1;
   flex: 0 0 var(--utility-panel-width);
   flex-direction: column;
   gap: var(--space-5);
@@ -208,9 +211,10 @@
 
 // Thanh trên card — nút gập panel nằm TRONG luồng (không absolute) nên bong
 // bóng user canh phải không bao giờ chui xuống dưới nút nữa (lỗi anh chụp).
+// Desktop: nút ở góc trên-TRÁI, sát panel tiện ích cùng phía.
 .card-bar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   padding: var(--space-2) var(--space-2) 0;
   flex: 0 0 auto;
 }
@@ -748,6 +752,12 @@
     align-items: center;
     gap: var(--space-4);
     padding: var(--space-4);
+  }
+
+  // Panel đã nằm ngang phía trên nên trả nút gập sang góc trên-PHẢI để không
+  // đè lên hàng control đầu tiên của panel
+  .card-bar {
+    justify-content: flex-end;
   }
 
   // Trong thanh ngang chỉ cần tiêu đề, bỏ mô tả phụ cho gọn
