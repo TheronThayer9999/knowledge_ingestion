@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // callerSkip bù đúng 1 frame của wrapper trong package này. zap ghi caller
@@ -23,14 +24,31 @@ var (
 func LoadLogger() {
 	once.Do(func() {
 		cfg := zap.NewDevelopmentConfig()
+		// Development mặc định gắn stack từ WARN (Config.buildOptions đặt
+		// stackLevel = WarnLevel) nên SLOW SQL / backoff trông y như panic
+		// runtime. Tắt của config rồi bật lại đúng ở ErrorLevel trong newLogger.
+		cfg.DisableStacktrace = true
 		if level := os.Getenv("LOG_LEVEL"); level != "" {
 			_ = cfg.Level.UnmarshalText([]byte(level))
 		}
-		if l, err := cfg.Build(); err == nil {
+		if l, err := newLogger(cfg); err == nil {
 			logger = l.Sugar()
 			callLogger = logger.WithOptions(zap.AddCallerSkip(callerSkip))
 		}
 	})
+}
+
+// newLogger dựng logger từ cfg với đúng một ngoại lệ của dự án: stack trace chỉ
+// gắn từ ERROR. Config.Build áp tham số opts SAU buildOptions nên AddStacktrace
+// ở đây thắng mức mặc định của Development.
+func newLogger(cfg zap.Config) (*zap.Logger, error) {
+	return cfg.Build(stackOptions()...)
+}
+
+// stackOptions là nguồn duy nhất của chính sách stack trace (test khoá đúng hàm
+// này): WARN sạch sẽ, ERROR mới kèm stack.
+func stackOptions() []zap.Option {
+	return []zap.Option{zap.AddStacktrace(zapcore.ErrorLevel)}
 }
 
 func Debug(args ...interface{}) {
