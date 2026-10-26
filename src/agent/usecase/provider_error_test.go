@@ -62,6 +62,33 @@ func TestProviderErrorLeavesOtherErrors(t *testing.T) {
 	}
 }
 
+// Client ngắt giữa đường (nút Dừng, đóng tab, curl --max-time): 499 — không
+// phải 500 "server hỏng" và cũng không phải 503 "hạ tầng chết", vì dịch vụ
+// vẫn đang sống.
+func TestProviderErrorMapsClientCancelTo499(t *testing.T) {
+	real := stderrors.New(`eino agent: [NodeRunError] failed to create chat completion: ` +
+		`Post "http://localhost:20128/v1/chat/completions": context canceled\n` +
+		"------------------------\nnode path: [node_1, ChatModel]")
+
+	e := errors.From(providerError(real, "kc/nvidia/nemotron-3.5-super-vl:free"))
+	if e == nil || e.GetHttpCode() != errors.ClientClosed {
+		t.Fatalf("muốn 499, nhận %+v", e)
+	}
+}
+
+// Provider không trả lời trong timeout_sec (http.Client.Timeout): 504 để người
+// gọi biết là hết giờ chờ, không phải lỗi nội bộ.
+func TestProviderErrorMapsProviderTimeoutTo504(t *testing.T) {
+	real := stderrors.New(`eino agent: [NodeRunError] failed to create chat completion: ` +
+		`Post "http://localhost:20128/v1/chat/completions": context deadline exceeded ` +
+		`(Client.Timeout exceeded while awaiting headers)`)
+
+	e := errors.From(providerError(real, "kc/nvidia/nemotron-3.5-super-vl:free"))
+	if e == nil || e.GetHttpCode() != http.StatusGatewayTimeout {
+		t.Fatalf("muốn 504, nhận %+v", e)
+	}
+}
+
 // Chuỗi thật từ log khi Ollama local chưa chạy: adk bọc lỗi tool thành
 // NodeRunError nên Unwrap đứt, chỉ còn text — vẫn phải ra 503, và message
 // không được làm lộ URL/cổng/`dial tcp` của hạ tầng nội bộ.

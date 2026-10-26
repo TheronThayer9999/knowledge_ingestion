@@ -88,9 +88,30 @@ func Render[T any](c *gin.Context, r renderer, res dtos.Result[T]) {
 			r.ErrorData(c, e)
 			return
 		}
+		// Ctx đã hủy/quá hạn (client đóng tab, bấm Dừng, deadline của request)
+		// thì đây không phải bug runtime: WARN 1 dòng, không stack, và không
+		// trả 500 dối. Lưới an toàn cho MỌI endpoint — service nào trả lỗi raw
+		// trong lúc ctx chết cũng rơi vào đây.
+		if ce := requestContextError(c, res.Err); ce != nil {
+			logs.Warnw("request dừng giữa đường (client ngắt hoặc quá hạn)",
+				"status", ce.GetHttpCode(), "path", c.Request.URL.Path,
+				"trace_id", utils.TraceIDFromCtx(c.Request.Context()))
+			r.ErrorData(c, ce)
+			return
+		}
 		logs.Error(res.Err, "unhandled error", "trace_id", utils.TraceIDFromCtx(c.Request.Context()))
 		r.ErrorData(c, errors.ErrInternal)
 		return
 	}
 	r.Success(c, res.Data)
+}
+
+// requestContextError xét cả lỗi service trả về lẫn ctx của request: service
+// có thể trả lỗi raw ("agent hết vòng lặp") đúng lúc client vừa ngắt — vẫn
+// phải ra 499 chứ không phải 500.
+func requestContextError(c *gin.Context, err error) *errors.Error {
+	if ce := errors.ContextError(err); ce != nil {
+		return ce
+	}
+	return errors.ContextError(c.Request.Context().Err())
 }

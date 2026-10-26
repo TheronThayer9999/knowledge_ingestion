@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"context"
 	"encoding/json"
 	stderrors "errors"
 	"net/http"
@@ -77,6 +78,36 @@ func TestResponseShape(t *testing.T) {
 				t.Errorf("status = %v, want %v", env.Status, tc.res.Err == nil)
 			}
 		})
+	}
+}
+
+// TestRenderMapsDeadContextTo499: ctx đã hủy (client đóng tab, bấm Dừng) thì
+// service trả lỗi raw cũng không được thành 500 + stack — đó không phải bug
+// runtime, và client không còn ở đó để đọc 500.
+func TestRenderMapsDeadContextTo499(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/chat", nil).WithContext(ctx)
+
+	Render(c, &baseController{}, dtos.Fail[string](stderrors.New("agent hết vòng lặp")))
+
+	if w.Code != errors.ClientClosed {
+		t.Errorf("status line = %d, want %d", w.Code, errors.ClientClosed)
+	}
+	var env dtos.ResponseResource
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("body không phải JSON envelope: %v\n%s", err, w.Body.String())
+	}
+	if env.Status {
+		t.Error("status envelope phải false")
+	}
+	if !strings.Contains(env.Message, "ngắt") {
+		t.Errorf("message %q phải nói rõ client đã ngắt", env.Message)
 	}
 }
 

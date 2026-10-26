@@ -63,10 +63,19 @@ func dependencyError(err error) error {
 // Hết quota/tốc độ (429) trả 429; còn lại (401 key sai, 5xx) là sự cố cấu
 // hình/backend phía server → 502, không phải lỗi của client.
 //
-// Không phải lỗi HTTP của provider thì thử dependencyError: dịch vụ AI phía
-// dưới chưa chạy → 503. Lỗi còn lại (parse, ctx...) trả nguyên để Render log
-// stack và map 500 như cũ.
+// Không phải lỗi HTTP của provider thì xét theo thứ tự: ctx đã hủy/quá hạn
+// (client ngắt giữa đường, provider chậm quá timeout_sec) → 499/504; dịch vụ
+// AI phía dưới chưa chạy → 503. Lỗi còn lại (parse, bug logic) trả nguyên để
+// Render log stack và map 500 như cũ.
 func providerError(err error, model string) error {
+	// Ctx đã chết thì status của provider (nếu có) không còn nghĩa — xét trước
+	// AsProviderHTTPError. Log WARN 1 dòng, không stack: ngắt/hết giờ không
+	// phải bug runtime, log stack sẽ đọc như panic và che lỗi thật.
+	if ce := errors.ContextError(err); ce != nil {
+		logs.Warnw("chat: dừng giữa đường (client ngắt hoặc provider quá hạn)",
+			"status", ce.GetHttpCode(), "model", model)
+		return ce
+	}
 	pe, ok := eino.AsProviderHTTPError(err)
 	if !ok {
 		if dep := dependencyError(err); dep != nil {
