@@ -96,6 +96,15 @@ export class Chat {
     this.thinking.update((value) => !value);
   }
 
+  /**
+   * Nhóm tin cùng người gửi: tin liền trước cùng role thì siết khoảng cách
+   * lại (kiểu iMessage/Gmail) — đọc thấy rõ cụm của một người.
+   */
+  protected isGrouped(index: number): boolean {
+    const turns = this.turns();
+    return index > 0 && turns[index - 1]?.role === turns[index]?.role;
+  }
+
   protected togglePanel(): void {
     this.panelOpen.update((value) => !value);
   }

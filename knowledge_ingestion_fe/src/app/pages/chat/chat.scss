@@ -192,6 +192,18 @@
   flex-direction: row-reverse;
 }
 
+// Tin cùng người gửi: siết khoảng cách trên lại còn --space-1 (đang 16px
+// theo gap) — bù trừ bằng margin âm để không phải bỏ flex gap.
+.turn.is-grouped {
+  margin-top: calc(var(--space-1) - var(--space-4));
+}
+
+// Nhóm rồi thì ẩn nhãn người gửi (lặp lại vô nghĩa) và thu avatar thành
+// khoảng trống canh chỉnh để mép bong bóng thẳng hàng.
+.turn.is-grouped .turn-role {
+  display: none;
+}
+
 .turn-avatar {
   display: grid;
   place-items: center;
@@ -211,15 +223,25 @@
 .bubble {
   max-width: min(760px, calc(100% - var(--avatar-size) - var(--space-4)));
   padding: var(--space-3);
-  border-radius: var(--radius-md);
+  // Bo lớn ba góc, góc QUAY VỀ PHÍA NGƯỜI GỬI bo ít hơn — tạo "đuôi" nhận
+  // biết ai nói (kiểu iMessage/Gmail chat).
+  border-radius: var(--radius-lg);
   background: var(--color-surface-container);
   color: var(--color-on-surface);
   min-width: 0;
 }
 
+// Assistant ở trái → đuôi ở góc dưới-trái.
+.bubble {
+  border-bottom-left-radius: var(--radius-sm);
+}
+
 .turn.user .bubble {
   background: var(--color-primary-container);
   color: var(--color-on-primary-container);
+  // User ở phải → đuôi ở góc dưới-phải.
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-sm);
 }
 
 .turn-role {
@@ -337,9 +359,9 @@
   gap: var(--space-2);
   min-width: 0;
   // Nguồn trích dẫn là nút bấm được: reset nền/button mặc định, đủ chiều cao
-  // chạm 44px, có hover/focus rõ ràng
+  // chạm --touch-target, có hover/focus rõ ràng
   width: 100%;
-  min-height: 44px;
+  min-height: var(--touch-target);
   padding: var(--space-1) var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
@@ -465,8 +487,11 @@
   box-sizing: content-box;
   flex: 1 1 auto;
   min-width: 0;
-  // chữ 22px + padding 12+12 + border 1+1 = cao đúng --control-height (48px)
-  min-height: var(--control-height);
+  // content-box: min-height tính cho PHẦN CHỮ, KHÔNG cộng padding/border.
+  // 1 dòng = 22px; tổng cao = 22 + padding 12+12 + border 1+1 = --control-height.
+  // Đặt min-height = --control-height (48px) ở đây sẽ thành 48+26=74px, ô nhập
+  // lòi ra cao hơn nút Gửi (48px) và flex-end đẩy nút xuống đáy → lệch tâm.
+  min-height: calc(var(--control-height) - var(--space-3) * 2 - var(--border-width) * 2);
   padding: var(--space-3) var(--space-4);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-control);

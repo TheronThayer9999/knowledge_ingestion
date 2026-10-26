@@ -146,22 +146,33 @@
   cursor: pointer;
 }
 
-.tree-name {
-  flex: 1 1 auto;
-  min-width: 0;
+// Nhóm chữ tràn thì cắt bằng "…" — khai báo một lần cho hết file.
+.tree-name,
+.doc-name,
+.doc-meta,
+.card-meta,
+.content-count,
+.chip {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tree-name {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .tree-count {
   flex: 0 0 auto;
   padding: 0 var(--space-2);
   border-radius: var(--radius-full);
+  // cột số: căn phải + chữ số đều nhau để so sánh nhanh
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   background: var(--color-surface-container-high);
   color: var(--color-muted);
   font: var(--text-style-xs-strong);
-  font-variant-numeric: tabular-nums;
 }
 
 .tree-children {
@@ -191,14 +202,42 @@
 }
 
 .content-count {
-  font: var(--text-style-xs);
-  color: var(--color-muted);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .toolbar-spacer {
   flex: 1 1 auto;
+}
+
+// ---- Thanh hành loạt kiểu Drive/Gmail: chỉ hiện khi có dòng được tick ----
+// Flex để các ô thẳng hàng + toolbar-spacer đẩy nút Xóa sang phải; label và
+// count là span riêng nên cần gap mới không dính vào nhau.
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+}
+
+.selection-label {
+  font: var(--text-style-sm);
+  color: var(--color-on-surface);
+  white-space: nowrap;
+}
+
+.selection-count {
+  font: var(--text-style-sm-strong);
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+// Nút xóa tách khỏi thao tác phụ bằng màu danger.
+.selection-delete {
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
 }
 
 // ---- Chip "đang xử lý" trên toolbar: worker sống + còn bài trong pipeline ----
@@ -332,30 +371,50 @@
 }
 
 // ---- Danh sách dạng bảng ----
+// clip (không hidden) để bo góc bảng mà KHÔNG biến bảng thành scroll container
+// — scroll container sẽ phá mất position: sticky của dòng đầu.
 .doc-table {
+  // bề rộng cột checkbox chọn dòng — dùng lại ở mọi breakpoint để 6 ô
+  // (chọn | tên | thư mục | loại | cập nhật | hành động) thẳng hàng.
+  --doc-col-select: 44px;
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow: clip;
   background: var(--color-surface);
 }
 
 .doc-head,
 .doc-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 170px 150px 120px 96px;
+  grid-template-columns:
+    var(--doc-col-select) minmax(0, 1fr) 170px 150px 120px 96px;
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-3);
 }
 
+// Hàng đầu dính: cuộn trang trong shell (topbar sticky ở viewport mép trên),
+// nên top lấy đúng offset dưới topbar như panel thư mục — trang không tự calc.
 .doc-head {
-  min-height: calc(var(--list-row-height) - var(--space-3));
+  position: sticky;
+  top: var(--content-sticky-offset);
+  z-index: var(--z-toolbar);
+  min-height: var(--list-row-height);
   background: var(--color-surface-container);
   border-bottom: var(--border-width) solid var(--color-border);
   font: var(--text-style-xs-strong);
   color: var(--color-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+// Bo góc hàng đầu theo bảng: border của bảng không bo theo được nên bo ở cell.
+.doc-head > :first-child {
+  border-top-left-radius: var(--radius-md);
+}
+
+.doc-head > :last-child {
+  border-top-right-radius: var(--radius-md);
 }
 
 .doc-row {
@@ -399,17 +458,18 @@
 .doc-name {
   font: var(--text-style-sm);
   color: var(--color-on-surface);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.doc-meta {
+// Chữ phụ của dòng bảng, card lưới và bộ đếm toolbar cùng một kiểu.
+.doc-meta,
+.card-meta,
+.content-count {
   font: var(--text-style-xs);
   color: var(--color-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.card-meta {
+  max-width: 100%;
 }
 
 .chip {
@@ -420,9 +480,6 @@
   background: var(--color-surface-container-high);
   color: var(--color-on-surface);
   font: var(--text-style-xs-strong);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 // ---- Badge tiến trình xử lý (extract → index → compile) ----
@@ -537,15 +594,6 @@
   overflow-wrap: anywhere;
 }
 
-.card-meta {
-  font: var(--text-style-xs);
-  color: var(--color-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
 .card-foot {
   display: flex;
   align-items: center;
@@ -556,10 +604,11 @@
 }
 
 // ---- Responsive ----
+// Ẩn cột LOẠI → còn 5 ô, vẫn giữ cột chọn ở đầu.
 @media (max-width: 1279px) {
   .doc-head,
   .doc-row {
-    grid-template-columns: minmax(0, 1fr) 140px 120px 88px;
+    grid-template-columns: var(--doc-col-select) minmax(0, 1fr) 140px 120px 88px;
   }
 
   .col-type {
@@ -579,13 +628,14 @@
   }
 }
 
+// Mobile: ẩn THƯ MỤC + CẬP NHẬT → dòng còn 3 ô (chọn | tên | hành động).
 @media (max-width: 767px) {
   .doc-head {
     display: none;
   }
 
   .doc-row {
-    grid-template-columns: minmax(0, 1fr) 80px;
+    grid-template-columns: var(--doc-col-select) minmax(0, 1fr) 80px;
     gap: var(--space-1);
     padding: var(--space-2) var(--space-3);
   }

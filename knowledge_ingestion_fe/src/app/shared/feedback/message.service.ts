@@ -1,6 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { takeUntil } from 'rxjs/operators';
 import { firstValueFrom } from 'rxjs';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
 import { ConfirmDialog, type ConfirmDialogData } from './confirm-dialog';
@@ -15,6 +16,9 @@ const DURATION_MS: Record<MessageType, number> = {
   warning: 5000,
   error: 6000,
 };
+
+/** Snackbar có nút Hoàn tác: giữ lâu hơn để người dùng kịp đổi ý */
+const UNDO_DURATION_MS = 6000;
 
 /**
  * Lớp feedback dùng chung: mọi thông báo đi qua đây (MatSnackBar) và
@@ -41,6 +45,29 @@ export class MessageService {
 
   info(key: TranslationKey): void {
     this.notify('info', this.lang.t(key), key);
+  }
+
+  /**
+   * Snackbar thành công kèm nút hành động (thường là "Hoàn tác").
+   * Chỉ dùng khi thao tác đảo ngược được một cách an toàn (VD đổi thư mục);
+   * thao tác không thể đảo (Xóa vĩnh viễn) thì dùng success() thường.
+   * Kịch bản: bấm nút -> chạy onAction; hết hạn mà không bấm thì chẳng làm gì.
+   */
+  successWithAction(
+    messageKey: TranslationKey,
+    actionLabelKey: TranslationKey,
+    onAction: () => void,
+  ): void {
+    this.record('success', this.lang.t(messageKey), messageKey);
+    const ref = this.snackBar.open(this.lang.t(messageKey), this.lang.t(actionLabelKey), {
+      duration: UNDO_DURATION_MS,
+      verticalPosition: 'top',
+      horizontalPosition: 'end',
+    });
+    ref
+      .onAction()
+      .pipe(takeUntil(ref.afterDismissed()))
+      .subscribe(() => onAction());
   }
 
   warning(key: TranslationKey): void {
@@ -87,13 +114,18 @@ export class MessageService {
   }
 
   private notify(type: MessageType, text: string, key?: TranslationKey): void {
-    const message: AppMessage = { type, text, key, at: new Date() };
-    this.items.update((list) => [...list.slice(-(MAX_HISTORY - 1)), message]);
+    this.record(type, text, key);
     this.snackBar.open(text, undefined, {
       duration: DURATION_MS[type],
       verticalPosition: 'top',
       horizontalPosition: 'end',
     });
+  }
+
+  /** Ghi vào history dùng chung cho mọi loại snackbar (debug/audit) */
+  private record(type: MessageType, text: string, key?: TranslationKey): void {
+    const message: AppMessage = { type, text, key, at: new Date() };
+    this.items.update((list) => [...list.slice(-(MAX_HISTORY - 1)), message]);
   }
 }
 

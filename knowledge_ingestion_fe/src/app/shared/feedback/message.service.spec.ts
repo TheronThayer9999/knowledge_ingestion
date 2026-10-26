@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageService } from './message.service';
 
@@ -52,6 +52,35 @@ describe('MessageService', () => {
     }
 
     expect(service.history()).toHaveLength(50);
+  });
+
+  it('successWithAction mở snackbar kèm nút và gọi onAction khi bấm', () => {
+    const service = setup();
+    const action$ = new Subject<void>();
+    const dismissed$ = new Subject<void>();
+    snackBar.open.mockReturnValueOnce({
+      onAction: () => action$,
+      afterDismissed: () => dismissed$,
+    });
+    const onAction = vi.fn();
+
+    service.successWithAction('DOC_MOVE_UNDO', 'COMMON_UNDO', onAction);
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Đã chuyển tài liệu sang thư mục khác.',
+      'Hoàn tác',
+      expect.objectContaining({ verticalPosition: 'top', horizontalPosition: 'end' }),
+    );
+    expect(service.history().at(-1)).toMatchObject({ type: 'success', key: 'DOC_MOVE_UNDO' });
+
+    // Subject phát đồng bộ tới subscriber của service — onAction chạy ngay
+    action$.next();
+    expect(onAction).toHaveBeenCalledTimes(1);
+
+    // snackbar đã đóng thì action bị takeUntil, không gọi lại onAction
+    dismissed$.next();
+    action$.next();
+    expect(onAction).toHaveBeenCalledTimes(1);
   });
 
   it('errorFromApi ưu tiên message do server trả về', () => {

@@ -116,6 +116,33 @@
         </mat-button-toggle-group>
       </div>
 
+      <!-- Thanh hành loạt kiểu Drive/Gmail: chỉ hiện khi có dòng được tick -->
+      @if (pickedCount() > 0) {
+        <div class="selection-bar" role="status">
+          <button
+            mat-icon-button
+            type="button"
+            (click)="clearPicked()"
+            [attr.aria-label]="lang.t('DOC_CLEAR_SELECTION')"
+            [matTooltip]="lang.t('DOC_CLEAR_SELECTION')"
+          >
+            <mat-icon aria-hidden="true">close</mat-icon>
+          </button>
+          <span class="selection-label">{{ lang.t('DOC_SELECTED_LABEL') }}</span>
+          <span class="selection-count">{{ pickedCount() }}</span>
+          <span class="toolbar-spacer"></span>
+          <button
+            matButton="outlined"
+            type="button"
+            class="selection-delete"
+            (click)="deletePicked()"
+          >
+            <mat-icon aria-hidden="true">delete</mat-icon>
+            {{ lang.t('DOC_DELETE_SELECTED') }}
+          </button>
+        </div>
+      }
+
       @if (!workerOnline() && activeCount() > 0) {
         <div class="worker-alert" role="status">
           <mat-icon aria-hidden="true">error_outline</mat-icon>
@@ -157,7 +184,15 @@
         </div>
       } @else if (view() === 'list') {
         <div class="doc-table">
-          <div class="doc-head" aria-hidden="true">
+          <div class="doc-head">
+            <span class="col-select">
+              <mat-checkbox
+                [checked]="allPicked()"
+                [indeterminate]="pickedCount() > 0 && !allPicked()"
+                (change)="togglePickedAll()"
+                [aria-label]="lang.t('DOC_SELECT_ALL')"
+              />
+            </span>
             <span>{{ lang.t('DOC_COL_NAME') }}</span>
             <span class="col-folder">{{ lang.t('DOC_COL_FOLDER') }}</span>
             <span class="col-type">{{ lang.t('DOC_COL_TYPE') }}</span>
@@ -167,7 +202,14 @@
 
           @for (article of visible(); track article.id) {
             @let docStage = stage(article);
-            <div class="doc-row">
+            <div class="doc-row" [class.is-picked]="picked().has(article.id)">
+              <span class="col-select">
+                <mat-checkbox
+                  [checked]="picked().has(article.id)"
+                  (change)="togglePicked(article)"
+                  [aria-label]="lang.t('DOC_SELECT_ROW')"
+                />
+              </span>
               <button type="button" class="doc-open" (click)="openDetail(article)">
                 <span class="doc-icon">
                   <mat-icon aria-hidden="true">description</mat-icon>
@@ -197,15 +239,6 @@
                 <button
                   mat-icon-button
                   type="button"
-                  (click)="openDetail(article)"
-                  [attr.aria-label]="lang.t('DOC_ACTION_VIEW')"
-                  [matTooltip]="lang.t('DOC_ACTION_VIEW')"
-                >
-                  <mat-icon>visibility</mat-icon>
-                </button>
-                <button
-                  mat-icon-button
-                  type="button"
                   [matMenuTriggerFor]="docMenu"
                   [attr.aria-label]="lang.t('DOC_COL_ACTIONS')"
                   [matTooltip]="lang.t('DOC_COL_ACTIONS')"
@@ -213,6 +246,10 @@
                   <mat-icon>more_vert</mat-icon>
                 </button>
                 <mat-menu #docMenu="matMenu">
+                  <button mat-menu-item type="button" (click)="openDetail(article)">
+                    <mat-icon>visibility</mat-icon>
+                    <span>{{ lang.t('DOC_ACTION_VIEW') }}</span>
+                  </button>
                   <button mat-menu-item type="button" (click)="editArticle(article)">
                     <mat-icon>edit</mat-icon>
                     <span>{{ lang.t('DOC_ACTION_EDIT') }}</span>

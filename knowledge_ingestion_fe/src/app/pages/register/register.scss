@@ -43,7 +43,7 @@
 }
 
 .register-submit {
-  min-height: 44px;
+  // như nút đăng nhập: visual 40px, vùng chạm 44px do _material.scss lo
   margin-top: var(--space-5);
 }
 

@@ -19,6 +19,9 @@
       --mat-button-#{$variant}-label-text-weight: var(--text-weight-strong);
       --mat-button-#{$variant}-hover-state-layer-opacity: var(--state-hover-opacity);
       --mat-button-#{$variant}-pressed-state-layer-opacity: var(--state-pressed-opacity);
+      // nhìn vẫn 40px nhưng vùng chạm mở tới 44px (pseudo-element, không chiếm
+      // chỗ trong layout) — đủ chuẩn điểm chạm cảm ứng
+      --mat-button-#{$variant}-touch-target-size: var(--touch-target);
     }
 
     // ---- Nút icon: vòng tròn 40px, glyph 24px ----
@@ -27,6 +30,7 @@
     --mat-icon-button-icon-size: var(--icon-size-lg);
     --mat-icon-button-hover-state-layer-opacity: var(--state-hover-opacity);
     --mat-icon-button-pressed-state-layer-opacity: var(--state-pressed-opacity);
+    --mat-icon-button-touch-target-size: var(--touch-target);
 
     // ---- Ô nhập: viền nhạt, bo --radius-sm, focus viền primary đậm 2px ----
     --mat-form-field-container-text-font: var(--font-ui);

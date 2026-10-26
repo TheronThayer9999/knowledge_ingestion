@@ -43,7 +43,8 @@
 }
 
 .login-submit {
-  min-height: 44px;
+  // cao 40px theo nút Material dùng chung; vùng chạm đã được _material.scss
+  // mở rộng lên --touch-target (44px) bằng pseudo-element nên khỏi cần nới
   margin-top: var(--space-5);
 }
 

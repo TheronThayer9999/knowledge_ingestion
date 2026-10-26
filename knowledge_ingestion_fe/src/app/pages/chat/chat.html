@@ -32,7 +32,11 @@
         </div>
       } @else {
         @for (turn of turns(); track $index) {
-          <div class="turn" [class.user]="turn.role === 'user'">
+          <div
+            class="turn"
+            [class.user]="turn.role === 'user'"
+            [class.is-grouped]="isGrouped($index)"
+          >
             <span class="turn-avatar" aria-hidden="true">
               <mat-icon>{{ turn.role === 'user' ? 'person' : 'auto_awesome' }}</mat-icon>
             </span>

@@ -164,9 +164,15 @@
   box-shadow: var(--elevation-2);
 }
 
+// mat-icon mặc định là hộp 24px (width/height/line-height đều 24). Chỉ đổi
+// font-size để lại glyph 20px trong hộp 24px → không cùng trục tâm với chữ
+// input. Khóa cả 4 thuộc tính về --icon-size-md (như convention ở chat.scss).
 .search-icon {
   flex: 0 0 auto;
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
   font-size: var(--icon-size-md);
+  line-height: var(--icon-size-md);
 }
 
 .search-input {
@@ -186,14 +192,26 @@
   opacity: 1;
 }
 
+// mat-icon-button bị ép xuống 32px; icon bên trong cũng phải khóa đủ 4 cạnh
+// về 20px thì place-items:center mới canh đúng tâm (box = glyph = line-height).
 .search-clear {
+  display: grid;
+  place-items: center;
   flex: 0 0 auto;
   width: var(--button-height-sm);
   height: var(--button-height-sm);
+  line-height: 1;
+  // Vòng state-layer hover/ripple mặc định 40px (token global) trong khi nút
+  // bị ép còn 32px → nền hover tròn tràn ra, nhìn lệch tâm. Ép nó về đúng cỡ
+  // nút để vòng nền đồng tâm với glyph.
+  --mat-icon-button-state-layer-size: var(--button-height-sm);
 }
 
 .search-clear mat-icon {
+  width: var(--icon-size-md);
+  height: var(--icon-size-md);
   font-size: var(--icon-size-md);
+  line-height: var(--icon-size-md);
 }
 
 // Mobile: nhường chỗ cho ô tìm kiếm — tiêu đề trang đã có lại trong content

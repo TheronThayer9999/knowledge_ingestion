@@ -1,9 +1,18 @@
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
-import { Component, computed, effect, inject, signal, type OnDestroy } from '@angular/core';
+import {
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+  type OnDestroy,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -64,6 +73,7 @@ interface FolderView {
     DatePipe,
     NgTemplateOutlet,
     MatCardModule,
+    MatCheckboxModule,
     MatIconModule,
     MatButtonModule,
     MatButtonToggleModule,
@@ -99,6 +109,15 @@ export class Documents implements OnDestroy {
   /** Worker còn ghi heartbeat không — false thì bài đang chờ sẽ đứng yên */
   protected readonly workerOnline = signal(true);
   protected readonly skeletonRows = [1, 2, 3, 4, 5, 6];
+
+  /** id các dòng đã tick trong bảng (chọn nhiều để xóa một lúc) */
+  protected readonly picked = signal<ReadonlySet<number>>(new Set());
+  protected readonly pickedCount = computed(() => this.picked().size);
+  /** true khi MỌI dòng đang hiện đều đã được chọn — ô "chọn tất cả" ở đầu bảng */
+  protected readonly allPicked = computed(() => {
+    const visible = this.visible();
+    return visible.length > 0 && visible.every((article) => this.picked().has(article.id));
+  });
 
   private loadedOnce = false;
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -161,8 +180,12 @@ export class Documents implements OnDestroy {
     this.load();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     effect(() => {
+      // Chỉ đồng bộ một chiều URL -> ô tìm kiếm KHI `q` đổi. Đọc search() trong
+      // untracked để nó KHÔNG thành dependency — nếu không, mỗi lần người dùng
+      // gõ/nút X xóa làm search đổi là effect chạy lại rồi ghi ngược giá trị
+      // cũ từ URL về, thành ra không xóa/sửa được.
       const term = this.queryParams()?.get('q') ?? '';
-      if (term !== this.search()) {
+      if (term !== untracked(() => this.search())) {
         this.search.set(term);
       }
     });
@@ -216,6 +239,9 @@ export class Documents implements OnDestroy {
 
   protected select(folderId: number | null): void {
     this.selected.set(folderId);
+    // đổi nhánh là đổi tập hợp dòng đang nhìn — giữ selection cũ thì nút "xóa
+    // đã chọn" sẽ đánh vào tài liệu người dùng không còn thấy
+    this.clearPicked();
   }
 
   protected isExpanded(folderId: number): boolean {
@@ -244,6 +270,58 @@ export class Documents implements OnDestroy {
 
   protected setView(mode: ViewMode): void {
     this.view.set(mode);
+    this.clearPicked();
+  }
+
+  /** Tick 1 dòng trong bảng */
+  protected togglePicked(article: Article): void {
+    this.picked.update((set) => {
+      const next = new Set(set);
+      if (next.has(article.id)) {
+        next.delete(article.id);
+      } else {
+        next.add(article.id);
+      }
+      return next;
+    });
+  }
+
+  /** Ô chọn ở đầu bảng: chọn hết mọi dòng đang hiện, hoặc bỏ hết nếu đã chọn đủ */
+  protected togglePickedAll(): void {
+    if (this.allPicked()) {
+      this.clearPicked();
+      return;
+    }
+    this.picked.set(new Set(this.visible().map((article) => article.id)));
+  }
+
+  protected clearPicked(): void {
+    if (this.picked().size > 0) {
+      this.picked.set(new Set());
+    }
+  }
+
+  /** Xóa một lượt các dòng đã chọn — backend không có endpoint hàng loạt nên gọi từng bài */
+  protected async deletePicked(): Promise<void> {
+    const ids = [...this.picked()];
+    if (ids.length === 0) {
+      return;
+    }
+    const confirmed = await this.messages.confirm(
+      'DOC_DELETE_MANY_CONFIRM_TITLE',
+      'DOC_DELETE_MANY_CONFIRM_MESSAGE',
+    );
+    if (!confirmed) {
+      return;
+    }
+    forkJoin(ids.map((id) => this.knowledge.deleteArticle(id))).subscribe({
+      next: () => {
+        this.messages.success('DOC_DELETED_MANY');
+        this.clearPicked();
+        this.load();
+      },
+      error: (error: unknown) => this.messages.errorFromApi(error, 'DOC_DELETE_ERROR'),
+    });
   }
 
   protected categoryName(categoryId: number): string {
@@ -337,7 +415,22 @@ export class Documents implements OnDestroy {
       if (!updated) {
         return;
       }
-      this.messages.success('DOC_UPDATED');
+      // Đổi thư mục là thao tác đảo ngược được (PUT lại category_id cũ) —
+      // snackbar kèm nút Hoàn tác để kịp đổi ý.
+      const moved = updated.categoryId !== article.categoryId;
+      if (moved) {
+        this.messages.successWithAction('DOC_MOVE_UNDO', 'COMMON_UNDO', () =>
+          this.knowledge.updateArticle(article.id, { categoryId: article.categoryId }).subscribe({
+            next: (restored) =>
+              this.articles.update((list) =>
+                list.map((item) => (item.id === restored.id ? restored : item)),
+              ),
+            error: (error: unknown) => this.messages.errorFromApi(error, 'DOC_UPDATE_ERROR'),
+          }),
+        );
+      } else {
+        this.messages.success('DOC_UPDATED');
+      }
       // Thay tại chỗ, khỏi tải lại cả danh sách
       this.articles.update((list) => list.map((item) => (item.id === updated.id ? updated : item)));
     });
@@ -362,6 +455,15 @@ export class Documents implements OnDestroy {
     this.knowledge.deleteArticle(article.id).subscribe({
       next: () => {
         this.messages.success('DOC_DELETED');
+        // dòng vừa biến mất không được sót lại trong tập chọn
+        this.picked.update((set) => {
+          if (!set.has(article.id)) {
+            return set;
+          }
+          const next = new Set(set);
+          next.delete(article.id);
+          return next;
+        });
         this.load();
       },
       error: (error: unknown) => this.messages.errorFromApi(error, 'DOC_DELETE_ERROR'),
