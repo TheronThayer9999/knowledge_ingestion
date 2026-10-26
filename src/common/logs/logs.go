@@ -55,6 +55,10 @@ func Debug(args ...interface{}) {
 	callLogger.Debug(args...)
 }
 
+func Debugw(msg string, kv ...interface{}) {
+	callLogger.Debugw(msg, kv...)
+}
+
 func Info(args ...interface{}) {
 	callLogger.Info(args...)
 }

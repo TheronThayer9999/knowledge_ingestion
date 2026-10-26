@@ -302,6 +302,8 @@ func (s *articleCompileService) summarize(ctx context.Context, traceID string, a
 	if s.cache != nil {
 		v, err := s.cache.Get(ctx, key).Result()
 		if err == nil && v != "" {
+			logs.Debugw("compile: cache hit, không gọi LLM", "trace_id", traceID,
+				"article_id", article.ID, "section", sectionName)
 			return v, nil
 		}
 		if err != nil && !stderrors.Is(err, redis.Nil) {
@@ -309,6 +311,11 @@ func (s *articleCompileService) summarize(ctx context.Context, traceID string, a
 				"trace_id", traceID, "article_id", article.ID, "name", article.Name)
 		}
 	}
+	// 1 dòng = 1 call LLM thật: đây là chỗ DUY NHẤT trong pipeline sinh lời
+	// gọi LLM (index chỉ gọi bge-m3), nên đếm dòng này là biết chi phí của bài.
+	logs.Infow("compile: gọi LLM tóm tắt mục", "trace_id", traceID,
+		"article_id", article.ID, "name", article.Name, "section", sectionName,
+		"chars", len(text), "model", s.summarizer.ModelID())
 	summary, err := s.summarizer.Summarize(ctx, sectionName, text)
 	if err != nil {
 		return "", err

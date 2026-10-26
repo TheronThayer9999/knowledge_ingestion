@@ -110,32 +110,15 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 	userID, _ := s.currentUser.UserID(ctx)
 	ctx = eino.WithScope(ctx, eino.Scope{UserID: userID, CategoryIDs: dto.CategoryIDs})
 
-	res, err := agent.Run(ctx, model, dto.History, dto.Message)
+	// Mỗi lượt 1 dòng: khi nhìn log (hoặc dashboard provider) phải phân biệt
+	// được call LLM của chat với call của worker compile — cùng model nhưng
+	// khác phase, khác lý do.
+	res, err := s.run(ctx, agent, model, dto)
 	if err != nil {
 		// Lỗi HTTP của provider (model sai, hết quota...) trả mã đọc được, lỗi
 		// không kết nối được dịch vụ AI phía dưới (chưa bật Ollama local cho
 		// embedding, Qdrant tắt) trả 503 — xem providerError.
 		return dtos.Fail[*dtos.ChatResponse](providerError(err, model))
-	}
-	// Chốt chặn lượt retry: câu nối tiếp 0 hit thì ép search; agent trả
-	// answer rỗng (model free thỉnh thoảng trả content rỗng) thì chạy lại với
-	// chỉ thị trả lời đầy đủ. Collector cùng request nên hit retry gom tiếp,
-	// không mất cites lượt đầu. Chỉ 1 retry mỗi loại để không bùng chi phí.
-	retryNote := ""
-	switch {
-	case strings.TrimSpace(res.Answer) == "":
-		logs.Warnw("chat: answer rỗng, retry", "message", dto.Message)
-		retryNote = emptyAnswerRetryNote
-	case len(res.Hits) == 0 && isFollowUp(dto.Message, dto.History):
-		logs.Warnw("chat: follow-up 0 hit, retry ép search", "message", dto.Message)
-		retryNote = followUpRetryNote
-	}
-	if retryNote != "" {
-		if res2, err2 := agent.Run(ctx, model, dto.History, dto.Message+retryNote); err2 != nil {
-			logs.Warnw("chat: retry lỗi, giữ kết quả đầu", "error", err2)
-		} else {
-			res = res2
-		}
 	}
 
 	cites := make([]*dtos.ChatCite, 0, len(res.Hits))
@@ -155,6 +138,39 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 		Cites:        cites,
 		Reasoning:    clipReasoning(res.Reasoning),
 	})
+}
+
+// run gọi agent 1 lượt kèm log call + chốt chặn retry — tách khỏi Chat để hàm
+// chính không phình quá ngưỡng (guardrail src/quality/function_budget_test.go).
+//
+// Retry: câu nối tiếp 0 hit thì ép search; agent trả answer rỗng (model free
+// thỉnh thoảng trả content rỗng) thì chạy lại với chỉ thị trả lời đầy đủ.
+// Collector cùng request nên hit retry gom tiếp, không mất cites lượt đầu —
+// chỉ 1 retry mỗi loại để không bùng chi phí.
+func (s *chatService) run(ctx context.Context, agent *eino.ChatAgent, model string, dto *dtos.ChatRequest) (eino.RunResult, error) {
+	logs.Infow("chat: gọi agent", "model", model, "history", len(dto.History),
+		"message_chars", len(dto.Message))
+	res, err := agent.Run(ctx, model, dto.History, dto.Message)
+	if err != nil {
+		return eino.RunResult{}, err
+	}
+	retryNote := ""
+	switch {
+	case strings.TrimSpace(res.Answer) == "":
+		logs.Warnw("chat: answer rỗng, retry", "message", dto.Message)
+		retryNote = emptyAnswerRetryNote
+	case len(res.Hits) == 0 && isFollowUp(dto.Message, dto.History):
+		logs.Warnw("chat: follow-up 0 hit, retry ép search", "message", dto.Message)
+		retryNote = followUpRetryNote
+	}
+	if retryNote != "" {
+		if res2, err2 := agent.Run(ctx, model, dto.History, dto.Message+retryNote); err2 != nil {
+			logs.Warnw("chat: retry lỗi, giữ kết quả đầu", "error", err2)
+		} else {
+			res = res2
+		}
+	}
+	return res, nil
 }
 
 // label dán nhãn question_type cho response — agent trong loop không bị ép

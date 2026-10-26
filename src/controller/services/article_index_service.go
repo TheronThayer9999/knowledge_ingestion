@@ -523,17 +523,10 @@ func (s *articleIndexService) buildCleaner(ctx context.Context, article *domain.
 
 // upsertBatch gán vector cho 1 đợt chunk rồi upsert Qdrant.
 //
-// CACHE: trước khi gọi model, hỏi embed_cache xem chunk nào đã có vector.
-// Chỉ embed phần THIẾU. Lý do phải có: embed là bước đắt nhất của cả
-// pipeline — đo thật trên máy này bge-m3 chạy 7.77 chunk/s, còn đọc cache
-// và upsert nhanh hơn hàng nghìn lần. Bài 100MB là ~4.5 triệu chunk ≈ 7 ngày
-// compute, nên gọi lại model trên chunk đã tính là lãng phí không chấp
-// nhận được. Còn nếu không có cache thì mỗi lần worker chết giữa chừng,
-// mỗi lần đổi chunker, mỗi lần rebuild vector là một lần trả tiền lại
-// toàn bộ.
-//
-// Cache KHÔNG quyết định tính đúng của kết quả — chỉ quyết định có gọi
-// model hay không. Kết quả vector cuối cùng là của cùng text + cùng model.
+// KHÔNG có cache vector: bảng embed_cache đã bỏ (hit rate ~100% với count=1
+// nên thực tế không giúp gì), vector nằm trong Qdrant và rebuild dựa vào
+// checkpoint index_done_chunks. Vì vậy 1 đợt = 1 call EmbedBatch + 1 call
+// embed tên bài (dual embedding), không hỏi cache trước khi gọi model.
 func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, article *domain.Article, batch []*domain.VectorPoint) error {
 	texts := make([]string, 0, len(batch))
 	for _, p := range batch {
@@ -548,9 +541,10 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 			"article_id", article.ID, "name", article.Name)
 		titleVec = nil
 	}
-	// Embed toàn bộ đợt (cache đã bỏ — hit rate 99.99% count=1 → vô dụng).
-	// Vector lưu trong Qdrant; rebuild dùng checkpoint index_done_chunks.
-	logs.Infow("ollama: gọi embed", "trace_id", traceID, "article_id", article.ID, "name", article.Name,
+	// Embed toàn bộ đợt trong 1 call (không cache vector — xem doc đầu hàm).
+	// bge-m3 là model của riêng phase index; log gắn tiền tố `index:` để
+	// không lẫn với lời gọi LLM của compile/chat.
+	logs.Infow("index: gọi embed", "trace_id", traceID, "article_id", article.ID, "name", article.Name,
 		"texts", len(texts), "model", s.embedder.ModelName())
 	embedStart := time.Now()
 	vectors, err := s.embedder.EmbedBatch(ctx, texts)
@@ -565,7 +559,7 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 			return fmt.Errorf("gọi embed: %w", rerr)
 		}
 	}
-	logs.Infow("ollama: embed xong", "trace_id", traceID, "article_id", article.ID, "name", article.Name,
+	logs.Infow("index: embed xong", "trace_id", traceID, "article_id", article.ID, "name", article.Name,
 		"texts", len(texts), "elapsed_ms", time.Since(embedStart).Milliseconds())
 	if len(vectors) != len(texts) {
 		return fmt.Errorf("%w: embed trả %d vector cho %d text", errIndexContract, len(vectors), len(texts))
