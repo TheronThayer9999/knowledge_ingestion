@@ -32,6 +32,11 @@ export class ApiService {
     return this.request<T>('PUT', path, { body });
   }
 
+  /** PATCH đổi một phần bản ghi (đổi tên phiên chat) — backend dùng PATCH chứ không PUT */
+  patch<T>(path: string, body?: unknown): Observable<T> {
+    return this.request<T>('PATCH', path, { body });
+  }
+
   delete<T>(path: string): Observable<T> {
     return this.request<T>('DELETE', path);
   }

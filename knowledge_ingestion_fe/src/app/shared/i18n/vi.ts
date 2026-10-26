@@ -256,6 +256,27 @@ export const VI_ENTRIES = {
   CHAT_DISCLAIMER:
     'Câu trả lời do AI tổng hợp từ tài liệu — hãy kiểm tra lại trích dẫn khi cần độ chính xác cao.',
   CHAT_ENTER_HINT: 'Enter để gửi · Shift+Enter xuống dòng',
+  // ---- Phiên chat (sidebar) ----
+  CHAT_SESSIONS: 'Cuộc trò chuyện',
+  CHAT_SESSION_TURNS: '{n} lượt',
+  CHAT_UNTITLED: 'Chưa đặt tên',
+  CHAT_RENAME: 'Đổi tên',
+  CHAT_DELETE: 'Xoá phiên',
+  CHAT_DELETE_TITLE: 'Xoá cuộc trò chuyện này?',
+  CHAT_DELETE_BODY:
+    'Nó sẽ biến khỏi danh sách và khung chat trở về phiên mới. Nội dung vẫn còn trong cơ sở dữ liệu — chưa có xoá vĩnh viễn.',
+  CHAT_DELETED: 'Đã xoá cuộc trò chuyện',
+  CHAT_LOAD_MORE: 'Tải thêm',
+  CHAT_SESSIONS_EMPTY: 'Chưa có cuộc trò chuyện nào. Câu hỏi đầu tiên sẽ tự mở một phiên.',
+  CHAT_SESSIONS_FAILED: 'Không tải được danh sách cuộc trò chuyện.',
+  CHAT_LOADING_SESSION: 'Đang tải hội thoại…',
+  CHAT_LOCKED_HINT:
+    'Phiên đã có lượt nên phạm vi và chế độ suy luận sâu chốt theo phiên — tạo phiên mới để đổi.',
+  CHAT_BUSY_HINT: 'Đang chờ câu trả lời — hãy đợi xong hoặc bấm Dừng rồi mới chuyển phiên.',
+  CHAT_TIME_NOW: 'vừa xong',
+  CHAT_TIME_MIN: '{n} phút trước',
+  CHAT_TIME_HOUR: '{n} giờ trước',
+  CHAT_TIME_DAY: '{n} ngày trước',
   SETTINGS_TITLE: 'Cài đặt',
   SETTINGS_SUBTITLE: 'Tuỳ chỉnh giao diện và ngôn ngữ hiển thị.',
   SETTINGS_APPEARANCE: 'Giao diện',

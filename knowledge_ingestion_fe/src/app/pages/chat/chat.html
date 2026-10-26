@@ -17,7 +17,9 @@
       </button>
     </div>
     <div class="messages" #scroller>
-      @if (turns().length === 0) {
+      @if (turnsLoading()) {
+        <p class="transcript-loading" role="status">{{ lang.t('CHAT_LOADING_SESSION') }}</p>
+      } @else if (turns().length === 0) {
         <div class="chat-empty">
           <span class="empty-icon">
             <mat-icon aria-hidden="true">forum</mat-icon>
@@ -47,6 +49,12 @@
               <p class="turn-role">
                 {{ lang.t(turn.role === 'user' ? 'CHAT_YOU' : 'CHAT_ASSISTANT') }}
               </p>
+              <!-- Lượt đã lưu mới có phạm vi hiệu lực (backend ghi per-message) -->
+              @if (turn.scopeIds && turn.scopeIds.length > 0) {
+                <p class="turn-scope">
+                  {{ lang.t('CHAT_SCOPE') }}: {{ categoryNames(turn.scopeIds) }}
+                </p>
+              }
 
               @if (turn.role === 'user') {
                 <p class="user-text">{{ turn.content }}</p>
@@ -151,8 +159,8 @@
           [class.is-active]="thinking()"
           [attr.aria-pressed]="thinking()"
           [attr.aria-label]="lang.t('CHAT_THINKING_TOGGLE')"
-          [matTooltip]="lang.t('CHAT_THINKING_HINT')"
-          [disabled]="sending()"
+          [matTooltip]="sessionLocked() ? lang.t('CHAT_LOCKED_HINT') : lang.t('CHAT_THINKING_HINT')"
+          [disabled]="sending() || sessionLocked()"
           (click)="toggleThinking()"
         >
           <mat-icon aria-hidden="true">psychology</mat-icon>
@@ -189,12 +197,17 @@
         <p class="panel-subtitle">{{ lang.t('CHAT_SUBTITLE') }}</p>
       </div>
 
+      <button matButton="filled" type="button" class="panel-action" (click)="startNewSession()">
+        <mat-icon aria-hidden="true">add</mat-icon>
+        {{ lang.t('CHAT_CLEAR') }}
+      </button>
+
       <mat-form-field appearance="outline" subscriptSizing="dynamic" class="scope-field">
         <mat-label>{{ lang.t('CHAT_SCOPE') }}</mat-label>
         <mat-select
           [value]="scope()"
           (selectionChange)="onScopeChange($event.value)"
-          [disabled]="sending()"
+          [disabled]="sending() || sessionLocked()"
         >
           <mat-option [value]="0">{{ lang.t('CHAT_SCOPE_ALL') }}</mat-option>
           @for (category of categories(); track category.id) {
@@ -202,17 +215,103 @@
           }
         </mat-select>
       </mat-form-field>
+      @if (sessionLocked()) {
+        <p class="panel-hint">{{ lang.t('CHAT_LOCKED_HINT') }}</p>
+      }
 
-      <button
-        matButton="outlined"
-        type="button"
-        class="panel-action"
-        (click)="reset()"
-        [disabled]="turns().length === 0"
-      >
-        <mat-icon aria-hidden="true">refresh</mat-icon>
-        {{ lang.t('CHAT_CLEAR') }}
-      </button>
+      <!-- Danh sách phiên: nav + ul toàn nút thật (không div[click]) để bàn phím
+           và screen reader đọc được; aria-current báo mục đang mở -->
+      <nav class="sessions" [attr.aria-label]="lang.t('CHAT_SESSIONS')">
+        <h3 class="sessions-heading">{{ lang.t('CHAT_SESSIONS') }}</h3>
+
+        @if (listFailed()) {
+          <p class="sessions-status">{{ lang.t('CHAT_SESSIONS_FAILED') }}</p>
+          <button matButton="outlined" type="button" class="panel-action" (click)="loadSessions()">
+            <mat-icon aria-hidden="true">refresh</mat-icon>
+            {{ lang.t('COMMON_RETRY') }}
+          </button>
+        }
+
+        @if (!listFailed() && !listLoading() && conversations().length === 0) {
+          <p class="sessions-status">{{ lang.t('CHAT_SESSIONS_EMPTY') }}</p>
+        }
+
+        @if (conversations().length > 0) {
+          <ul class="session-list">
+            @for (conversation of conversations(); track conversation.id) {
+              <li
+                class="session"
+                [class.is-active]="isSessionActive(conversation)"
+                [attr.aria-current]="isSessionActive(conversation) ? 'true' : null"
+              >
+                @if (renamingId() === conversation.id) {
+                  <input
+                    class="session-rename"
+                    type="text"
+                    maxlength="120"
+                    [value]="renameDraft()"
+                    (input)="onRenameInput($event)"
+                    (keydown)="onRenameKeydown($event)"
+                    [attr.aria-label]="lang.t('CHAT_RENAME')"
+                  />
+                } @else {
+                  <button
+                    type="button"
+                    class="session-main"
+                    [disabled]="sending()"
+                    (click)="openSession(conversation)"
+                  >
+                    <span class="session-title">
+                      {{ conversation.title || lang.t('CHAT_UNTITLED') }}
+                    </span>
+                    <span class="session-meta">
+                      {{ sessionTime(conversation) }} ·
+                      {{ turnCountLabel(conversation.messageCount) }}
+                    </span>
+                  </button>
+                  <span class="session-actions">
+                    <button
+                      mat-icon-button
+                      type="button"
+                      [attr.aria-label]="lang.t('CHAT_RENAME')"
+                      [matTooltip]="lang.t('CHAT_RENAME')"
+                      [disabled]="sending()"
+                      (click)="beginRename(conversation)"
+                    >
+                      <mat-icon aria-hidden="true">edit</mat-icon>
+                    </button>
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="session-remove"
+                      [attr.aria-label]="lang.t('CHAT_DELETE')"
+                      [matTooltip]="lang.t('CHAT_DELETE')"
+                      [disabled]="sending()"
+                      (click)="confirmDelete(conversation)"
+                    >
+                      <mat-icon aria-hidden="true">delete</mat-icon>
+                    </button>
+                  </span>
+                }
+              </li>
+            }
+          </ul>
+        }
+
+        @if (listLoading()) {
+          <p class="sessions-status" role="status">{{ lang.t('COMMON_LOADING') }}</p>
+        } @else if (listHasMore() && !listFailed()) {
+          <button
+            matButton="outlined"
+            type="button"
+            class="panel-action"
+            (click)="loadMoreSessions()"
+          >
+            <mat-icon aria-hidden="true">expand_more</mat-icon>
+            {{ lang.t('CHAT_LOAD_MORE') }}
+          </button>
+        }
+      </nav>
     </aside>
   }
 </section>

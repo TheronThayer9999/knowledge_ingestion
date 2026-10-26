@@ -3,33 +3,45 @@ import { map, Observable } from 'rxjs';
 import { ApiService } from '../api/api.service';
 import { toChatAnswer, type ChatAnswer, type ChatResponseDto, type ChatTurn } from './chat.models';
 
+/** Một lượt gửi đi — `conversationId` là con trỏ quyết định cách tính lịch sử */
+export interface ChatSendRequest {
+  message: string;
+  /** > 0: server nạp lịch sử từ DB phiên này, `history` bị bỏ qua (một nguồn thật) */
+  conversationId?: number | null;
+  /** Đường legacy khi không có phiên: client kể lại transcript. FE không dùng nhánh này nữa */
+  history?: ChatTurn[];
+  /** Phạm vi của lượt; rỗng = backend lấy theo phạm vi đã chốt của phiên */
+  categoryId?: number | null;
+  thinking?: boolean;
+}
+
 /**
  * Gọi agent RAG của backend: POST /chat trả 1 lần (không streaming) —
- * history gửi kèm để nhiều vòng vẫn giữ ngữ cảnh, categoryIds để khoanh
- * phạm vi tài liệu, rỗng nghĩa là toàn bộ kho của user; thinking bật chế
- * độ suy luận sâu ở model (model không hỗ trợ thì coi như không).
+ * categoryIds để khoanh phạm vi tài liệu (rỗng = toàn kho của user); thinking
+ * bật chế độ suy luận sâu ở model (model không hỗ trợ thì coi như không).
+ *
+ * Có `conversationId` thì TUYỆT ĐỐI không gửi `history`: backend coi lịch sử
+ * trong DB của phiên là nguồn duy nhất, gửi cả hai là tạo hai sự thật cùng lúc.
  */
 @Injectable({ providedIn: 'root' })
 export class ChatService {
   private readonly api = inject(ApiService);
 
-  send(
-    message: string,
-    history: ChatTurn[],
-    categoryId: number | null,
-    thinking = false,
-  ): Observable<ChatAnswer> {
-    const body: Record<string, unknown> = { message };
-    if (history.length > 0) {
-      body['history'] = history;
+  send(request: ChatSendRequest): Observable<ChatAnswer> {
+    const conversationId = request.conversationId ?? 0;
+    const body: Record<string, unknown> = { message: request.message };
+    if (conversationId > 0) {
+      body['conversation_id'] = conversationId;
+    } else if (request.history?.length) {
+      body['history'] = request.history;
     }
-    if (categoryId) {
-      body['category_ids'] = [categoryId];
+    if (request.categoryId) {
+      body['category_ids'] = [request.categoryId];
     }
     // Bật suy luận sâu: chỉ gửi khi bật để payload mặc định không đổi. Backend
     // đưa request sang bản agent đã bật `think` của model; provider nào không
     // có công tắc đó thì cờ tự vô tác dụng, chat vẫn chạy.
-    if (thinking) {
+    if (request.thinking) {
       body['thinking'] = true;
     }
     return this.api.post<ChatResponseDto>('/chat', body).pipe(map(toChatAnswer));

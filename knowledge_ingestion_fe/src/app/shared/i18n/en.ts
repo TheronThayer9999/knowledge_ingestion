@@ -259,6 +259,27 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   CHAT_DISCLAIMER:
     'Answers are generated from your documents — double-check citations when accuracy matters.',
   CHAT_ENTER_HINT: 'Enter to send · Shift+Enter for a new line',
+  // ---- Chat sessions (sidebar) ----
+  CHAT_SESSIONS: 'Conversations',
+  CHAT_SESSION_TURNS: '{n} turns',
+  CHAT_UNTITLED: 'Untitled',
+  CHAT_RENAME: 'Rename',
+  CHAT_DELETE: 'Delete conversation',
+  CHAT_DELETE_TITLE: 'Delete this conversation?',
+  CHAT_DELETE_BODY:
+    'It disappears from the list and the chat returns to a new conversation. The messages stay in the database — permanent deletion is not implemented.',
+  CHAT_DELETED: 'Conversation deleted',
+  CHAT_LOAD_MORE: 'Load more',
+  CHAT_SESSIONS_EMPTY: 'No conversations yet. Your first question opens one automatically.',
+  CHAT_SESSIONS_FAILED: 'Could not load the conversation list.',
+  CHAT_LOADING_SESSION: 'Loading conversation…',
+  CHAT_LOCKED_HINT:
+    'This session already has turns, so scope and deep thinking follow the session — start a new one to change them.',
+  CHAT_BUSY_HINT: 'An answer is on its way — wait for it or press Stop before switching sessions.',
+  CHAT_TIME_NOW: 'just now',
+  CHAT_TIME_MIN: '{n} min ago',
+  CHAT_TIME_HOUR: '{n} h ago',
+  CHAT_TIME_DAY: '{n} days ago',
   SETTINGS_TITLE: 'Settings',
   SETTINGS_SUBTITLE: 'Customize the interface and display language.',
   SETTINGS_APPEARANCE: 'Appearance',
