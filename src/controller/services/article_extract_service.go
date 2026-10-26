@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"io"
 	"maps"
 	"runtime/debug"
 	"slices"
@@ -169,18 +170,6 @@ func (s *articleExtractService) extractClaimed(ctx context.Context, traceID stri
 	done.Add(1)
 }
 
-// extractOne trích text 1 bài rồi lưu từng trang vào bảng article_pages.
-//
-// TIẾN TRÌNH DẦN: OCR file scan 500 trang mất ~17 phút. Mỗi
-// EXTRACT_FLUSH_PAGES trang ghi 1 lô vào bảng article_pages, nên job chết
-// giữa chừng chỉ mất tối đa 1 lô thay vì mất trắng cả file — kỳ sau đọc lại
-// số trang đã có rồi bảo extractor nhảy qua (fromPage) nên không OCR lại.
-//
-// Hàm này CỐ TÌNH KHÔNG làm sạch văn bản: bỏ dòng lặp header/footer và khử
-// chữ rải đều phải nhìn CẢ file mà lúc trích thì chưa đủ trang, nên giao cho
-// phase index chạy theo cửa sổ trượt (extractor.Cleaner — pass 1 chỉ cộng số,
-// pass 2 áp từng trang). Bù lại article_pages giữ TEXT THÔ và được GIỮ LẠI
-// sau khi trích xong, nên đổi cấu hình chunker không phải OCR lần nào.
 // releaseClaims trả 1 lô bài về pending khi job bị hủy do shutdown — 1 câu
 // UPDATE, không N+1. Dùng detached ctx vì ctx gốc đã cancel; WHERE ...
 // processing trong repo bảo vệ trường hợp job kịp done trước khi hủy.
@@ -213,27 +202,24 @@ func (s *articleExtractService) extractOneSafe(ctx context.Context, traceID stri
 	return s.extractOne(ctx, traceID, article)
 }
 
+// extractOne trích text 1 bài rồi lưu từng trang vào bảng article_pages — chỉ
+// điều phối stage, chi tiết ở extractRun bên dưới.
+//
+// TIẾN TRÌNH DẦN: OCR file scan 500 trang mất ~17 phút. Mỗi
+// EXTRACT_FLUSH_PAGES trang ghi 1 lô vào bảng article_pages, nên job chết
+// giữa chừng chỉ mất tối đa 1 lô thay vì mất trắng cả file — kỳ sau đọc lại
+// số trang đã có rồi bảo extractor nhảy qua (fromPage) nên không OCR lại.
+//
+// Hàm này CỐ TÌNH KHÔNG làm sạch văn bản: bỏ dòng lặp header/footer và khử
+// chữ rải đều phải nhìn CẢ file mà lúc trích thì chưa đủ trang, nên giao cho
+// phase index chạy theo cửa sổ trượt (extractor.Cleaner — pass 1 chỉ cộng số,
+// pass 2 áp từng trang). Bù lại article_pages giữ TEXT THÔ và được GIỮ LẠI
+// sau khi trích xong, nên đổi cấu hình chunker không phải OCR lần nào.
 func (s *articleExtractService) extractOne(ctx context.Context, traceID string, article *domain.Article) error {
-	start := time.Now()
-	// Trang đã lưu ở lần chạy trước — dùng lại thay vì OCR lại.
-	saved, err := s.pageRepo.ListByArticle(ctx, article.ID)
-	if err != nil {
-		return fmt.Errorf("đọc trang đã trích: %w", err)
+	r := newExtractRun(s, ctx, traceID, article)
+	if err := r.loadSaved(); err != nil {
+		return err
 	}
-	// seen theo SEQ, không theo page_num: file txt bị chia nhiều mảnh cùng
-	// page_num = 0 nên page_num không còn định danh được từng mảnh.
-	// seen là tập seq đã có: extractor bỏ qua chúng (PDF trích phần còn thiếu,
-	// song song theo khoảng nên không còn giả định trang liên tục từ đầu).
-	seen := make(map[int]bool, len(saved))
-	for _, p := range saved {
-		seen[p.Seq] = true
-	}
-	if len(saved) > 0 {
-		logs.Infow("extract: tiếp tục từ mảnh đã trích",
-			"trace_id", traceID, "article_id", article.ID,
-			"pieces_done", len(saved))
-	}
-
 	rc, err := s.storage.Download(ctx, article.StorageKey)
 	if err != nil {
 		return fmt.Errorf("tải blob: %w", err)
@@ -245,115 +231,181 @@ func (s *articleExtractService) extractOne(ctx context.Context, traceID string, 
 			_ = rc.Close()
 		}
 	}()
-	// fresh là các trang mới của lần này; sinceFlush đánh dấu đuôi chưa ghi để
-	// flush chỉ đúng phần mới — nếu gộp cả danh sách thì mỗi lô lại insert
-	// lại các trang đã có (ON CONFLICT giữ nguyên nhưng tốn I/O vô ích).
-	fresh := make([]*domain.ArticlePage, 0, constants.EXTRACT_FLUSH_PAGES)
-	sinceFlush := 0
-	flushTail := func() error {
-		if sinceFlush == 0 {
-			return nil
-		}
-		tail := fresh[len(fresh)-sinceFlush:]
-		if err := s.pageRepo.CreateBatch(ctx, tail); err != nil {
-			return fmt.Errorf("lưu trang: %w", err)
-		}
-		// Log mỗi lô: job nặng chạy vài chục phút, không có dòng nào thì lúc
-		// chết không biết đang ở trang nào.
-		logs.Infow("extract: tiến trình",
-			"trace_id", traceID, "article_id", article.ID,
-			"pages_written", sinceFlush, "elapsed_ms", time.Since(start).Milliseconds())
-		sinceFlush = 0
-		return nil
-	}
-	visit := func(pg extractor.Page) error {
-		// Chặn trùng theo SEQ — đây là khoá tự nhiên của bảng, nên ON CONFLICT
-		// (article_id, seq) cũng chống trùng lần nữa. Vẫn cần chặn ở đây vì
-		// nếu không thì mỗi lần resume phải insert lại toàn bộ phần đã lưu.
-		if seen[pg.Seq] {
-			return nil
-		}
-		seen[pg.Seq] = true
-		fresh = append(fresh, &domain.ArticlePage{
-			ArticleID: article.ID,
-			Seq:       pg.Seq,
-			PageNum:   pg.Num,
-			Text:      stripNUL(pg.Text),
-			// Layout = 0 khi không bật đo — cột NOT NULL default 0 nên
-			// ghi thẳng, không cần phân biệt "chưa đo" ở tầng DB.
-			LayoutScore: pg.Layout,
-		})
-		sinceFlush++
-		if sinceFlush >= constants.EXTRACT_FLUSH_PAGES {
-			return flushTail()
-		}
-		return nil
-	}
-	err = extractor.ExtractRawPages(ctx, article.StorageKey, rc, s.ocr, seen, visit, s.opts...)
+	xerr := r.extract(rc)
 	// Close NGAY sau khi trích xong chứ không cuối hàm: OCR 1 trang scan có thể
 	// chạy hàng chục giây, giữ rc mở suốt là giữ connection S3 bị giữ vô ích.
 	_ = rc.Close()
 	rc = nil
-	if err != nil {
-		if stderrors.Is(err, extractor.ErrUnsupported) {
-			return fmt.Errorf("loại file chưa xử lý: %w", err)
-		}
-		return fmt.Errorf("trích text: %w", err)
+	if xerr != nil {
+		return mapExtractError(xerr)
 	}
-	if err := flushTail(); err != nil {
+	if err := r.flushTail(); err != nil {
 		return err
 	}
+	return r.finish()
+}
 
-	if !anyPageHasText(fresh) && len(saved) == 0 {
-		// File scan mờ / ảnh trắng: đánh done với text rỗng là done giả (search
-		// sẽ trống mà không ai biết vì sao). Trả lỗi để lùi giờ thử thay vì
-		// mất bài vĩnh viễn.
+// extractRun là trạng thái trích của MỘT bài: trang đã có ở lần chạy trước (để
+// resume), lô trang mới chưa ghi, và số trang mới kể từ lần flush cuối. Tách
+// khỏi extractOne để mỗi stage vừa một màn hình
+// (src/quality/function_budget_test.go).
+type extractRun struct {
+	svc     *articleExtractService
+	ctx     context.Context
+	traceID string
+	article *domain.Article
+	start   time.Time
+
+	saved      []*domain.ArticlePage
+	seen       map[int]bool
+	fresh      []*domain.ArticlePage
+	sinceFlush int
+}
+
+func newExtractRun(svc *articleExtractService, ctx context.Context, traceID string, article *domain.Article) *extractRun {
+	return &extractRun{
+		svc:     svc,
+		ctx:     ctx,
+		traceID: traceID,
+		article: article,
+		start:   time.Now(),
+		fresh:   make([]*domain.ArticlePage, 0, constants.EXTRACT_FLUSH_PAGES),
+	}
+}
+
+// loadSaved nạp trang đã trích ở lần trước. seen theo SEQ, không theo page_num:
+// file txt bị chia nhiều mảnh cùng page_num = 0 nên page_num không định danh
+// được từng mảnh. Extractor bỏ qua seq đã có, nhờ vậy PDF trích phần còn thiếu
+// song song theo khoảng mà không cần trang liên tục từ đầu.
+func (r *extractRun) loadSaved() error {
+	saved, err := r.svc.pageRepo.ListByArticle(r.ctx, r.article.ID)
+	if err != nil {
+		return fmt.Errorf("đọc trang đã trích: %w", err)
+	}
+	r.saved = saved
+	r.seen = make(map[int]bool, len(saved))
+	for _, p := range saved {
+		r.seen[p.Seq] = true
+	}
+	if len(saved) > 0 {
+		logs.Infow("extract: tiếp tục từ mảnh đã trích",
+			"trace_id", r.traceID, "article_id", r.article.ID,
+			"pieces_done", len(saved))
+	}
+	return nil
+}
+
+// extract chạy extractor trên blob đã tải, đẩy từng trang qua visit.
+func (r *extractRun) extract(rc io.ReadCloser) error {
+	return extractor.ExtractRawPages(r.ctx, r.article.StorageKey, rc, r.svc.ocr, r.seen, r.visit, r.svc.opts...)
+}
+
+// flushTail ghi đúng phần trang MỚI chưa lưu — gộp cả fresh thì mỗi lô lại
+// insert lại các trang đã có (ON CONFLICT giữ nguyên nhưng tốn I/O vô ích).
+func (r *extractRun) flushTail() error {
+	if r.sinceFlush == 0 {
+		return nil
+	}
+	tail := r.fresh[len(r.fresh)-r.sinceFlush:]
+	if err := r.svc.pageRepo.CreateBatch(r.ctx, tail); err != nil {
+		return fmt.Errorf("lưu trang: %w", err)
+	}
+	// Log mỗi lô: job nặng chạy vài chục phút, không có dòng nào thì lúc chết
+	// không biết đang ở trang nào.
+	logs.Infow("extract: tiến trình",
+		"trace_id", r.traceID, "article_id", r.article.ID,
+		"pages_written", r.sinceFlush, "elapsed_ms", time.Since(r.start).Milliseconds())
+	r.sinceFlush = 0
+	return nil
+}
+
+// visit nhận 1 trang từ extractor: chặn trùng rồi gom vào lô, đủ
+// EXTRACT_FLUSH_PAGES thì ghi. Chặn trùng theo SEQ ngay tại đây vì nếu không thì
+// mỗi lần resume phải insert lại toàn bộ phần đã lưu ((article_id, seq) có
+// ON CONFLICT nhưng vẫn tốn I/O).
+func (r *extractRun) visit(pg extractor.Page) error {
+	if r.seen[pg.Seq] {
+		return nil
+	}
+	r.seen[pg.Seq] = true
+	r.fresh = append(r.fresh, &domain.ArticlePage{
+		ArticleID: r.article.ID,
+		Seq:       pg.Seq,
+		PageNum:   pg.Num,
+		Text:      stripNUL(pg.Text),
+		// Layout = 0 khi không bật đo — cột NOT NULL default 0 nên ghi thẳng,
+		// không cần phân biệt "chưa đo" ở tầng DB.
+		LayoutScore: pg.Layout,
+	})
+	r.sinceFlush++
+	if r.sinceFlush >= constants.EXTRACT_FLUSH_PAGES {
+		return r.flushTail()
+	}
+	return nil
+}
+
+// finish kiểm tra kết quả trích rồi chốt metadata. File scan mờ / ảnh trắng mà
+// đánh done với text rỗng là done giả (search sẽ trống mà không ai biết vì sao).
+func (r *extractRun) finish() error {
+	if !anyPageHasText(r.fresh) && len(r.saved) == 0 {
 		return fmt.Errorf("%w: không có trang nào ra chữ", extractor.ErrInvalid)
 	}
-	pageCount := len(saved) + len(fresh)
+	version, effective := r.metadata()
+	return r.saveMeta(len(r.saved)+len(r.fresh), version, effective)
+}
 
-	// Metadata bài trích được ở đây: số trang (đếm thật) + phiên bản/hiệu lực.
-	// Phiên bản và hiệu lực luôn nằm ở đầu văn bản — lấy từ `fresh` trước,
-	// thiếu thì lấy từ phần lưu ở lần chạy trước. headText dừng ở
-	// MaxMetaScanRunes nên không cần gom cả file.
-	version, effective := chunker.ExtractMeta(headText(fresh, chunker.MaxMetaScanRunes))
-	if version == "" && effective == "" {
-		if h := headText(saved, chunker.MaxMetaScanRunes); h != "" {
-			version, effective = chunker.ExtractMeta(h)
-		}
+// metadata lấy phiên bản/hiệu lực: luôn nằm ở đầu văn bản nên chỉ cần headText
+// (dừng ở MaxMetaScanRunes, không gom cả file). Trang mới trước, thiếu thì lấy
+// từ phần đã lưu ở lần chạy trước.
+func (r *extractRun) metadata() (string, string) {
+	version, effective := chunker.ExtractMeta(headText(r.fresh, chunker.MaxMetaScanRunes))
+	if version != "" || effective != "" {
+		return version, effective
 	}
+	return chunker.ExtractMeta(headText(r.saved, chunker.MaxMetaScanRunes))
+}
 
-	// User có thể xoá bài trong lúc đang trích — bài chết rồi thì dọn trang
-	// vừa trích ngay (purge chỉ thấy bài xoá mềm, không thấy row mồ côi của
-	// bài đã xoá hẳn), đánh done sau đó cũng chỉ là no-op trên row đã mất.
-	alive, err := s.articleRepo.IsAlive(ctx, article.ID)
+// saveMeta kiểm tra bài còn sống rồi ghi số trang + phiên bản/hiệu lực.
+func (r *extractRun) saveMeta(pageCount int, version, effective string) error {
+	// User có thể xoá bài trong lúc đang trích — bài chết rồi thì dọn trang vừa
+	// trích ngay (purge chỉ thấy bài xoá mềm, không thấy row mồ côi của bài đã
+	// xoá hẳn), đánh done sau đó cũng chỉ là no-op trên row đã mất.
+	alive, err := r.svc.articleRepo.IsAlive(r.ctx, r.article.ID)
 	if err != nil {
 		return fmt.Errorf("kiểm tra bài còn sống: %w", err)
 	}
 	if !alive {
 		logs.Infow("extract: bài bị xoá giữa chừng, đã dọn trang vừa trích",
-			"trace_id", traceID, "article_id", article.ID)
-		det := worker.Detach(ctx)
+			"trace_id", r.traceID, "article_id", r.article.ID)
+		det := worker.Detach(r.ctx)
 		defer det.Close()
-		if derr := s.pageRepo.DeleteByArticleID(det.Ctx, article.ID); derr != nil {
+		if derr := r.svc.pageRepo.DeleteByArticleID(det.Ctx, r.article.ID); derr != nil {
 			return fmt.Errorf("dọn trang bài đã xoá: %w", derr)
 		}
 		return nil
 	}
-
-	// KHÔNG xoá trang: chúng là nguồn sự thật cho phase index đọc cửa sổ
-	// trượt, và giữ lại còn giúp đổi config chunker không phải OCR lại.
-	det := worker.Detach(ctx)
+	// KHÔNG xoá trang: chúng là nguồn sự thật cho phase index đọc cửa sổ trượt,
+	// và giữ lại còn giúp đổi config chunker không phải OCR lại.
+	det := worker.Detach(r.ctx)
 	defer det.Close()
-	if err := s.articleRepo.UpdateMetadata(det.Ctx, article.ID, pageCount, version, effective); err != nil {
+	if err := r.svc.articleRepo.UpdateMetadata(det.Ctx, r.article.ID, pageCount, version, effective); err != nil {
 		logs.Warnw("extract: không lưu metadata được (bỏ qua)",
-			"trace_id", traceID, "article_id", article.ID, "error", err)
+			"trace_id", r.traceID, "article_id", r.article.ID, "error", err)
 	}
 	logs.Infow("extract: xong 1 bài",
-		"trace_id", traceID, "article_id", article.ID,
-		"pages", pageCount, "new_pages", len(fresh),
-		"elapsed_ms", time.Since(start).Milliseconds())
+		"trace_id", r.traceID, "article_id", r.article.ID,
+		"pages", pageCount, "new_pages", len(r.fresh),
+		"elapsed_ms", time.Since(r.start).Milliseconds())
 	return nil
+}
+
+// mapExtractError phân biệt loại file không hỗ trợ (vĩnh viễn — failed luôn) với
+// lỗi trích (có thể transient) mà caller dựa vào ErrUnsupported để quyết định.
+func mapExtractError(err error) error {
+	if stderrors.Is(err, extractor.ErrUnsupported) {
+		return fmt.Errorf("loại file chưa xử lý: %w", err)
+	}
+	return fmt.Errorf("trích text: %w", err)
 }
 
 // headText ghép n ký tự đầu của danh sách trang — dùng cho metadata (phiên bản,
