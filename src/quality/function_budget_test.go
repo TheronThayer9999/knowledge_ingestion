@@ -69,7 +69,6 @@ var functionBudgetAllowlist = []allowEntry{
 	{"src/controller/routers/router.go::NewRouter", 87, 1},
 	{"src/controller/services/article_admin_service.go::(*articleAdminService).QueueStatus", 88, 9},
 	{"src/controller/services/article_purge_service.go::(*articlePurgeService).PurgeDeleted", 86, 12},
-	{"src/controller/services/articles_service.go::(*articleService).Create", 52, 13},
 	{"src/controller/services/category_service.go::(*categoryService).Update", 57, 19},
 	{"src/controller/services/user_service.go::(*userService).Refresh", 67, 14},
 	{"src/infrastructure/postgres/migrate.go::migrate", 102, 15},

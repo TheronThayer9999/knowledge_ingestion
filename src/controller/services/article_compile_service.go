@@ -137,14 +137,16 @@ loop:
 // để lease reclaim, lỗi thật mới đếm attempts.
 func (s *articleCompileService) compileClaimed(ctx context.Context, traceID string, article *domain.Article, done *atomic.Int64) {
 	logs.Infow("compile: bắt đầu bài", "trace_id", traceID,
-		"article_id", article.ID, "name", article.Name)
+		"article_id", article.ID, "name", article.Name, "file", fileTag(article),
+		"doc_type", article.DocType, "content_type", article.ContentType)
 	if err := s.compileOneSafe(ctx, traceID, article); err != nil {
 		if ctx.Err() != nil {
 			if stderrors.Is(ctx.Err(), context.Canceled) {
 				s.releaseClaims(ctx, traceID, []int64{article.ID})
 			} else {
 				logs.Infow("compile: job hết giờ, để lease trả bài",
-					"trace_id", traceID, "article_id", article.ID, "name", article.Name)
+					"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+					"file", fileTag(article))
 			}
 			return
 		}
@@ -154,22 +156,26 @@ func (s *articleCompileService) compileClaimed(ctx context.Context, traceID stri
 		if s.vectors.IsPermanentError(err) {
 			attempts = utils.MaxQueueAttempts
 			logs.Warnw("compile: lỗi vĩnh viễn, failed luôn",
-				"trace_id", traceID, "article_id", article.ID, "name", article.Name, "error", err)
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+				"file", fileTag(article), "error", err)
 		} else {
 			logs.Warnw("compile: bỏ qua bài, thử lại theo backoff",
-				"trace_id", traceID, "article_id", article.ID, "name", article.Name, "error", err)
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+				"file", fileTag(article), "error", err)
 		}
 		det := worker.Detach(ctx)
 		defer det.Close()
 		if merr := s.articleRepo.MarkCompileError(det.Ctx, article.ID, attempts); merr != nil {
-			logs.Error(merr, "compile: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
+			logs.Error(merr, "compile: không đánh dấu lỗi được", "trace_id", traceID,
+				"article_id", article.ID, "name", article.Name, "file", fileTag(article))
 		}
 		return
 	}
 	det := worker.Detach(ctx)
 	defer det.Close()
 	if err := s.articleRepo.MarkCompileDone(det.Ctx, article.ID); err != nil {
-		logs.Error(err, "compile: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
+		logs.Error(err, "compile: không đánh dấu done được", "trace_id", traceID,
+			"article_id", article.ID, "name", article.Name, "file", fileTag(article))
 		return
 	}
 	done.Add(1)
@@ -201,7 +207,7 @@ func (s *articleCompileService) compileOneSafe(ctx context.Context, traceID stri
 		if rec := recover(); rec != nil {
 			logs.Error(fmt.Errorf("panic: %v", rec), "compile: panic khi xử lý bài",
 				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
-				"stack", string(debug.Stack()))
+				"file", fileTag(article), "stack", string(debug.Stack()))
 			err = fmt.Errorf("panic khi compile bài %d: %v", article.ID, rec)
 		}
 	}()
@@ -229,7 +235,7 @@ func (s *articleCompileService) compileOne(ctx context.Context, traceID string, 
 			return fmt.Errorf("dọn section cũ: %w", err)
 		}
 		logs.Infow("compile: bài không có mục nào", "trace_id", traceID,
-			"article_id", article.ID, "name", article.Name)
+			"article_id", article.ID, "name", article.Name, "file", fileTag(article))
 		return nil
 	}
 	rows := make([]*domain.ArticleSection, 0, len(sections))
@@ -269,7 +275,8 @@ func (s *articleCompileService) compileOne(ctx context.Context, traceID string, 
 		return fmt.Errorf("ghi article_sections: %w", err)
 	}
 	logs.Infow("compile: xong 1 bài", "trace_id", traceID, "article_id", article.ID,
-		"name", article.Name, "sections", len(rows), "elapsed_ms", time.Since(start).Milliseconds())
+		"name", article.Name, "file", fileTag(article),
+		"sections", len(rows), "elapsed_ms", time.Since(start).Milliseconds())
 	return nil
 }
 
@@ -303,19 +310,20 @@ func (s *articleCompileService) summarize(ctx context.Context, traceID string, a
 		v, err := s.cache.Get(ctx, key).Result()
 		if err == nil && v != "" {
 			logs.Debugw("compile: cache hit, không gọi LLM", "trace_id", traceID,
-				"article_id", article.ID, "section", sectionName)
+				"article_id", article.ID, "file", fileTag(article), "section", sectionName)
 			return v, nil
 		}
 		if err != nil && !stderrors.Is(err, redis.Nil) {
 			logs.Error(err, "compile: đọc cache lỗi, gọi LLM thẳng",
-				"trace_id", traceID, "article_id", article.ID, "name", article.Name)
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+				"file", fileTag(article))
 		}
 	}
 	// 1 dòng = 1 call LLM thật: đây là chỗ DUY NHẤT trong pipeline sinh lời
 	// gọi LLM (index chỉ gọi bge-m3), nên đếm dòng này là biết chi phí của bài.
 	logs.Infow("compile: gọi LLM tóm tắt mục", "trace_id", traceID,
-		"article_id", article.ID, "name", article.Name, "section", sectionName,
-		"chars", len(text), "model", s.summarizer.ModelID())
+		"article_id", article.ID, "name", article.Name, "file", fileTag(article),
+		"section", sectionName, "chars", len(text), "model", s.summarizer.ModelID())
 	summary, err := s.summarizer.Summarize(ctx, sectionName, text)
 	if err != nil {
 		return "", err
@@ -323,7 +331,8 @@ func (s *articleCompileService) summarize(ctx context.Context, traceID string, a
 	if s.cache != nil && summary != "" {
 		if err := s.cache.Set(ctx, key, summary, s.cacheTTL).Err(); err != nil {
 			logs.Error(err, "compile: ghi cache lỗi (không chặn kết quả)",
-				"trace_id", traceID, "article_id", article.ID, "name", article.Name)
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+				"file", fileTag(article))
 		}
 	}
 	return summary, nil

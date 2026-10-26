@@ -139,7 +139,8 @@ loop:
 // job hết timeout (ctx hủy) thì bỏ qua không đánh lỗi oan.
 func (s *articleIndexService) indexClaimed(ctx context.Context, traceID string, article *domain.Article, done *atomic.Int64) {
 	logs.Infow("index: bắt đầu bài", "trace_id", traceID,
-		"article_id", article.ID, "name", article.Name)
+		"article_id", article.ID, "name", article.Name, "file", fileTag(article),
+		"doc_type", article.DocType, "content_type", article.ContentType)
 	// KHÔNG tạo dbCtx dùng chung ở đây: 1 bài 500 trang (~1500 chunk) gọi
 	// Ollama hàng chục phút, ctx 30s tạo sớm chết trước khi tới lượt ghi.
 	if err := s.indexOneSafe(ctx, traceID, article); err != nil {
@@ -151,7 +152,8 @@ func (s *articleIndexService) indexClaimed(ctx context.Context, traceID string, 
 				s.releaseClaims(ctx, traceID, []int64{article.ID})
 			} else {
 				logs.Infow("index: job hết giờ, để lease trả bài",
-					"trace_id", traceID, "article_id", article.ID, "name", article.Name)
+					"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+					"file", fileTag(article))
 			}
 			return
 		}
@@ -162,22 +164,26 @@ func (s *articleIndexService) indexClaimed(ctx context.Context, traceID string, 
 		if stderrors.Is(err, errIndexContract) || s.embedder.IsPermanentError(err) || s.vectors.IsPermanentError(err) {
 			attempts = utils.MaxQueueAttempts
 			logs.Warnw("index: lỗi vĩnh viễn, failed luôn",
-				"trace_id", traceID, "article_id", article.ID, "name", article.Name, "error", err)
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+				"file", fileTag(article), "error", err)
 		} else {
 			logs.Warnw("index: bỏ qua bài, thử lại theo backoff",
-				"trace_id", traceID, "article_id", article.ID, "name", article.Name, "error", err)
+				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+				"file", fileTag(article), "error", err)
 		}
 		det := worker.Detach(ctx)
 		defer det.Close()
 		if merr := s.articleRepo.MarkIndexError(det.Ctx, article.ID, attempts); merr != nil {
-			logs.Error(merr, "index: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
+			logs.Error(merr, "index: không đánh dấu lỗi được", "trace_id", traceID,
+				"article_id", article.ID, "name", article.Name, "file", fileTag(article))
 		}
 		return
 	}
 	det := worker.Detach(ctx)
 	defer det.Close()
 	if err := s.articleRepo.MarkIndexDone(det.Ctx, article.ID); err != nil {
-		logs.Error(err, "index: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
+		logs.Error(err, "index: không đánh dấu done được", "trace_id", traceID,
+			"article_id", article.ID, "name", article.Name, "file", fileTag(article))
 		return
 	}
 	done.Add(1)
@@ -209,7 +215,7 @@ func (s *articleIndexService) indexOneSafe(ctx context.Context, traceID string, 
 		if rec := recover(); rec != nil {
 			logs.Error(fmt.Errorf("panic: %v", rec), "index: panic khi xử lý bài",
 				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
-				"stack", string(debug.Stack()))
+				"file", fileTag(article), "stack", string(debug.Stack()))
 			err = fmt.Errorf("panic khi index bài %d: %v", article.ID, rec)
 		}
 	}()
@@ -473,7 +479,8 @@ func (r *indexRun) flush() error {
 	// không biết đang ở đâu.
 	logs.Infow("index: tiến trình",
 		"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name,
-		"chunks", r.total, "elapsed_ms", time.Since(r.start).Milliseconds())
+		"file", fileTag(r.article), "chunks", r.total,
+		"elapsed_ms", time.Since(r.start).Milliseconds())
 	return nil
 }
 
@@ -484,7 +491,8 @@ func (r *indexRun) finish() error {
 		return fmt.Errorf("%w: không có trang nào ra chữ để chunk", extractor.ErrInvalid)
 	}
 	logs.Infow("index: xong 1 bài", "trace_id", r.traceID, "article_id", r.article.ID,
-		"name", r.article.Name, "pieces", r.piecesSeen, "chunks", r.total,
+		"name", r.article.Name, "file", fileTag(r.article),
+		"pieces", r.piecesSeen, "chunks", r.total,
 		"elapsed_ms", time.Since(r.start).Milliseconds())
 	return nil
 }
@@ -538,14 +546,14 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 	titleVec, terr := s.embedder.Embed(ctx, article.Name)
 	if terr != nil {
 		logs.Error(terr, "index: embed title lỗi, dùng content vector thay thế",
-			"article_id", article.ID, "name", article.Name)
+			"article_id", article.ID, "name", article.Name, "file", fileTag(article))
 		titleVec = nil
 	}
 	// Embed toàn bộ đợt trong 1 call (không cache vector — xem doc đầu hàm).
 	// bge-m3 là model của riêng phase index; log gắn tiền tố `index:` để
 	// không lẫn với lời gọi LLM của compile/chat.
 	logs.Infow("index: gọi embed", "trace_id", traceID, "article_id", article.ID, "name", article.Name,
-		"texts", len(texts), "model", s.embedder.ModelName())
+		"file", fileTag(article), "texts", len(texts), "model", s.embedder.ModelName())
 	embedStart := time.Now()
 	vectors, err := s.embedder.EmbedBatch(ctx, texts)
 	if err != nil {
@@ -560,7 +568,7 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 		}
 	}
 	logs.Infow("index: embed xong", "trace_id", traceID, "article_id", article.ID, "name", article.Name,
-		"texts", len(texts), "elapsed_ms", time.Since(embedStart).Milliseconds())
+		"file", fileTag(article), "texts", len(texts), "elapsed_ms", time.Since(embedStart).Milliseconds())
 	if len(vectors) != len(texts) {
 		return fmt.Errorf("%w: embed trả %d vector cho %d text", errIndexContract, len(vectors), len(texts))
 	}

@@ -6,6 +6,7 @@ import (
 	"knowledge_ingestion/src/common/chunker"
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
+	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
@@ -109,14 +110,30 @@ func (s *articleService) Create(ctx context.Context, dto *dtos.CreateArticleRequ
 	}
 	article := dto.ToModel()
 	article.UserID = userID
-	// Tự detect loại tài liệu nếu client không khai — dùng cho template chunking.
-	if strings.TrimSpace(article.DocType) == "" {
-		article.DocType = string(chunker.DetectType(article.ContentType, article.Name))
-	}
+	detectDocType(article)
 	if err := s.articleRepo.Create(ctx, article); err != nil {
 		return dtos.Fail[*dtos.ArticleResponse](err)
 	}
+	logArticleCreated(ctx, article, userID)
 	return dtos.Ok(dtos.ToArticleResponse(article))
+}
+
+// detectDocType tự đoán loại tài liệu nếu client không khai — dùng cho template
+// chunking của phase index.
+func detectDocType(article *domain.Article) {
+	if strings.TrimSpace(article.DocType) == "" {
+		article.DocType = string(chunker.DetectType(article.ContentType, article.Name))
+	}
+}
+
+// logArticleCreated nối API ↔ worker bằng CÙNG `file`: đây là dòng "file vừa vào
+// kho, sắp đi qua pipeline", còn mọi dòng worker đều in `file` nên chỉ cần grep
+// key là ra cả hành trình. `name` chỉ là tên người dùng đặt, không phải file.
+func logArticleCreated(ctx context.Context, article *domain.Article, userID int64) {
+	logs.Infow("article: tạo bài, chờ worker", "trace_id", utils.TraceIDFromCtx(ctx),
+		"article_id", article.ID, "name", article.Name, "file", fileTag(article),
+		"content_type", article.ContentType, "doc_type", article.DocType,
+		"category_id", article.CategoryID, "user_id", userID)
 }
 
 // GetByID trả 404 khi id không tồn tại HOẶC không thuộc owner.

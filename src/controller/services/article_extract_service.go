@@ -126,12 +126,32 @@ loop:
 	return n, nil
 }
 
-// articleTags rút "id:tên" của cả lô vừa claim để một dòng log là biết kỳ quét
-// đang chạm file nào — chỉ có id thì phải tra DB mới biết là file gì.
+// fileTag trả định danh FILE nguồn của bài: storage key trên kho
+// ("uploads/<uuid>.<ext>") với bài upload, URL với bài link ngoài. `name` chỉ
+// là tên người dùng đặt (sửa được trong dialog upload) nên một mình nó không
+// nói được worker đang đọc blob nào — đây mới là thứ thật sự được tải/OCR.
+func fileTag(article *domain.Article) string {
+	if key := strings.TrimSpace(article.StorageKey); key != "" {
+		return key
+	}
+	if url := strings.TrimSpace(article.URL); url != "" {
+		return url
+	}
+	return "-"
+}
+
+// articleTag là "id:tên (file)" cho dòng log theo lô — chỉ có id thì phải tra
+// DB mới biết là file gì.
+func articleTag(article *domain.Article) string {
+	return fmt.Sprintf("%d:%s (%s)", article.ID, article.Name, fileTag(article))
+}
+
+// articleTags rút "id:tên (file)" của cả lô vừa claim để một dòng log là biết
+// kỳ quét đang chạm file nào — chỉ có id thì phải tra DB mới biết là file gì.
 func articleTags(articles []*domain.Article) []string {
 	tags := make([]string, 0, len(articles))
 	for _, article := range articles {
-		tags = append(tags, fmt.Sprintf("%d:%s", article.ID, article.Name))
+		tags = append(tags, articleTag(article))
 	}
 	return tags
 }
@@ -141,8 +161,9 @@ func articleTags(articles []*domain.Article) []string {
 // dù job hết timeout; job hết timeout (ctx hủy) thì bỏ qua không đánh lỗi oan
 // (đánh lỗi oan sẽ đốt hết attempts rồi failed bài đang chỉ cần thử lại).
 func (s *articleExtractService) extractClaimed(ctx context.Context, traceID string, article *domain.Article, done *atomic.Int64) {
-	logs.Infow("extract: bắt đầu bài", "trace_id", traceID,
-		"article_id", article.ID, "name", article.Name)
+	logs.Infow("extract: bắt đầu bài", "trace_id", traceID, "article_id", article.ID,
+		"name", article.Name, "file", fileTag(article),
+		"doc_type", article.DocType, "content_type", article.ContentType)
 	// KHÔNG tạo dbCtx dùng chung ở đây: OCR 1 file scan 500 trang tốn hàng
 	// chục phút, ctx 30s tạo sớm chết trước khi tới lượt ghi done/error.
 	if err := s.extractOneSafe(ctx, traceID, article); err != nil {
@@ -156,7 +177,8 @@ func (s *articleExtractService) extractClaimed(ctx context.Context, traceID stri
 				s.releaseClaims(ctx, traceID, []int64{article.ID})
 			} else {
 				logs.Infow("extract: job hết giờ, để lease trả bài",
-					"trace_id", traceID, "article_id", article.ID, "name", article.Name)
+					"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+					"file", fileTag(article))
 			}
 			return
 		}
@@ -169,18 +191,18 @@ func (s *articleExtractService) extractClaimed(ctx context.Context, traceID stri
 		}
 		logs.Warnw("extract: bỏ qua bài, thử lại theo backoff",
 			"trace_id", traceID, "article_id", article.ID, "name", article.Name,
-			"storage_key", article.StorageKey, "error", err)
+			"file", fileTag(article), "content_type", article.ContentType, "error", err)
 		det := worker.Detach(ctx)
 		defer det.Close()
 		if merr := s.articleRepo.MarkExtractError(det.Ctx, article.ID, attempts); merr != nil {
-			logs.Error(merr, "extract: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
+			logs.Error(merr, "extract: không đánh dấu lỗi được", "trace_id", traceID, "article_id", article.ID, "name", article.Name, "file", fileTag(article))
 		}
 		return
 	}
 	det := worker.Detach(ctx)
 	defer det.Close()
 	if err := s.articleRepo.MarkExtractDone(det.Ctx, article.ID); err != nil {
-		logs.Error(err, "extract: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID, "name", article.Name)
+		logs.Error(err, "extract: không đánh dấu done được", "trace_id", traceID, "article_id", article.ID, "name", article.Name, "file", fileTag(article))
 		return
 	}
 	done.Add(1)
@@ -212,7 +234,7 @@ func (s *articleExtractService) extractOneSafe(ctx context.Context, traceID stri
 		if rec := recover(); rec != nil {
 			logs.Error(fmt.Errorf("panic: %v", rec), "extract: panic khi xử lý bài",
 				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
-				"stack", string(debug.Stack()))
+				"file", fileTag(article), "stack", string(debug.Stack()))
 			err = fmt.Errorf("panic khi extract bài %d: %v", article.ID, rec)
 		}
 	}()
@@ -307,7 +329,7 @@ func (r *extractRun) loadSaved() error {
 	if len(saved) > 0 {
 		logs.Infow("extract: tiếp tục từ mảnh đã trích",
 			"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name,
-			"pieces_done", len(saved))
+			"file", fileTag(r.article), "pieces_done", len(saved))
 	}
 	return nil
 }
@@ -331,6 +353,7 @@ func (r *extractRun) flushTail() error {
 	// không biết đang ở trang nào.
 	logs.Infow("extract: tiến trình",
 		"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name,
+		"file", fileTag(r.article),
 		"pages_written", r.sinceFlush, "elapsed_ms", time.Since(r.start).Milliseconds())
 	r.sinceFlush = 0
 	return nil
@@ -393,7 +416,8 @@ func (r *extractRun) saveMeta(pageCount int, version, effective string) error {
 	}
 	if !alive {
 		logs.Infow("extract: bài bị xoá giữa chừng, đã dọn trang vừa trích",
-			"trace_id", r.traceID, "article_id", r.article.ID)
+			"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name,
+			"file", fileTag(r.article))
 		det := worker.Detach(r.ctx)
 		defer det.Close()
 		if derr := r.svc.pageRepo.DeleteByArticleID(det.Ctx, r.article.ID); derr != nil {
@@ -407,10 +431,12 @@ func (r *extractRun) saveMeta(pageCount int, version, effective string) error {
 	defer det.Close()
 	if err := r.svc.articleRepo.UpdateMetadata(det.Ctx, r.article.ID, pageCount, version, effective); err != nil {
 		logs.Warnw("extract: không lưu metadata được (bỏ qua)",
-			"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name, "error", err)
+			"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name,
+			"file", fileTag(r.article), "error", err)
 	}
 	logs.Infow("extract: xong 1 bài",
 		"trace_id", r.traceID, "article_id", r.article.ID, "name", r.article.Name,
+		"file", fileTag(r.article), "doc_type", r.article.DocType,
 		"pages", pageCount, "new_pages", len(r.fresh),
 		"elapsed_ms", time.Since(r.start).Milliseconds())
 	return nil

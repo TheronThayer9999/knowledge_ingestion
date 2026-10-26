@@ -4,6 +4,7 @@ import (
 	"context"
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
+	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/storage"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
@@ -69,7 +70,10 @@ func (s *fileService) PresignUpload(ctx context.Context, req *dtos.PresignUpload
 // rồi mới ký — tránh 400 nửa chừng làm phí một lượt ký. Kết quả theo đúng thứ
 // tự files trong request để client map lại từng file.
 func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploadsRequest) dtos.Result[*dtos.PresignUploadsResponse] {
-	type prepared struct{ filename, key, mime string }
+	type prepared struct {
+		filename, key, mime string
+		size                int64
+	}
 
 	if len(req.Files) == 0 {
 		return dtos.Fail[*dtos.PresignUploadsResponse](errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, "thiếu file đính kèm"))
@@ -87,12 +91,12 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 		if err != nil {
 			return dtos.Fail[*dtos.PresignUploadsResponse](err)
 		}
-		prep = append(prep, prepared{filename: f.Filename, key: key, mime: mime})
+		prep = append(prep, prepared{filename: f.Filename, key: key, mime: mime, size: f.Size})
 	}
 
 	items := make([]dtos.PresignUploadsItem, 0, len(prep))
 	for _, p := range prep {
-		item, err := s.signOne(ctx, p.filename, p.key, p.mime)
+		item, err := s.signOne(ctx, p.filename, p.key, p.mime, p.size)
 		if err != nil {
 			return dtos.Fail[*dtos.PresignUploadsResponse](err)
 		}
@@ -102,11 +106,18 @@ func (s *fileService) PresignUploads(ctx context.Context, req *dtos.PresignUploa
 }
 
 // signOne ký 1 URL PUT cho key đã verify — dùng chung cho ký đơn và ký nhiều.
-func (s *fileService) signOne(ctx context.Context, filename, key, mime string) (*dtos.PresignUploadsItem, error) {
+// Log 1 dòng/FILE để biết request này đưa file nào vào kho dưới key nào.
+// KHÔNG log upload_url: URL đã ký chứa chữ ký của kho, ghi vào log là lộ
+// credential (và hết hạn sau PRESIGN_EXPIRY nên cũng vô dụng khi tra lại).
+func (s *fileService) signOne(ctx context.Context, filename, key, mime string, size int64) (*dtos.PresignUploadsItem, error) {
 	url, err := s.storage.PresignedURL(ctx, key, mime, constants.PRESIGN_EXPIRY)
 	if err != nil {
+		logs.Warnw("file: ký URL upload lỗi", "trace_id", utils.TraceIDFromCtx(ctx),
+			"filename", filename, "key", key, "size", size, "content_type", mime, "error", err)
 		return nil, err
 	}
+	logs.Infow("file: ký URL upload", "trace_id", utils.TraceIDFromCtx(ctx),
+		"filename", filename, "key", key, "size", size, "content_type", mime)
 	return &dtos.PresignUploadsItem{
 		Filename:    filename,
 		UploadURL:   url,
@@ -124,7 +135,7 @@ func (s *fileService) presign(ctx context.Context, filename string, head []byte,
 	if err != nil {
 		return nil, err
 	}
-	return s.signOne(ctx, filename, key, mime)
+	return s.signOne(ctx, filename, key, mime, size)
 }
 
 // sniffAllow là các MIME nội dung chấp nhận được cho từng đuôi file, vì
