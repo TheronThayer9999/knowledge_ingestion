@@ -94,3 +94,54 @@ sau khi sửa Go.
   đã ngắt thì body 499 gần như không tới tay ai — mục đích chính là log/hành vi đúng.
 - Nếu ctx hủy đúng lúc service trả lỗi thật thì ưu tiên 499: client đã đi rồi, code 500 vô nghĩa.
 - Không đổi `dependencyError` (503 "chưa bật Ollama/Qdrant" vẫn đúng nghĩa hạ tầng chết).
+
+## Kết quả
+
+### Đã sửa
+
+| File | Việc |
+|---|---|
+| `src/common/errors/errors.go` | `ClientClosed = 499` + `ContextError(err)` map cancel→499, deadline→504 (bắt cả `errors.Is` lẫn text kiểu eino) |
+| `src/agent/usecase/provider_error.go` | `providerError` xét ctx **trước** `AsProviderHTTPError`, log WARN 1 dòng (`status`, `model`) không stack |
+| `src/controller/apis/base.go` | `Render` gọi `requestContextError` (lỗi service + ctx request) trước nhánh `logs.Error` thăm dò 500 |
+
+### Test thật (API `-configs configs/config.local.json`, provider `9router`)
+
+| # | Case | Kỳ vọng | Kết quả |
+|---|---|---|---|
+| a | `curl.exe --max-time 2` chat 9router (client bỏ ngang) | 499 + WARN không stack | ✅ `status=499`, latency 2.008s, **không** có dòng `ERROR unhandled error` |
+| b | Provider treo (TCP stub `:20999` accept nhưng không trả lời, `timeout_sec: 5`, app 9002) | 504 sau ~5s | ✅ `http=504` @5.05s, body `hết thời gian chờ: dịch vụ phía sau không phản hồi kịp…` |
+| c | Chat sai model (`meta/khong-ton-tai`) | vẫn 400 | ✅ `code=400` "provider từ chối model … No active credentials for provider: meta" @26ms |
+| c | Chat hợp lệ (`Xin chào`) | vẫn 200 | ✅ 200 @2.35s, `question_type=chitchat`, answer 300 ký tự |
+
+Log sau khi sửa (case a — trước đây là `ERROR … unhandled error` + 20 dòng stack):
+
+```
+12:17:08 INFO  usecase/chat_service.go:151   chat: gọi agent {"model": "kc/nvidia/nemotron-3.5-super-vl:free", …}
+12:17:10 WARN  usecase/provider_error.go:75  chat: dừng giữa đường (client ngắt hoặc provider quá hạn) {"status": 499, "model": "kc/nvidia/…"}
+12:17:10 INFO  middlewares/trace.go:63       HTTP request {"path": "/api/v1/chat", "status": 499, "latency": "2.0082453s"}
+```
+
+Case b (provider treo) tương tự nhưng `status=504`, `latency=5.0065895s` — `WARN` vẫn không kèm stack.
+
+### Unit test thêm mới
+
+- `src/common/errors/context_error_test.go`: 6 case (cancel/deadline ở cả dạng còn `Unwrap` lẫn chỉ còn text; lỗi thật → nil) + khoá message không lộ `localhost`/`20128`/`dial tcp`/`NodeRunError`.
+- `TestProviderErrorMapsClientCancelTo499`, `TestProviderErrorMapsProviderTimeoutTo504` trong `provider_error_test.go`.
+- `TestRenderMapsDeadContextTo499` trong `base_test.go` (envelope đủ 4 field, `message` nói rõ client đã ngắt).
+
+Verify: `go build ./...` ✅, `go vet ./...` ✅, `golangci-lint run ./...` **0 issues** ✅, `go test ./...` **20/20 package ok** (gồm `src/quality` guardrail function budget).
+
+### Đánh giá
+
+1. **Đúng nguyên nhân người dùng chỉ ra**: LLM lỗi (hết giờ/bị ngắt) không còn văng ra như "lỗi runtime" — log 1 dòng WARN không stack, HTTP 499/504 thay vì 500.
+2. **Lỗi thật vẫn giữ đường cũ**: `unhandled error` + stack + 500, nên log ERROR lại có giá trị chẩn đoán (đợt 10 thêm stack từ ERROR là để dùng cho đúng các ca này).
+3. **`Render` là lưới an toàn toàn cục**: cả `/search`, upload, endpoint khác cũng hưởng, không chỉ chat.
+4. **Không cần sửa FE**: FE hiển thị `message` từ envelope nên sẽ hiện "hết thời gian chờ: dịch vụ phía sau không phản hồi kịp…" thay cho "internal server error".
+5. **Còn lại (ngoài phạm vi đợt này)**: `/api/v1/chat` không có timeout phía server — server chỉ dừng khi client bỏ hoặc `timeout_sec` của provider hết. Nếu muốn chặn agent loop 12 vòng treo lâu, cần thêm `context.WithTimeout` ở handler/service (đợt riêng, ảnh hưởng cả `label`/retry).
+
+### Trạng thái sau test
+
+- API 9001 chạy **code mới** với `configs/config.local.json` (phục vụ FE).
+- Đã dừng và xoá: API test ở 9002, TCP stub 20999, config tạm `$env:TEMP\ki_stub.json`, các file body/response tạm.
+- `git status` sạch sau commit code + kết quả.
