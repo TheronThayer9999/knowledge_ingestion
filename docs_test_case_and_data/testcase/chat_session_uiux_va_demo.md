@@ -138,19 +138,22 @@ trả lời khác số trong bảng này là lỗi hệ thống, không phải l
 ## 5. Chạy đánh giá hàng loạt (xoay 3 provider, tôn trọng trần 40 req/phút)
 
 ```powershell
-# 1) Selftest bộ chấm — chạy local, không gọi LLM, phải ra 11/11
+# 1) Selftest bộ chấm — chạy local, không gọi LLM, phải ra đủ 14/14
 python loadtest/expert_eval.py --selftest
 
 # 2) Smoke 1 cửa sổ rate limit (4 câu), xoay provider
 python loadtest/expert_eval.py --providers 9router nvidia openrouter --batch-size 4 --max 4
 
-# 3) Batch thật: tự upload fixture, tự chờ index, mỗi provider 1 phiên
+# 3) Batch thật trên 29 case dữ liệu phức tạp: tự upload fixture, tự chờ index
+#    (lệnh đã chạy thật ngày 2026-10-27 — 7 file, 6 câu đầu tiên)
 python loadtest/expert_eval.py `
-  --providers 9router nvidia openrouter --batch-size 4 --rpm 35 --concurrency 2 `
+  --file docs_test_case_and_data/testcase/test_case_complex_data.md `
+  --providers 9router nvidia openrouter --batch-size 4 --rpm 30 --concurrency 2 --max 6 `
   --docs loadtest/fixtures_complex/bang_luong_q3.xlsx loadtest/fixtures_complex/hop_dong_thue_mat.xlsx `
          loadtest/fixtures_complex/bang_ke_toan_multi_sheet.xlsx loadtest/fixtures_complex/quy_che_phi_v1.xlsx `
          loadtest/fixtures_complex/quy_che_phi_v2.xlsx loadtest/fixtures_complex/quy_dinh_nhieu_phu_luc.pdf `
-  --out loadtest/expert_eval_results.json
+         loadtest/fixtures_complex/scan_vua_text_vua_anh.pdf `
+  --out loadtest/expert_eval_complex_results.json
 
 # 4) Chạy tiếp với user đã upload (bỏ qua upload, trỏ vào danh mục cũ)
 python loadtest/expert_eval.py --skip-upload --category-id <id> --providers nvidia --batch-size 4
@@ -163,6 +166,8 @@ Vì sao `--batch-size 4`: một lượt `/chat` là 8–10 lần gọi LLM nội
 Test chậm thì thêm cờ `--chat-timeout` (mặc định 300s) và `--wait-index` (900s).
 Kết quả thô: `l0` (kỹ thuật), `l1` (đúng số + tin cậy số), `l2` (hình thức, kèm
 tên tiêu chí trượt) — phần `l2.failed` chỉ thẳng câu nào trượt tiêu chí nào.
+Báo cáo JSON lưu nguyên `cites` của từng lượt, nên sửa rubric xong chấm lại được
+offline bằng `grade()` mà không gọi lại LLM.
 
 ## 6. Kịch bản demo 10 phút
 

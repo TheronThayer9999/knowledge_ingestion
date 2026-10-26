@@ -1,6 +1,6 @@
 # Đợt 25 — Trả lời như chuyên gia + eval đa provider theo lô (9router / nvidia / openrouter)
 
-Ngày: 2026-10-26 · Trạng thái: kế hoạch (chưa code) · Nối: Đợt 24 (`archive/2026-10/` — session chat lưu DB, S1+S4)
+Ngày: 2026-10-26 · Trạng thái: hoàn thành 2026-10-27 · Nối: Đợt 24 (`archive/2026-10/` — session chat lưu DB, S1+S4)
 
 ## 1. Yêu cầu đã nhận
 
@@ -173,16 +173,16 @@ Ràng buộc FE đã biết từ các đợt trước: `npm run lint` (ESLint 9 
 
 ## 7. Tiêu chí hoàn thành
 
-- [ ] Bảng đối chiếu OSS vào `RAG_RESEARCH.md` §6.7.1 (mỗi dòng có nguồn đã đọc).
-- [ ] `prompts/chat_system.md` mục 10 rewritten, không mâu thuẫn 12 ví dụ, không đổi số thứ tự mục khác.
-- [ ] `loadtest/expert_eval.py` chạy được theo lô, xoay 9router/nvidia/openrouter, tôn trọng trần 40 req/phút, có bằng chứng log chứng minh nhịp.
-- [ ] Rubric file + verdict 3 lớp in ra được.
-- [ ] `loadtest/make_complex_fixtures.py` sinh được `.xlsx` nhiều sheet (tự kiểm chứng bằng cách mở lại bằng `zipfile` + đếm sheet trong `xl/workbook.xml`).
-- [ ] FE: sidebar phiên chạy theo đúng bảng hành vi §5A; `npm run lint` + `npm test` + `npm run build` xanh (tôi **không** tự mở browser test UI — người dùng tự test theo checklist).
-- [ ] Tài liệu demo `docs_test_case_and_data/testcase/chat_session_uiux_va_demo.md` có đủ: bảng hành vi · test case S/X/Q · kịch bản demo 10 phút · checklist UI.
-- [ ] **`cites` khác rỗng được chứng minh live** (nợ của Đợt 24) hoặc báo rõ vì sao vẫn chưa.
-- [ ] Verify Go xanh, `codegraph sync` (nếu sửa Go), `swag init` chỉ nếu đổi annotation.
-- [ ] `## Kết quả` điền + archive plan + thêm dòng `plans/README.md`, commit message **tiếng Anh**.
+- [x] Bảng đối chiếu OSS vào `RAG_RESEARCH.md` §6.7.1 (mỗi dòng có nguồn đã đọc).
+- [x] `prompts/chat_system.md` mục 10 rewritten, không mâu thuẫn 12 ví dụ, không đổi số thứ tự mục khác.
+- [x] `loadtest/expert_eval.py` chạy được theo lô, xoay 9router/nvidia/openrouter, tôn trọng trần 40 req/phút, có bằng chứng log chứng minh nhịp.
+- [x] Rubric file + verdict 3 lớp in ra được.
+- [x] `loadtest/make_complex_fixtures.py` sinh được `.xlsx` nhiều sheet (tự kiểm chứng bằng cách mở lại bằng `zipfile` + đếm sheet trong `xl/workbook.xml`).
+- [x] FE: sidebar phiên chạy theo đúng bảng hành vi §5A; `npm run lint` + `npm test` + `npm run build` xanh (tôi **không** tự mở browser test UI — người dùng tự test theo checklist).
+- [x] Tài liệu demo `docs_test_case_and_data/testcase/chat_session_uiux_va_demo.md` có đủ: bảng hành vi · test case S/X/Q · kịch bản demo 10 phút · checklist UI.
+- [x] **`cites` khác rỗng được chứng minh live** (nợ của Đợt 24) hoặc báo rõ vì sao vẫn chưa.
+- [x] Verify Go xanh, `codegraph sync` (nếu sửa Go), `swag init` chỉ nếu đổi annotation.
+- [x] `## Kết quả` điền + archive plan + thêm dòng `plans/README.md`, commit message **tiếng Anh**.
 
 ## 8. Rủi ro
 
@@ -197,4 +197,64 @@ Ràng buộc FE đã biết từ các đợt trước: `npm run lint` (ESLint 9 
 
 ## 9. Kết quả
 
-*(điền khi xong)*
+### 9.1 Batch thật, xoay 3 provider (chạy ngày 2026-10-27, `--rpm 30 --batch-size 4 --concurrency 2 --max 6`)
+
+| Case | Provider | Verdict lúc chạy | `l1.factual` chấm lại offline | `cites` | `l2.shape` | giây |
+|---|---|---|---|---|---|---|
+| X-01 | 9router | PASS | PASS | 5 | 5/6 | 116.0 |
+| X-02 | nvidia | PASS | PASS | 10 | 6/6 | 146.8 |
+| X-03 | openrouter | **FAIL1** | **PASS** (sửa bộ chấm, xem §9.2) | 10 | 6/6 | 178.1 |
+| X-04 | 9router | PASS | PASS | 11 | 6/6 | 166.6 |
+| X-05 | nvidia | PASS | PASS | 10 | 6/6 | 242.5 |
+| X-06 | openrouter | PASS | PASS | 10 | 6/6 | 33.4 |
+
+Bảng tổng hợp harness in ra (`n pass fail0 fail1 err cites>0 shape unsrc avg_s`):
+
+```text
+9router     2  2  0  0  0  2  0.92   8  141.3
+nvidia      2  2  0  0  0  2  1.00  11  194.7
+openrouter  2  1  0  1  0  2  1.00   1  105.8
+```
+
+- **`cites` khác rỗng trên 6/6 câu — nợ Đợt 24 đã trả.** psql đối chiếu: 6 phiên `id` 28–33 (`user_id=103`, `provider` đúng từng phiên), mỗi phiên đúng 2 hàng `messages` (user rồi assistant), `cite_rows` 5–11, hàng `user` có `cites` rỗng (đúng thiết kế), `effective_category_ids = [130]` trên cả hai hàng. Payload `cites` decode ra mảng object `{n, snippet, page_num, article_id, chunk_index}` — snippet là **text bảng đã chuyển đổi** (`## Sheet: Phu_cap` + các dòng `|`), nghĩa là chuỗi Excel đi hết đường ingest → chunk → embed → retrieve.
+- **Không câu nào FAIL0**: không answer rỗng, không dangling marker, không provider drift, không thiếu `question_type`. Lớp kỹ thuật sạch trên cả ba provider.
+- **`unsrc` (số không truy ra snippet) là chỉ báo, đã đối chiếu thủ công từng số** với `loadtest/make_complex_fixtures.py`: `1.200.000` (NV02 phụ cấp độc hại), `2.000.000` (NV04 phụ cấp trách nhiệm), `180.000` (lương ngày NV03), `21.5`/`22.5` (ngày công) đều **có thật trong fixture** nhưng nằm ngoài cửa sổ snippet được cite; `25.370.000 + 4.600.000 = 29.970.000`, `29.970.000 − 2.623.500 = 27.346.500`, `29.970.000 + 600.000 = 30.570.000` là phép tính hợp lệ từ số có nguồn. **Không phát hiện số bịa.**
+- Bộ nhịp: `governor nghỉ 0 lần trong 537s` — với 6 câu / 2 luồng thì 30 req/phút không bao giờ chạm trần; cửa sổ chỉ siết khi tăng `--concurrency` hoặc chạy hết 29 case.
+
+### 9.2 Batch thật lộ ra hai lỗi — một của model, một của bộ chấm
+
+1. **Model lộ biến thể nội bộ tool** (X-01, 9router): câu trả lời kết bằng "(Theo kết quả đọc cấu trúc file:, sheet_count = 3)" và **không có marker nào** trong 190 ký tự. `PLUMBING_RE` cũ không có `sheet_count` nên `no_plumbing_leak` vẫn cho qua — đã bổ sung `sheet_count|row_count|page_count|column_count|top_k|point_id|kb_id`. Chấm lại thì X-01 trượt đúng 2 tiêu chí (`no_plumbing_leak` + `citation_density`), phản ánh đúng chất lượng thật.
+2. **Bộ chấm báo oan** (X-03, openrouter): đáp án mong đợi ghi `22,5` (phẩy thập phân kiểu VN), model ghi `22.5` → `FAIL:22,5`, trong khi nội dung trả lời **đúng hẳn**: nêu ngưỡng 22 ngày công, NV01 22.5 → 800.000, NV05 20 (nghỉ 5 ngày) → 600.000. Đã thêm `num_variants()` vào `loadtest/e2e_testcases.py` (phẩy↔chấm ở phần thập phân, `.`↔`,` ở hàng nghìn), `grade()` và `check_layer1()` cùng dùng tập biến thể; selftest tăng **11 → 14 mục**, ba mục mới khoá đúng hai lỗi trên. Chấm lại offline 6 lượt đã lưu: **6/6 PASS factual**.
+
+### 9.3 Hành vi "chuyên gia" quan sát được trong answer thật
+
+- **BLUF + nêu điều kiện trước phán quyết** (X-03): mở đầu bằng nguyên nhân "làm việc 22.5 ngày công, đạt điều kiện 'từ 22 ngày công trở lên' nên được 800.000", chốt "Nguyên nhân chênh lệch là ngưỡng 22 ngày công".
+- **Không chọn bừa khi dữ liệu mâu thuẫn** (X-04): chỉ ra sheet `Luong` để trống ô Phụ cấp của NV03 (thực nhận 3.870.000 đúng bằng lương cơ bản) trong khi `Phu_cap` ghi 600.000, và nêu cả hai con số thay vì trả lời "có"/"không".
+- **Tự suy luận và tự gắn nhãn** (X-06): sau khi trích "ngày 05 của tháng kế tiếp" thì suy ra kỳ kết thúc 30/09/2025 → hạn chốt 05/10/2025, và **ghi rõ** "(suy luận từ ngày kết thúc kỳ và quy định ...)" — đúng ý mục 10 prompt: phân biệt dữ kiện có nguồn với suy luận.
+- **Trả lời đủ biên độ** (X-05): nêu cả hai bậc 10% và 5% rồi đối chiếu từng nhân viên, không nói chung chung.
+- **Chưa làm được như plan đề ra:** mục kiểm chứng số 6 (in trước/sau khi đổi prompt để so sánh) **không thực hiện** — Đợt 24 không giữ transcript cùng bộ tài liệu này nên không có baseline sạch. Bằng chứng ở trên là one-sided; nếu muốn con số trước/sau thì Đợt 26 chạy lại cùng 6 câu với `git stash` prompt cũ.
+
+### 9.4 FE (UI/UX phiên chat)
+
+- Panel tiện ích ở **trái** card chat (ưu tiên đã ghi nhận), nút gập góc trên-trái; ≤1023px panel thành thanh ngang và nút gập sang phải. Lazy session (chưa hỏi chưa tạo phiên), rename/delete, khoá scope + "Suy nghĩ sâu" khi phiên đã có lượt.
+- `npm run lint` sạch; vitest **22 files / 127 tests** xanh; `npm run build` không còn WARNING.
+- Budget `anyComponentStyle` nâng **10/12kB → 14/16kB** theo phép của chủ project ("chỉ cần phù hợp, hợp lý cứ nâng budget") vì `chat.scss` 11.65kB; precedent của repo là 8→9→10kB. Không tách component.
+
+### 9.5 Nợ chuyển tiếp (ghi rõ, không quên)
+
+- Còn **23/29 case** complex chưa chạy thật (mỗi câu 33–242s). Chạy tiếp: `--skip-upload --category-id 130 --max 0` (lệnh mẫu ở `chat_session_uiux_va_demo.md` §5).
+- Dữ liệu eval **để lại** phục vụ demo: user `id=103`, danh mục `130`, bài `73–79` (page_count 1/1/1/1/1/3/2), phiên `28–33`. Muốn dọn: `DELETE /api/v1/articles/:id?purge=true` từng bài + `DELETE /api/v1/conversations/:id`.
+- Chưa lưu `reasoning`; F5 không nhớ phiên đang mở; window lịch sử vẫn theo **số lượt** (12) chứ chưa theo ngân sách token (LlamaIndex làm khác mình ở đây — đã ghi §6.7.1).
+- `usage` per message (Dify và Open WebUI đều có) — **defer**, thuộc S3 vì cần số token từ Eino.
+- Chart: đã chốt thiết kế ở `RAG_RESEARCH.md` §6.9 (tool `chart_from_cite`, server dựng spec từ chunk được cite), Đợt 26 ghi plan trước khi code, case X-30…X-35 đã nằm trong `chat_session_uiux_va_demo.md`.
+
+### 9.6 Verify
+
+- `go build ./...` + `go vet ./...` + `go test ./...` + `golangci-lint run ./...` (chạy ngày 2026-10-27): **0 issues**, mọi package `ok` — đợt này không sửa Go source nên chạy để chắc không hỏng gì.
+- Python: `python -m py_compile expert_eval.py e2e_testcases.py` sạch, `--selftest` đạt 14/14.
+- FE: lint + 127 tests + build xanh (bằng chứng ở §9.4).
+- `codegraph sync`: không cần — đợt này không sửa Go source.
+
+### 9.7 Commit của đợt (message tiếng Anh toàn bộ)
+
+`e444c22`/`a9d5a1d` plan · `d65f2a1` prompt mục 10 · `b79d0f2` fixtures complex + test extractor Go + harness · `8df1b85` + `7dac50e` + `4659f32` FE · `cffaabe` rubric + test case + demo · `64e5bda` sửa schema claims + 29 case chạy được · `f0e7ca3` Open WebUI hai tầng · commit cuối: sửa bộ chấm (decimal + plumbing) và điền kết quả này.
