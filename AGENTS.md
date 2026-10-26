@@ -55,6 +55,15 @@
 - Hạn chế tự code mới — có thư viện ngon thì kéo về dùng: HTTP Ollama dùng `ollama/ollama/api` (không tự viết http client), agent/tool dùng Eino (`adk`, `components/tool/utils.InferTool`, `components/model`), chunking dùng `eino-ext` splitters; chỉ tự viết adapter mỏng khi lib thiếu đúng ý (Vd Bearer key Cloud qua Transport, user_id qua ctx vì không tin LLM)
 - Swagger: general API info annotation sits above `package main` in cmd/apis/main.go; per-endpoint annotations on handler methods (`@Success 200 {object} dtos.ResponseResource`) — swag resolves type refs via package/search-dir parsing, so handlers just use `:=` (no need to import the DTO type in the handler file); don't use import aliases or full `github.com/x/y.Type` paths in annotations (unsupported/invalid refs)
 
+### Ngân sách hàm (có test chặn)
+
+- Trần cứng do `src/quality/function_budget_test.go` (AST, stdlib) canh: **> 60 dòng** hoặc **> 12 điểm quyết định** (`if/for/range/case/&&/||`) là fail. Mục tiêu là 8–45 dòng/hàm — vừa một màn hình, một tầng `if`.
+- Vượt trần thì **tách stage** trước: orchestrator (`xxxOne`) chỉ còn ~30 dòng gọi `newXxxRun` → `prepare`/`step`/`finish`; state giữa các bước để trong struct có tên (`indexRun`, `extractRun`), **không** nhét vào closure — closure giấu biến, test không chạm tới.
+- Allowlist `functionBudgetAllowlist` ghi **đúng số đã đo** (`{Key, Lines, CX}`): hàm phình thêm → fail, hàm đã xuống dưới ngân sách mà còn entry → fail (bắt xoá). Danh sách **chỉ ngắn đi**, thêm entry mới phải nói lý do trong commit.
+- Review checklist cho "hàm quá nhỏ": hàm 1–4 dòng chỉ giữ khi (a) thoả interface/constructor DI, (b) là khái niệm miền có tên (`IsSpreadsheetQuestion`), (c) có ≥ 2 caller hoặc test riêng, (d) thân có thêm hành vi (guard/panic, `worker.Detach(ctx)`, log). **Cấm pass-through**: đúng 1 lệnh chuyển tiếp, 1 caller, không thêm hành vi → inline. Không đặt trần dưới bằng số dòng: cùng 3 dòng, "khái niệm" khác "chuyển tiếp" ở ngữ nghĩa, máy không phân biệt được.
+- Dấu hiệu phải tách: comment bắt đầu bằng "Bước N"; một khối cần ≥ 4 biến cục bộ chỉ dùng trong khối; thân vòng lặp test được riêng.
+- Vòng đọc trang có **đúng một** bản: `eachPageWindow` trong `article_index_service.go` (điều kiện dừng duy nhất `len(pages) == 0`, KHÔNG dùng "lượt đọc ngắn hơn window") — thêm chỗ đọc `ListPagesRange` mới thì gọi lại nó, đừng chép vòng `for`.
+
 ## Gotchas
 
 - `gofmt -l` flags pre-existing files (`config.go`, `qdrant/connection.go`) only for CRLF line endings (content is formatted) — don't mass-convert line endings
