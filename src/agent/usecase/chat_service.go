@@ -14,6 +14,7 @@ import (
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
+	"knowledge_ingestion/src/domain"
 )
 
 type chatService struct {
@@ -127,8 +128,31 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 		return dtos.Fail[*dtos.ChatResponse](providerError(err, model))
 	}
 
-	cites := make([]*dtos.ChatCite, 0, len(res.Hits))
-	for i, h := range res.Hits {
+	cites := buildCites(res.Hits)
+	// Answer do model viết nên còn lệch khuôn ([*2], số bịa ra, "Article ID 54") —
+	// BE chốt lại theo đúng cites vừa dựng ở trên trước khi trả FE.
+	answer, droppedMarkers := normalizeCitations(res.Answer, len(cites))
+	if droppedMarkers > 0 {
+		logs.Warnw("chat: bỏ marker trích dẫn không có trong cites",
+			"trace_id", utils.TraceIDFromCtx(ctx),
+			"dropped_markers", droppedMarkers, "cites", len(cites))
+	}
+	qt := s.label(ctx, model, dto.Message, res.Searched)
+	return dtos.Ok(&dtos.ChatResponse{
+		Answer:       answer,
+		QuestionType: qt,
+		Cites:        cites,
+		Reasoning:    clipReasoning(res.Reasoning),
+	})
+}
+
+// buildCites đánh số trích dẫn 1..N theo đúng thứ tự hit collector gom được.
+// normalizeCitations chuẩn hoá marker trong answer theo trần N này, nên hai
+// chỗ phải dùng chung một cách đếm — tách khỏi Chat để hàm chính không phình
+// quá ngưỡng guardrail (src/quality/function_budget_test.go).
+func buildCites(hits []*domain.ScoredChunk) []*dtos.ChatCite {
+	cites := make([]*dtos.ChatCite, 0, len(hits))
+	for i, h := range hits {
 		cites = append(cites, &dtos.ChatCite{
 			N:          i + 1,
 			ArticleID:  h.ArticleID,
@@ -137,13 +161,7 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 			Snippet:    snippet(h.Text),
 		})
 	}
-	qt := s.label(ctx, model, dto.Message, res.Searched)
-	return dtos.Ok(&dtos.ChatResponse{
-		Answer:       res.Answer,
-		QuestionType: qt,
-		Cites:        cites,
-		Reasoning:    clipReasoning(res.Reasoning),
-	})
+	return cites
 }
 
 // run gọi agent 1 lượt kèm log call + chốt chặn retry — tách khỏi Chat để hàm
