@@ -61,3 +61,24 @@ chỉ thấy "có call LLM" mà không biết ai gọi. Đợt này chỉ **làm
 - Không thêm cờ `compile.enabled` để tắt phase 3 (đổi hành vi + ảnh hưởng chat vì
   `article_sections` là nguồn tóm tắt).
 - Không đổi model/provider mặc định.
+
+## Kết quả
+
+| Phần | Thay đổi | Kiểm chứng |
+|---|---|---|
+| A — log ranh giới call | `compile: gọi LLM tóm tắt mục` (1 dòng/call, có `model`/`section`/`chars`) + `compile: cache hit` (debug); `ollama: …` → `index: gọi embed`/`index: embed xong`; `chat: gọi agent` mỗi lượt; `logs.Debugw` mới | `go build`/`vet` sạch, `golangci-lint` 0 issues, `go test ./...` xanh |
+| B — tài liệu | `upsertBatch`: doc comment viết lại (không còn `embed_cache`); `AGENTS.md`: bảng "Model theo phase" + 2 ghi chú (chỉ compile/chat gọi LLM; bài `compile_status=done` không compile lại) | đọc lại file, khớp code |
+
+### Phát hiện khi làm
+
+- Guardrail `src/quality/function_budget_test.go` bắt ngay: `Chat` từ 68 lên 73 dòng
+  (allowlist 68/9). Sửa đúng hướng: tách phần log + retry ra `(*chatService).run`
+  (hàm `Chat` còn ~53 dòng) rồi **xoá entry allowlist** — test còn báo entry thừa
+  khi hàm đã xuống dưới ngưỡng.
+- `ChatAgent.Run` trả **`eino.RunResult` theo giá trị**, không phải con trỏ — helper
+  mới phải trả `(eino.RunResult, error)` và `eino.RunResult{}` khi lỗi.
+- PowerShell 5.1 `Set-Content -Encoding utf8` ghi kèm **BOM** → subject commit
+  `fc6a033` bị dính BOM. Từ commit sau dùng
+  `[IO.File]::WriteAllText(path, text)` (UTF-8 không BOM).
+- Chưa chạy worker thật để xem log mới (bài 59–62 đang pending sẽ tốn OCR/LLM
+  không cần thiết); kiểm bằng build/test + đọc lại chuỗi log trong code.
