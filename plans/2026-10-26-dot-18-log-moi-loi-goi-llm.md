@@ -57,4 +57,67 @@ Bọc ở đây thì không thể quên chỗ nào, kể cả code thư viện (
 
 ## Kết quả
 
-(chờ chạy xong)
+### Kiểm tra tĩnh
+
+`go build ./...`, `go vet ./...`, `golangci-lint run ./...` (0 issues), `go test ./...`
+đều xanh. `src/quality` vẫn qua ngân sách hàm (60 dòng) sau khi tách `compileOne`
+thành `compileOne` + `buildRows` + `count` + `compileStats`.
+
+### E2E worker thật (9router, `configs/config.local.json`)
+
+Bài test: `48 - triethoc_tay_phuong` (5 mục), `compile_status=pending`, không có row
+`article_sections`, cache `compile:sum:*` rỗng (0 key).
+
+**Lượt 1 — cache lạnh** (log thật, rút gọn):
+
+```
+compile: nhận lô bài      {count: 1, reclaimed: 0, articles: ["48:triethoc_tay_phuong (...)"]}
+compile: gọi LLM tóm tắt mục {article_id: 48, section: "ĐIỀU 5: ...", chars: 888, model: kc/nvidia/...}
+llm: request              {site: compile, provider: 9router, model: kc/nvidia/..., host: localhost:20128, path: /v1/chat/completions, trace_id: 01a17710-a7d6-...}
+llm: request xong         {site: compile, status: 200, elapsed_ms: 7778, trace_id: 01a17710-a7d6-...}
+compile: xong 1 bài       {article_id: 48, sections: 5, llm_calls: 5, cache_hits: 0, elapsed_ms: 223157}
+pipeline: bài xong cả 3 phase (UI báo done) {article_id: 48, compiled_at: 2026-10-26T14:19:25+07:00}
+compile: xong 1 kỳ quét   {found: 1, compiled: 1, llm_calls: 5, cache_hits: 0}
+```
+
+Đúng 5 mục ⇒ đúng 5 dòng `llm: request` (1:1). Trong đó có 1 lần 9router trả 503:
+
+```
+WARN llm: dính giới hạn, thử lại {provider: 9router, attempt: 1, status: 503, wait_ms: 30000}
+```
+
+Đây là lý do **dashboard provider đếm nhiều hơn số lượt gọi logic**: mỗi lần retry là
+1 request thật sang provider, và log của mình lộ ra đúng chỗ đó.
+
+**Sau mốc UI báo done: KHÔNG còn request nào.** Quét phần log sau dòng
+`pipeline: bài xong cả 3 phase`: 55 dòng, `llm: request` = **0**, và ≥2 kỳ quét liên
+tiếp `compile: xong 1 kỳ quét {found: 0, compiled: 0, llm_calls: 0, cache_hits: 0}`.
+
+**Lượt 2 — cache nóng** (reset bài về pending, giữ nguyên 5 key cache):
+
+```
+compile: xong 1 bài     {article_id: 48, sections: 5, llm_calls: 0, cache_hits: 5}
+compile: xong 1 kỳ quét {found: 1, compiled: 1, llm_calls: 0, cache_hits: 5}
+```
+
+Số đếm khớp đúng thực tế (không gọi LLM lần nào, 5 mục lấy từ cache).
+
+### Vì sao trước đây "UI báo xong mà 9router vẫn thấy call"
+
+1. `llms.default_provider = 9router` ⇒ **compile, chat, classify dùng chung một provider**.
+   Một lượt chat sinh nhiều request (classify + N vòng tool + retry + tóm tắt lịch sử),
+   nên request trên dashboard không nhất thiết của tài liệu đang xem — giờ nhìn `site`
+   là biết ngay.
+2. Bài khác còn đang compile (worker xử lý 2 bài/lô, 30s/kỳ) — UI chỉ báo theo từng bài.
+3. Row `compile_status=processing` bị **nhận lại** khi lease hết hạn (30m). Đã bắt được
+   đúng ca này trong DB dev: bài `47 - tmp_big_policy` kẹt `processing`, `attempts=2`,
+   `compile_next_retry_at` đã qua ⇒ mỗi kỳ quét lại compile lại từ đầu. Log mới in
+   `reclaimed` trong dòng `compile: nhận lô bài` để ca này không còn vô hình.
+   (Trong lúc E2E tôi dừng worker giữa chừng nên chính bài 48 cũng từng về `processing`.)
+4. Retry 429/5xx (Retry-After tới 60s) nhân số request phía provider.
+
+### Dọn dẹp
+
+- Worker dev đã dừng, xoá `dot18_worker.exe` + log tạm.
+- DB dev: bài 48 `done`; bài 47 (`tmp_big_policy`) đã dời `compile_next_retry_at` +2 ngày
+  để không chiếm lô trong lúc test — cần compile lại thì set về `now()`.

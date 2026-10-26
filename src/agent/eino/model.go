@@ -17,6 +17,7 @@ import (
 	einomodel "github.com/cloudwego/eino/components/model"
 
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/config"
 )
 
@@ -56,8 +57,10 @@ func NewChatModel(cfg config.LLMProviderConfig, thinking bool) (einomodel.ToolCa
 		HTTPClient: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
 			// Ollama cloud (gemma4) cũng dính cap ~30 req/phút như Groq —
-			// rate_limit_rpm dùng chung cho mọi type.
-			Transport: newRateLimitTransport(cfg.RateLimitRPM, authTransport(cfg.APIKey)),
+			// rate_limit_rpm dùng chung cho mọi type. loggingTransport bọc
+			// ngoài cùng để mọi request đều có dòng log đối chiếu.
+			Transport: newLoggingTransport(ProviderOllama, cfg.Model,
+				newRateLimitTransport(cfg.RateLimitRPM, authTransport(cfg.APIKey))),
 		},
 		Model: cfg.Model,
 		Options: &ollamamodel.Options{
@@ -124,6 +127,48 @@ func (p *ProviderAgents) Resolve(provider, model string, thinking bool) (*ChatAg
 		return nil, "", fmt.Errorf("eino agent: provider %q chưa có model mặc định, request phải ép model", name)
 	}
 	return agent, model, nil
+}
+
+// loggingTransport ghi 1 dòng log cho MỖI request HTTPS thật ra khỏi process
+// — đây là chốt duy nhất chứng minh "dashboard provider thấy request" khớp
+// với "log mình thấy gì". site đọc từ ctx (utils.WithLLMSite) nên biết request
+// thuộc phase nào: compile của worker, chat (N vòng tool trong 1 lượt) hay
+// classify — thiếu site thì in "không rõ" để lộ chỗ gọi chưa gắn nhãn.
+//
+// Bọc NGOÀI retryTransport/rateLimitTransport: 1 dòng = 1 lời gọi logic, thời
+// gian và status là kết quả cuối (các lượt thử lại đã có warn riêng).
+type loggingTransport struct {
+	provider string
+	model    string
+	base     http.RoundTripper
+}
+
+func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx := req.Context()
+	site := utils.LLMSiteFromCtx(ctx)
+	start := time.Now()
+	logs.Infow("llm: request", "site", site, "provider", t.provider, "model", t.model,
+		"host", req.URL.Host, "path", req.URL.Path, "trace_id", utils.TraceIDFromCtx(ctx))
+	resp, err := t.base.RoundTrip(req)
+	elapsed := time.Since(start).Milliseconds()
+	if err != nil {
+		logs.Error(err, "llm: request lỗi", "site", site, "provider", t.provider,
+			"model", t.model, "host", req.URL.Host, "elapsed_ms", elapsed,
+			"trace_id", utils.TraceIDFromCtx(ctx))
+		return nil, err
+	}
+	logs.Infow("llm: request xong", "site", site, "provider", t.provider, "model", t.model,
+		"status", resp.StatusCode, "elapsed_ms", elapsed, "trace_id", utils.TraceIDFromCtx(ctx))
+	return resp, nil
+}
+
+// newLoggingTransport bọc base (rỗng thì http.DefaultTransport) — caller không
+// cần nhánh if, giống newRateLimitTransport.
+func newLoggingTransport(provider, model string, base http.RoundTripper) http.RoundTripper {
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return &loggingTransport{provider: provider, model: model, base: base}
 }
 
 // retryTransport bọc Transport khác, retry khi gặp 429/5xx — model free
@@ -289,11 +334,13 @@ func NewOpenAIChatModel(slug string, cfg config.LLMProviderConfig) (einomodel.To
 			Timeout: time.Duration(timeout) * time.Second,
 			// retry bọc ngoài, rate limit làm base — mọi lượt thử lại cũng
 			// qua limiter, không vượt cap khi server đang chói 429.
-			Transport: &retryTransport{
+			// loggingTransport bọc ngoài cùng: 1 dòng log = 1 lời gọi logic
+			// (các lượt thử lại đã có warn riêng của retryTransport).
+			Transport: newLoggingTransport(slug, cfg.Model, &retryTransport{
 				name:       slug,
 				base:       newRateLimitTransport(cfg.RateLimitRPM, http.DefaultTransport),
 				maxRetries: 4, baseDelay: 2 * time.Second,
-			},
+			}),
 		},
 	}
 	if cfg.TopP > 0 {

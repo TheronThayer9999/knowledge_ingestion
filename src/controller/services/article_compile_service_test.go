@@ -110,6 +110,35 @@ func newCompileSvc(repo domain.ArticleCompileQueue, sectionRepo domain.IArticleS
 	return s
 }
 
+// TestBuildRowsCountsOnlyRealCalls khoá bộ đếm chi phí — thứ dùng để giải
+// thích "UI báo xong mà provider vẫn thấy request": mục có nội dung = 1 lượt
+// gọi LLM (cache nil), mục rỗng = 0 lượt, và bộ đếm của kỳ quét cộng đúng.
+func TestBuildRowsCountsOnlyRealCalls(t *testing.T) {
+	vectors := &compileStubVectors{
+		sections: []domain.SectionSpan{{Name: "A", From: 0}, {Name: "B", From: 2}, {Name: "C", From: 9}},
+		// Mục C không có chunk nào → không có text → không được tính lượt LLM.
+		texts: map[int]string{0: "a", 2: "b"},
+	}
+	summ := &compileStubSummarizer{model: "m"}
+	svc := newCompileSvc(nil, &compileStubSectionRepo{}, vectors, summ)
+	article := &domain.Article{BaseModel: domain.BaseModel{ID: 1}, UserID: 7}
+	rows, stats, err := svc.buildRows(context.Background(), "t", article,
+		domain.SearchFilter{UserID: 7, ArticleID: 1}, vectors.sections)
+	if err != nil {
+		t.Fatalf("buildRows: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("mỗi mục phải có 1 row (kể cả mục rỗng), nhận %d", len(rows))
+	}
+	if stats.llmCalls != 2 || stats.cacheHits != 0 || summ.calls != 2 {
+		t.Errorf("llm_calls=%d cache_hits=%d calls=%d, muốn 2/0/2",
+			stats.llmCalls, stats.cacheHits, summ.calls)
+	}
+	if svc.cycleLLMCalls.Load() != 2 {
+		t.Errorf("bộ đếm kỳ quét = %d, muốn 2", svc.cycleLLMCalls.Load())
+	}
+}
+
 func TestCompileOneWritesSummaries(t *testing.T) {
 	vectors := &compileStubVectors{
 		sections: []domain.SectionSpan{{Name: "ĐIỀU 5", From: 40}, {Name: "ĐIỀU 6", From: 42}},

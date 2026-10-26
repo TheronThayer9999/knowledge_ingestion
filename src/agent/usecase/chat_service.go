@@ -9,8 +9,10 @@ import (
 	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/agent/question"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 )
 
@@ -113,6 +115,10 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 	// Mỗi lượt 1 dòng: khi nhìn log (hoặc dashboard provider) phải phân biệt
 	// được call LLM của chat với call của worker compile — cùng model nhưng
 	// khác phase, khác lý do.
+	// site=chat cho MỌI request model của lượt này (agent loop có thể gọi
+	// model nhiều vòng vì tool) — transport in kèm nhãn nên dashboard provider
+	// đối chiếu được request nào là chat, request nào là worker compile.
+	ctx = utils.WithLLMSite(ctx, constants.LLMSiteChat)
 	res, err := s.run(ctx, agent, model, dto)
 	if err != nil {
 		// Lỗi HTTP của provider (model sai, hết quota...) trả mã đọc được, lỗi
@@ -183,5 +189,6 @@ func (s *chatService) label(ctx context.Context, model, message string, searched
 	if s.classifier == nil {
 		return question.QuestionLookup.String()
 	}
-	return s.classifier.Classify(ctx, model, message).String()
+	classifyCtx := utils.WithLLMSite(ctx, constants.LLMSiteClassify)
+	return s.classifier.Classify(classifyCtx, model, message).String()
 }

@@ -8,7 +8,9 @@ import (
 	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/agent/retrieval"
+	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
 )
@@ -49,7 +51,8 @@ func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dto
 	if !ok {
 		qtype = question.QuestionLookup
 		if strings.TrimSpace(dto.Model) != "" {
-			qtype = s.classifier.Classify(ctx, dto.Model, dto.Query)
+			classifyCtx := utils.WithLLMSite(ctx, constants.LLMSiteClassify)
+			qtype = s.classifier.Classify(classifyCtx, dto.Model, dto.Query)
 		}
 	}
 	route := question.Route(qtype)
