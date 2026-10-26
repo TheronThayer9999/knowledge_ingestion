@@ -537,21 +537,21 @@ Tham chiếu triển khai: Hermes Agent (mục 4.1) đã có đúng bộ lệnh 
 
 | Điểm | Họ | Mình |
 |---|---|---|
-| Message một row/lượt | Dify, RAGFlow | ✅ `chat_messages` + `seq` |
+| Message một row/lượt | Dify, RAGFlow | ✅ bảng `messages`, một row/lượt, thứ tự theo `id` (không có cột `seq` như từng thiết kế ở 6.7) |
 | Server là nguồn lịch sử duy nhất | Dify, RAGFlow, LangGraph | ✅ `conversation_id`, bỏ client `history` |
-| Phân trang | RAGFlow offset, LangGraph id-desc | ✅ keyset `before` như LangGraph (ổn hơn offset khi table phình) |
+| Phân trang | RAGFlow offset, LangGraph id-desc | ✅ keyset: phiên theo cặp `(last_message_at, id)`, message theo `id` (ổn hơn offset khi table phình) |
 | Cite | Dify nhét metadata, RAGFlow có cấu trúc | ✅ `cites` **jsonb có cột riêng**, query được |
-| Tiêu đề | Dify `name`, RAGFlow đặt tên ngay khi tạo | ✅ auto-title từ câu hỏi đầu (`SetTitleIfEmpty`) |
+| Tiêu đề | Dify `name`, RAGFlow đặt tên ngay khi tạo | ✅ auto-title từ câu hỏi đầu (`SetTitleIfEmpty` + `ClipTitle` cắt 60 rune, khớp `varchar(120)`) |
 | Xoá | Dify `is_deleted` bool, OWUI archive | ✅ `deleted_at` (soft delete, `gorm.DeletedAt`) |
 | Token/latency/cost per message | Dify có đủ | ❌ chưa lưu — cần cho `--rpm` và dashboard |
-| Branch/regenerate | Dify `parent_message_id`, LangGraph parent checkpoint, OWUI `currentId` | ❌ chưa; `seq` đang là tuyến tính |
+| Branch/regenerate | Dify `parent_message_id`, LangGraph parent checkpoint, OWUI `currentId` | ❌ chưa; message tuyến tính theo `id`, không có con trỏ cha |
 | Nén luỹ tiến (C2) | Dify `summary`, OWUI `summary` | ❌ chưa (S2, đúng thứ tự đã chốt: S1 → S4 → S3 → S2) |
 
 **Ba quyết định của họ đáng học mà mình chưa làm**
 
-1. Dify tách `dialogue_count` và `summary` **lên session**: đọc danh sách phiên không cần `count(*)` trên `messages`. Mình đã có `message_count` (đúng ý này) nhưng chưa có `summary`.
+1. Dify để `dialogue_count` **ngay trên session** (write-amp đổi lấy đọc rẻ). Mình làm ngược lại: `message_count` không phải cột, mà đếm bằng **một câu GROUP BY cho cả trang** (`CountByConversationIDs`) — sidebar luôn đúng mà không sợ cột đếm lệch khi replay/repair, nhưng mỗi lần list trả giá một lượt đếm. Nếu bảng message phình to thì mới cần cân nhắc đổi sang cột đếm như Dify.
 2. RAGFlow persist **nguyên cấu trúc `reference`** (chunks + doc_aggs + similarity) chứ không chỉ chuỗi trích dẫn, nên mở lại phiên là render được source panel y như lúc vừa trả lời. `cites` jsonb của mình mới đủ cho chip + nhảy trang, chưa giữ `score`/`doc_aggs` — thêm khi làm source panel.
-3. LangGraph chứng minh: nếu muốn *time travel* (quay lại lượt cũ, rẽ nhánh), chi phí nằm ở **con trỏ cha**, không ở bảng message. `parent_message_id` + `seq` hiện tại đủ để thêm S5 mà không đổi storage.
+3. LangGraph chứng minh: nếu muốn *time travel* (quay lại lượt cũ, rẽ nhánh), chi phí nằm ở **con trỏ cha**, không ở bảng message. `parent_message_id` là đường rẻ nhất để thêm S5 mà không đổi storage.
 
 ### 6.8 Audit thư viện cho từng hạng mục
 

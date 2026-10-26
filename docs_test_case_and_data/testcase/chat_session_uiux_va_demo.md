@@ -10,37 +10,37 @@ trả lời khác số trong bảng này là lỗi hệ thống, không phải l
 | Bước | Lệnh / thao tác |
 |---|---|
 | Hạ tầng | Docker: postgres, qdrant, seaweedfs-s3, rabbitmq |
-| Config | `configs/config.local.json` — providers `9router` / `nvidia` / `openrouter`; `agent.rate_limit_rpm` hạ về **35** (mặc định 60 > trần 40 của provider) |
+| Config | `configs/config.local.json` — providers `9router` / `nvidia` / `openrouter`; `agent.rate_limit_rpm` đang đặt **30** (trần provider 40 req/phút, để thấp hơn làm sàn tự vệ) |
 | Sinh fixture | `python loadtest/make_complex_fixtures.py` → `loadtest/fixtures_complex/` (5 xlsx + 3 pdf) |
 | Chạy backend | `go run ./cmd/apis` (cổng 9001) và `go run ./cmd/worker` (2 phase: extract → index) |
 | Chạy FE | `cd knowledge_ingestion_fe` → `npm start` |
 | Upload | Trang Documents, upload **từng file** trong `fixtures_complex` vào **cùng một danh mục** để một phiên chat scope hẹp đọc được hết |
-| Chờ index | `SELECT title, extract_status, index_status, index_done_chunks FROM articles ORDER BY id DESC LIMIT 12;` — tất cả `done` mới bắt đầu hỏi |
+| Chờ index | `SELECT id, name, extract_status, index_status, index_done_chunks, page_count FROM articles ORDER BY id DESC LIMIT 12;` — tất cả `done` mới bắt đầu hỏi |
 | Kiểm tra DB | `docker exec -i theron_postgres psql -U theron_user -d manager_db` |
 
 ## 1. Hành vi đã cài (input → UI → DB)
 
 | Tình huống | UI | DB |
 |---|---|---|
-| Mở trang chat | sidebar trái: scope + thinking + nút "Cuộc trò chuyện mới" + danh sách phiên của user; transcript trống, chưa gọi POST nào | 0 row |
-| Gõ câu đầu, bấm Gửi | FE tạo phiên **ngay trước lượt gửi** (vì `/chat` không trả `conversation_id`), rồi mới append bong bóng user | 1 `chat_conversations` (title rỗng) |
-| Trả lời thành công | tiêu đề phiên = câu hỏi đầu (auto-title), meta "1 lượt"; refresh sidebar sau lượt đầu | +2 `chat_messages` (seq 1 user, 2 assistant), `message_count = 2` |
-| Trả lời lỗi / timeout | toast, nháp được khôi phục, bong bóng user bị bỏ | **không có row nào** cho lượt đó |
+| Mở trang chat | sidebar trái: scope + thinking + nút "Cuộc trò chuyện mới" + danh sách phiên của user; transcript trống, chưa gọi POST nào | 0 row trong `conversations` |
+| Gõ câu đầu, bấm Gửi | FE tạo phiên **ngay trước lượt gửi** (vì `/chat` không trả `conversation_id`), rồi mới append bong bóng user | 1 row `conversations` (title rỗng) |
+| Trả lời thành công | tiêu đề phiên = câu hỏi đầu (auto-title), meta "1 lượt"; refresh sidebar sau lượt đầu | +2 row `messages` (role `user` rồi `assistant`, thứ tự theo `id`); response `message_count = 2` — con số này **đếm bằng GROUP BY**, không phải cột lưu trên phiên |
+| Trả lời lỗi / timeout | toast, nháp được khôi phục, bong bóng user bị bỏ | **không có row nào** trong `messages` cho lượt đó |
 | Bấm Dừng giữa lúc streaming | trả lời một nửa biến mất, ô nhập mở lại | **không có row nào** (half turn chủ ý bỏ) |
 | Chọn phiên khác | nạp transcript 50 lượt gần nhất theo thứ tự thời gian; restore thinking + scope | `updated_at` được chạm |
 | Đã có lượt trong phiên | select scope + thinking **khoá**, hiện dòng giải thích | — |
 | Đổi tên | input inline, Enter lưu, Esc huỷ; không đổi thì không gọi PATCH | `PATCH /conversations/:id` |
 | Xoá | confirm dialog → phiên mất khỏi danh sách, về phiên mới | `deleted_at NOT NULL` (xoá MỀM, message giữ lại) |
-| >20 phiên | nút "Tải thêm" (con trỏ keyset `before` = id cuối) | — |
+| >20 phiên | nút "Tải thêm" (gửi con trỏ `before` = id phiên cuối; server dịch ra cặp `(last_message_at, id)`) | — |
 | F5 | FE **không** nhớ phiên đang mở → trang về phiên mới (giới hạn đã ghi ở mục 8) | — |
 
 ## 2. Test case phiên chat (S-xx)
 
 | ID | Cách làm | Mong đợi |
 |---|---|---|
-| S-01 | Mở trang, không hỏi gì | `SELECT count(*) FROM chat_conversations;` không tăng — phiên chỉ tạo khi thật sự hỏi |
-| S-02 | Hỏi 1 câu | 1 phiên, tiêu đề = câu hỏi, meta "1 lượt"; DB: 1 conversation + 2 messages, seq = 1,2 |
-| S-03 | Hỏi tiếp câu 2 trong cùng phiên | Tiêu đề **không đổi**; `message_count = 4`, seq 3,4 |
+| S-01 | Mở trang, không hỏi gì | `SELECT count(*) FROM conversations;` không tăng — phiên chỉ tạo khi thật sự hỏi |
+| S-02 | Hỏi 1 câu | 1 phiên, tiêu đề = câu hỏi, meta "1 lượt"; DB: 1 row `conversations` + 2 row `messages` |
+| S-03 | Hỏi tiếp câu 2 trong cùng phiên | Tiêu đề **không đổi**; `message_count = 4`, 2 row `messages` id kế tiếp |
 | S-04 | DevTools → Network → `/chat` | body có `conversation_id`, **không có** key `history` (server là nguồn lịch sử duy nhất) |
 | S-05 | Tắt worker hoặc sai key provider rồi hỏi | toast lỗi, nháp cũ còn nguyên trong ô nhập, không có message mới trong DB |
 | S-06 | Bấm Dừng giữa câu trả lời | UI mất trả lời dở; DB không có row lượt đó; hỏi tiếp vẫn bình thường |
@@ -51,13 +51,13 @@ trả lời khác số trong bảng này là lỗi hệ thống, không phải l
 | S-11 | Bấm biểu tượng sửa, đổi tên, Enter | tên đổi ngay; DB `title` đổi; `updated_at` đổi |
 | S-12 | Bấm sửa, xoá hết chữ, Enter | **không** gửi PATCH (backend `binding:"required,min=1"` → 400); giữ tên cũ |
 | S-13 | Bấm sửa, Esc | trở lại tiêu đề cũ, không gọi API |
-| S-14 | Xoá phiên | confirm dialog → phiên biến mất; `deleted_at` có giá trị; `chat_messages` của nó **vẫn còn** (soft delete) |
+| S-14 | Xoá phiên | confirm dialog → phiên biến mất; `deleted_at` có giá trị; row `messages` của nó **vẫn còn** (soft delete) |
 | S-15 | Xoá phiên đang mở | UI về phiên mới trống, không crash |
 | S-16 | Tạo >20 phiên (script) rồi bấm "Tải thêm" | fetch `?before=<id cuối>&limit=20`, nối vào cuối danh sách, không lặp bản ghi |
 | S-17 | Hai tab: tab A xoá phiên, tab B click vào nó | toast + reset về phiên mới, sidebar reload; API trả 404 (không tồn tại với user này) |
-| S-18 | Login user B, gọi `GET /conversations/<id của A>/messages` | 404 — lọc theo `org_id + user_id`; không leak nội dung |
+| S-18 | Login user B, gọi `GET /conversations/<id của A>/messages` | 404 — mọi query gắn `user_id` vào WHERE (không truyền user id từ client); không leak nội dung |
 | S-19 | Đăng xuất / hết hạn token rồi thao tác | FE về login, không để lại request treo |
-| S-20 | Gửi câu rất dài (>120 ký tự) rồi xem sidebar | tiêu đề bị cắt bằng CSS (`text-overflow: ellipsis`), không vỡ layout |
+| S-20 | Gửi câu hỏi đầu >60 ký tự | Backend cắt title theo **rune** ở `ClipTitle` (trần `TitleAutoClipRune = 60`, có dấu `…`), không bao giờ vượt `varchar(120)`; sidebar vẫn ellipsis bằng CSS khi đổi tên tay dài tối đa 120 |
 | S-21 | Phiên có 60 lượt, mở lại | hiện 50 lượt gần nhất (giới hạn mục 8), câu hỏi mới vẫn được ngữ cảnh đúng |
 | S-22 | Tạo phiên qua API với `thinking:false` trong khi FE đang bật | quy tắc merge: request để trống → **lấy giá trị của phiên**; FE vì thế khoá control ngay từ lượt đầu |
 
@@ -209,7 +209,7 @@ Khả năng truy cập
 
 ## 8. Giới hạn đã biết (nói trước khi demo)
 
-1. **Reasoning không lưu** — mở lại phiên mất khối "suy nghĩ" (bảng `chat_messages` không có cột reasoning).
+1. **Reasoning không lưu** — mở lại phiên mất khối "suy nghĩ" (bảng `messages` không có cột reasoning).
 2. **FE không nhớ phiên đang mở sau F5** — quay về phiên mới; lịch sử vẫn trong DB, chọn lại từ sidebar.
 3. **50 lượt gần nhất** — transcript phân trang lùi về phía cũ chưa làm.
 4. **Half turn không lưu** — dừng/lỗi giữa câu thì lượt đó không vào DB (chấp nhận có chủ ý).
