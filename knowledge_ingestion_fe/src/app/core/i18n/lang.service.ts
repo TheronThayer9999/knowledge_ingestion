@@ -28,7 +28,7 @@ export class LangService {
 
   /** Dịch theo key; đọc signal bên trong nên template tự cập nhật khi đổi ngôn ngữ */
   t(key: TranslationKey): string {
-    // buildMessages đã bảo đảm đủ key lúc nạp — fallback chỉ để phòng thủ
+    // Record<TranslationKey, string> đã bảo đảm đủ key lúc biên dịch — fallback chỉ để phòng thủ
     return this.map().get(key) ?? key;
   }
 
