@@ -38,6 +38,8 @@ trong `archive/`.
 | 21 | 2026-10-26 | Log có trật tự: field order + cắt giá trị dài + ẩn query link | [file](archive/2026-10/2026-10-26-dot-21-log-co-trat-tu.md) | `41396ec` |
 | 22 | 2026-10-26 | BE chuẩn hoá trích dẫn `[^n]`, không để lộ ID kỹ thuật | [file](archive/2026-10/2026-10-26-dot-22-chuan-hoa-trich-dan.md) | `6235565` |
 | 23 | 2026-10-26 | Chat FE: `[^n]` thành chip bấm được, gập NGUỒN TRÍCH DẪN, hết đè icon tune | [file](archive/2026-10/2026-10-26-dot-23-chat-fe-footnote-va-nguon-gap.md) | `85ede27` |
+| 24 | 2026-10-26 | Session chat lưu DB — S1 + S4 theo `RAG_RESEARCH.md` §6.7 (backend) | [file](archive/2026-10/2026-10-26-dot-24-session-chat-db-s1-s4.md) | `b6df004` |
+| 25 | 2026-10-26 | Trả lời như chuyên gia (mục 10 prompt) + eval đa provider theo lô 9router/nvidia/openrouter (trần 40 req/phút) + UI/UX phiên chat ở FE (sidebar, resume, đổi tên/xoá) + data phức tạp (Excel multi-sheet) + tài liệu demo | [file](archive/2026-10/2026-10-26-dot-25-tra-loi-nhu-chuyen-gia-va-eval-da-provider.md) | `cb21484` |
 
 Ghi chú: mốc **Ngày** lấy theo tiền tố tên file (ngày viết kế hoạch) — Đợt 3..9 mang
 `2026-10-27` dù Đợt 10..22 lại là `2026-10-26`, nên đừng tin thứ tự tên file, hãy xếp
@@ -47,16 +49,13 @@ theo số Đợt.
 
 | Đợt | Ngày | Nội dung | Kế hoạch |
 |---|---|---|---|
-| 24 | 2026-10-26 | Session chat lưu DB — S1 + S4 theo `RAG_RESEARCH.md` §6.7 (backend) | [file](archive/2026-10/2026-10-26-dot-24-session-chat-db-s1-s4.md) | `b6df004` |
-| 25 | 2026-10-26 | Trả lời như chuyên gia (mục 10 prompt) + eval đa provider theo lô 9router/nvidia/openrouter (trần 40 req/phút) + UI/UX phiên chat ở FE (sidebar, resume, đổi tên/xoá) + data phức tạp (Excel multi-sheet) + tài liệu demo | [file](2026-10-26-dot-25-tra-loi-nhu-chuyen-gia-va-eval-da-provider.md) |
+| — | — | (đang viết kế hoạch Đợt 26 — chart do LLM chọn loại, server dựng số) | — |
 
 ## Còn chờ (đã ghi backlog, chưa có file kế hoạch)
 
-Đợt 26 retry
-bài failed từ UI · Đợt 27 hết `panic("implement me")` trong `UserRepository` · Đợt 28
-prompt biết scope · Đợt 29 QoS (semaphore/429/metrics) · Đợt 30 outbox-RabbitMQ và
-VLM · Đợt 31 trang tìm kiếm FE · Đợt 32 Auth P1 (refresh cookie HttpOnly + CSRF + UI
-phiên).
+retry bài failed từ UI · hết `panic("implement me")` trong `UserRepository` · prompt biết
+scope · QoS (semaphore/429/metrics) · outbox-RabbitMQ và VLM · trang tìm kiếm FE · Auth P1
+(refresh cookie HttpOnly + CSRF + UI phiên).
 
 Sau Đợt 24 còn các nhánh của riêng session, xếp theo đúng thứ tự §6.7 đã chốt (phần UI của S1+S4 đã gộp vào Đợt 25):
 S3 ngân sách tool-result theo lượt → S2 nén luỹ tiến → S5 regenerate/fork → S6 xuất
