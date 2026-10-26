@@ -49,15 +49,18 @@ ghi vào review checklist (AGENTS.md).
 - `go/parser` (stdlib) → mỗi `FuncDecl`: đếm dòng = `End().Line - Pos().Line + 1`; đếm điểm
   quyết định = `IfStmt/ForStmt/RangeStmt/CaseClause/CommClause` + `BinaryExpr{LAND,LOR}`.
 - Vượt ngân sách mà không có trong allowlist → fail, in `file:line tên (dòng, cx)`.
-- Allowlist ghi **đúng số đã đo** (`map[key]budget{Lines, CX}`); vượt số đã ghi → fail (hàm phình
+- Allowlist là **slice đã sắp xếp** `[]allowEntry{{Key, Lines, CX}}` (không phải map: map không có thứ tự nên test "allowlist phải sorted" không viết được); `allowlistByKey()` dựng map tra cứu mỗi lần chạy.
+- Allowlist ghi **đúng số đã đo**; vượt số đã ghi → fail (hàm phình
   thêm); hàm đã hết vi phạm mà vẫn còn entry → fail (bắt xoá entry). Danh sách chỉ ngắn đi.
 - Key = `đường/dẫn/file.go::TênHàm` (method: `(*Type).Method`) → đổi tên hàm là mất entry, test
   báo ngay.
 
 ## Phần B — `indexOne` 178 → ~40 dòng + stage
 
-File mới `src/controller/services/article_index_session.go` (chuyển `pageWindow`/`piece`/`cuts`
-đang ở cuối `article_index_service.go` sang, thêm `indexSession` + `fillWindow`).
+Giữ nguyên file `article_index_service.go` (`pageWindow`/`piece`/`cuts` không phải chuyển đi —
+thứ cần sửa là kích thước hàm, không phải vị trí file); thêm `eachPageWindow` + `indexRun`
+và các method stage của nó. Tên cuối cùng: `newIndexRun`, `prepare`, `dropStaleVectors`,
+`indexWindow` (thay `fillWindow`), `consumeWindow`, `appendPiece`, `addChunks`, `flush`, `finish`.
 
 ```
 indexOne
@@ -87,17 +90,16 @@ Sửa kèm 3 lỗi thật phát hiện khi đọc:
 
 ```
 extractOne
-├─ resumeState        (ListByArticle + seen + log "tiếp tục từ mảnh đã trích")
-├─ newPageSink        (seen, fresh, pending — thay 3 biến closure)
-├─ extractPages       (Download + defer Close + ExtractRawPages + map lỗi vĩnh viễn)
-├─ sink.flushTail
+├─ loadSaved           (ListByArticle + seen + log "tiếp tục từ trang đã trích")
+├─ extractRun.extract  (ExtractRawPages + visit — thay 3 biến closure bằng field)
+├─ flushTail           (chỉ ghi ĐUÔI MỚI: fresh[len-sinceFlush:])
 ├─ guard "không trang nào ra chữ"
-└─ finalizeExtract    (pageCount, meta phiên bản/hiệu lực, nhánh bài bị xoá, UpdateMetadata)
+└─ finish              (pageCount, meta phiên bản/hiệu lực, nhánh bài bị xoá, UpdateMetadata)
 ```
 
-- `rc` đóng bằng `defer` **trong `extractPages`** thay cho mẹo `rc = nil` + defer ngoài hàm: đóng
-  đúng lúc trích xong, và không rò connection khi panic (recover ở `extractOneSafe`).
-- `pageSink.visit` / `flushTail` là method → test được bằng stub, không phải chạy OCR thật.
+- `rc` vẫn đóng ngay sau `extract` trong `extractOne` (kèm `defer` chỉ để chặn rò khi panic) —
+  stage nhận `io.ReadCloser` sẵn nên không tự đóng, tránh 2 chủ sở hữu connection.
+- `extractRun.visit` / `flushTail` là method → test được bằng stub, không phải chạy OCR thật.
 - Comment của `extractOne` (dòng 172-183) đang nằm trên `releaseClaims` do lần chèn trước →
   trả về đúng hàm.
 
@@ -105,10 +107,10 @@ extractOne
 
 - `src/quality/function_budget_test.go`: bản thân nó là test; chạy trên repo thật (allowlist đã
   seed từ số đo ở trên).
-- `src/controller/services/article_index_service_test.go` thêm `TestFillWindowCutsAtCharCap`:
+- `src/controller/services/article_index_service_test.go` thêm `TestIndexWindowStopsAtCharCap`:
   cửa sổ dừng khi chạm `INDEX_WINDOW_MAX_CHARS`, `next` = seq trang kế **chưa** dùng, không trang
   nào bị bỏ qua hay đọc hai lần.
-- `src/controller/services/article_extract_service_test.go` (mới) `TestPageSinkWritesOnlyNewPages`:
+- `src/controller/services/article_extract_service_test.go` (mới) `TestExtractRunWritesOnlyNewPages`:
   `visit` bỏ qua seq đã có, `flushTail` chỉ ghi đuôi mới, gọi đúng số lô.
 - Giữ nguyên 7 test hiện có của index làm lưới an toàn cho Phần B (`ChunkIndexAndPage`, `Resume`,
   `RejectsEmptyPages`, `MarksErrorWhenArticleDeleted`, `ReadsInWindows`).
@@ -117,6 +119,24 @@ extractOne
 
 `go build ./...`, `go vet ./...`, `golangci-lint run ./...`, `go test ./...` → sau đó đo lại bằng
 cùng script để chứng minh `indexOne`/`extractOne` đã rời top; `codegraph sync`.
+
+## Kết quả
+
+| Hàm | Trước | Sau (chỉ thân hàm, không tính doc comment) |
+|---|---|---|
+| `indexOne` | 178 dòng, ~29 điểm | **17 dòng**, 4 điểm |
+| `extractOne` | 142 dòng, ~21 điểm | **29 dòng**, 5 điểm |
+
+- Điểm quyết định đếm đúng như test (`If/For/Range/Case/CommClause` + `&&`/`||`, tính cả trong closure),
+  kích thước là `End().Line - Pos().Line + 1` — doc comment **không** tính. Con số "29 dòng" ghi ở
+  commit `refactor(index)` là do script đo tạm neo vào dòng trống trong doc comment; số đúng là 17.
+- Allowlist còn **34 entry** (seed 36 → xoá 2 entry của 2 hàm vừa tách); test xanh nghĩa là
+  allowlist khớp **chính xác** tập hàm vượt ngân sách hiện tại, không thừa không thiếu — nên 34
+  chính là số hàm còn vượt trần (> 60 dòng hoặc > 12 điểm), không phải 36.
+- Bug phát hiện khi làm: test ngân sách ban đầu **xanh rỗng** vì `root = "../.."` làm `d.Name() == ".."`
+  khớp luật bỏ qua thư mục ẩn → `fs.SkipDir` ngay tại gốc; sửa bằng `path != root &&`.
+- Ngoài kế hoạch: `chunker.NewTemplate`/`DetectType` vốn dựng **mỗi mảnh** trong vòng lặp trong
+  cùng → nay 1 lần/bài (`resolveTemplate`).
 
 ## Commit dự kiến
 
@@ -128,7 +148,7 @@ cùng script để chứng minh `indexOne`/`extractOne` đã rời top; `codegra
 
 ## Nghiệm thu
 
-- [ ] `indexOne` ≤ 45 dòng, `extractOne` ≤ 45 dòng; không còn hàm nào > 80 dòng ngoài allowlist.
-- [ ] `chunker.NewTemplate` chỉ dựng 1 lần/bài; vòng đọc trang chỉ còn 1 bản trong file.
-- [ ] Test mới khoá cửa sổ theo trần ký tự và `pageSink` chỉ ghi đuôi mới.
-- [ ] build/vet/lint/test sạch; allowlist đã xoá 2 entry của 2 hàm vừa tách.
+- [x] `indexOne` ≤ 45 dòng (17), `extractOne` ≤ 45 dòng (29); không còn hàm nào > 80 dòng ngoài allowlist.
+- [x] `chunker.NewTemplate` chỉ dựng 1 lần/bài (`resolveTemplate`); vòng đọc trang chỉ còn 1 bản (`eachPageWindow`).
+- [x] Test mới khoá cửa sổ theo trần ký tự (`TestIndexWindowStopsAtCharCap`) và `extractRun` chỉ ghi đuôi mới (`TestExtractRunWritesOnlyNewPages`).
+- [x] build/vet/lint/test sạch (`golangci-lint run ./...` → 0 issues); allowlist đã xoá 2 entry của 2 hàm vừa tách.
