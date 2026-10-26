@@ -17,6 +17,26 @@ $bp-lg: 1280px;
   white-space: nowrap;
 }
 
+// ---- Card BẤM ĐƯỢC: elevation 1 tĩnh, hover nhấc lên elevation 2 ----
+// Card tĩnh (thống kê, panel thông tin, hộp đăng nhập) KHÔNG dán mixin này —
+// card tự nhảy khi trỏ chuột vào là báo hiệu sai rằng nó có hành động.
+// Chỉ dùng transform + box-shadow để không gây reflow (skill: transform-performance).
+@mixin card-pressable {
+  box-shadow: var(--elevation-1);
+  transition:
+    box-shadow var(--duration-fast) var(--easing-standard),
+    transform var(--duration-fast) var(--easing-standard);
+
+  &:hover {
+    box-shadow: var(--elevation-2);
+    transform: translateY(calc(var(--hover-lift) * -1));
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
 // ---- Bố cục .page-head dùng chung cho MỌI trang trong APP SHELL ----
 // Khai báo MỘT lần ở đây (file này chỉ có biến + mixin nên không sinh CSS
 // trùng vào style của từng trang). Trang chỉ @use rồi chọn biến thể,

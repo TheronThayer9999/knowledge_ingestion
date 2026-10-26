@@ -39,35 +39,55 @@
         }
       </nav>
 
-      @if (!isHandset()) {
-        <div class="nav-footer">
-          <button
-            mat-icon-button
-            type="button"
-            (click)="toggleNav()"
-            [matTooltip]="collapsed() ? lang.t('NAV_EXPAND') : lang.t('NAV_COLLAPSE')"
-            [attr.aria-label]="collapsed() ? lang.t('NAV_EXPAND') : lang.t('NAV_COLLAPSE')"
-          >
-            <mat-icon aria-hidden="true">{{ collapsed() ? 'chevron_right' : 'chevron_left' }}</mat-icon>
-          </button>
-        </div>
-      }
+      <!-- Nút thu/mở nằm luôn ở header (kiểu Gmail) — sidebar không mang
+           footer điều khiển nữa. -->
     </div>
   </mat-sidenav>
 
   <mat-sidenav-content class="shell-body">
     <mat-toolbar class="shell-topbar">
-      @if (isHandset()) {
-        <button
-          mat-icon-button
-          type="button"
-          (click)="toggleNav()"
-          [attr.aria-label]="lang.t('NAV_OPEN_MENU')"
-        >
-          <mat-icon aria-hidden="true">menu</mat-icon>
-        </button>
-      }
+      <!-- trái: nút menu (mở drawer trên mobile, thu rail trên desktop) -->
+      <button
+        mat-icon-button
+        type="button"
+        class="nav-toggle"
+        (click)="toggleNav()"
+        [matTooltip]="lang.t(navButtonLabel())"
+        [attr.aria-label]="lang.t(navButtonLabel())"
+      >
+        <mat-icon aria-hidden="true">menu</mat-icon>
+      </button>
+
       <h1 class="topbar-title">{{ lang.t(pageTitle()) }}</h1>
+
+      <!-- giữa: ô tìm kiếm bo tròn — Enter là nhảy thẳng vào bảng tài liệu
+           đã lọc theo từ khóa (?q=) -->
+      <div class="search-box">
+        <mat-icon class="search-icon" aria-hidden="true">search</mat-icon>
+        <input
+          #searchInput
+          class="search-input"
+          type="text"
+          autocomplete="off"
+          [value]="searchTerm()"
+          [placeholder]="lang.t('SHELL_SEARCH_PLACEHOLDER')"
+          [attr.aria-label]="lang.t('SHELL_SEARCH_PLACEHOLDER')"
+          (input)="searchTerm.set(searchInput.value)"
+          (keydown.enter)="runGlobalSearch()"
+        />
+        @if (searchTerm()) {
+          <button
+            mat-icon-button
+            type="button"
+            class="search-clear"
+            (click)="clearGlobalSearch(searchInput)"
+            [attr.aria-label]="lang.t('DOC_CLEAR_SEARCH')"
+          >
+            <mat-icon aria-hidden="true">close</mat-icon>
+          </button>
+        }
+      </div>
+
       <span class="topbar-spacer"></span>
       <!-- Action góc phải render từ HEADER_ACTIONS — thêm nút chỉ sửa config -->
       @for (action of headerActions; track action) {

@@ -1,0 +1,122 @@
+// Thiết kế của MỌI control Material đặt tập trung ở đây (Material 21 đọc
+// cấu hình qua custom property --mat-<component>-<prop>; giá trị mặc định chỉ
+// là fallback nên khai báo ở :root là cả app đổi theo).
+//
+// Quy tắc:
+// - component KHÔNG tự khai báo shape/height/màu nền tảng nữa — muốn khác biệt
+//   thì sửa ở file này, hoặc chỉ overlay đúng thuộc tính thực sự lạ (xem
+//   .danger-button trong profile.scss);
+// - mọi giá trị lấy từ token (src/styles/tokens) — không hex, không px cứng.
+
+@mixin app-material {
+  :root {
+    // ---- Nút: pill cao 40px, chữ 14/500 (spec mục 3) ----
+    @each $variant in filled, outlined, protected, text {
+      --mat-button-#{$variant}-container-shape: var(--radius-control);
+      --mat-button-#{$variant}-container-height: var(--button-height);
+      --mat-button-#{$variant}-label-text-font: var(--font-ui);
+      --mat-button-#{$variant}-label-text-size: var(--text-size-sm);
+      --mat-button-#{$variant}-label-text-weight: var(--text-weight-strong);
+      --mat-button-#{$variant}-hover-state-layer-opacity: var(--state-hover-opacity);
+      --mat-button-#{$variant}-pressed-state-layer-opacity: var(--state-pressed-opacity);
+    }
+
+    // ---- Nút icon: vòng tròn 40px, glyph 24px ----
+    --mat-icon-button-container-shape: var(--radius-full);
+    --mat-icon-button-state-layer-size: var(--icon-button-size);
+    --mat-icon-button-icon-size: var(--icon-size-lg);
+    --mat-icon-button-hover-state-layer-opacity: var(--state-hover-opacity);
+    --mat-icon-button-pressed-state-layer-opacity: var(--state-pressed-opacity);
+
+    // ---- Ô nhập: viền nhạt, bo --radius-sm, focus viền primary đậm 2px ----
+    --mat-form-field-container-text-font: var(--font-ui);
+    --mat-form-field-container-text-size: var(--text-size-sm);
+    --mat-form-field-container-text-weight: var(--text-weight-regular);
+    --mat-form-field-subscript-text-font: var(--font-ui);
+    --mat-form-field-subscript-text-size: var(--text-size-xs);
+    --mat-form-field-subscript-text-line-height: var(--text-line-height-xs);
+    --mat-form-field-leading-icon-color: var(--color-muted);
+    --mat-form-field-outlined-container-shape: var(--radius-field);
+    --mat-form-field-outlined-outline-color: var(--color-border);
+    --mat-form-field-outlined-hover-outline-color: var(--color-muted);
+    --mat-form-field-outlined-focus-outline-color: var(--color-primary);
+    --mat-form-field-outlined-focus-outline-width: var(--border-width-strong);
+    --mat-form-field-outlined-caret-color: var(--color-primary);
+    --mat-form-field-outlined-input-text-color: var(--color-on-surface);
+    --mat-form-field-outlined-input-text-placeholder-color: var(--color-muted);
+    --mat-form-field-outlined-label-text-font: var(--font-ui);
+    --mat-form-field-outlined-label-text-size: var(--text-size-sm);
+    --mat-form-field-outlined-label-text-populated-size: var(--text-size-xs);
+    --mat-form-field-outlined-label-text-color: var(--color-muted);
+    --mat-form-field-outlined-hover-label-text-color: var(--color-primary);
+    --mat-form-field-outlined-focus-label-text-color: var(--color-primary);
+    --mat-form-field-outlined-disabled-outline-color: var(--color-border);
+
+    // ---- Card: bo --radius-lg, nền trắng, viền cực nhạt ----
+    --mat-card-elevated-container-shape: var(--radius-card);
+    --mat-card-filled-container-shape: var(--radius-card);
+    --mat-card-outlined-container-shape: var(--radius-card);
+    --mat-card-elevated-container-color: var(--color-card-background);
+    --mat-card-filled-container-color: var(--color-card-background);
+    --mat-card-outlined-container-color: var(--color-card-background);
+    --mat-card-outlined-outline-color: var(--color-border);
+    --mat-card-title-text-font: var(--font-ui);
+    --mat-card-title-text-size: var(--text-size-base);
+    --mat-card-title-text-line-height: var(--text-line-height-base);
+    --mat-card-title-text-weight: var(--text-weight-strong);
+    --mat-card-subtitle-text-font: var(--font-ui);
+    --mat-card-subtitle-text-size: var(--text-size-sm);
+    --mat-card-subtitle-text-line-height: var(--text-line-height-sm);
+    --mat-card-subtitle-text-weight: var(--text-weight-regular);
+    --mat-card-subtitle-text-color: var(--color-muted);
+
+    // ---- Menu nổi: elevation 2, item 14px + icon 20px ----
+    --mat-menu-container-shape: var(--radius-md);
+    --mat-menu-container-elevation-shadow: var(--elevation-2);
+    --mat-menu-item-label-text-font: var(--font-ui);
+    --mat-menu-item-label-text-size: var(--text-size-sm);
+    --mat-menu-item-label-text-line-height: var(--text-line-height-sm);
+    --mat-menu-item-label-text-weight: var(--text-weight-regular);
+    --mat-menu-item-icon-size: var(--icon-size-md);
+
+    // ---- Dialog / snackbar: elevation 3, bo --radius-lg ----
+    --mat-dialog-container-shape: var(--radius-card);
+    --mat-dialog-container-elevation-shadow: var(--elevation-3);
+    --mat-dialog-container-color: var(--color-card-background);
+    --mat-snack-bar-container-shape: var(--radius-md);
+    --mat-snack-bar-button-color: var(--color-primary);
+    --mat-snack-bar-supporting-text-font: var(--font-ui);
+    --mat-snack-bar-supporting-text-size: var(--text-size-sm);
+
+    // ---- List / nav: item cao --nav-item-height, bo pill, state layer nhạt ----
+    --mat-list-list-item-one-line-container-height: var(--nav-item-height);
+    --mat-list-list-item-two-line-container-height: var(--list-row-height);
+    --mat-list-list-item-container-shape: var(--radius-control);
+    --mat-list-list-item-label-text-font: var(--font-ui);
+    --mat-list-list-item-label-text-size: var(--text-size-sm);
+    --mat-list-list-item-label-text-line-height: var(--text-line-height-sm);
+    --mat-list-list-item-label-text-weight: var(--text-weight-regular);
+    --mat-list-list-item-leading-icon-size: var(--icon-size-md);
+    --mat-list-list-item-hover-state-layer-opacity: var(--state-hover-opacity);
+    --mat-list-list-item-focus-state-layer-opacity: var(--state-pressed-opacity);
+
+    // ---- Checkbox / radio: chữ 14 theo thang của app ----
+    --mat-checkbox-label-text-font: var(--font-ui);
+    --mat-checkbox-label-text-size: var(--text-size-sm);
+    --mat-checkbox-label-text-line-height: var(--text-line-height-sm);
+    --mat-radio-label-text-font: var(--font-ui);
+    --mat-radio-label-text-size: var(--text-size-sm);
+    --mat-radio-label-text-line-height: var(--text-line-height-sm);
+
+    // ---- Đường kẻ phân cách: dùng đúng viền nhạt toàn project ----
+    --mat-divider-color: var(--color-border);
+    --mat-divider-width: var(--border-width);
+  }
+
+  // Snackbar không có prop elevation riêng (bóng hardcode trong CSS của Material)
+  // nên phủ bằng selector toàn cục — overlay attach ở body, style toàn trang
+  // với tới được mà không cần :ng-deep.
+  .mdc-snackbar__surface {
+    box-shadow: var(--elevation-3);
+  }
+}

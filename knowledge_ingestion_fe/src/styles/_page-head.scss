@@ -4,12 +4,12 @@
 // _mixins.scss (`page-head-split`, `page-head-stack`) — trang @use rồi chọn.
 .page-title {
   margin: 0;
-  font: var(--mat-sys-headline-small);
+  font: var(--text-style-lg);
   color: var(--color-on-surface);
 }
 
 .page-subtitle {
   margin: var(--space-1) 0 0;
-  font: var(--mat-sys-body-medium);
+  font: var(--text-style-sm);
   color: var(--color-muted);
 }

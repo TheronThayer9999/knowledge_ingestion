@@ -45,13 +45,13 @@
 
 .card-title {
   margin: 0;
-  font: var(--mat-sys-title-medium);
+  font: var(--text-style-base-strong);
   color: var(--color-on-surface);
 }
 
 .card-desc {
   margin: var(--space-1) 0 0;
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
 }
 
@@ -63,7 +63,7 @@
 
 .field-label {
   margin: 0;
-  font: var(--mat-sys-label-large);
+  font: var(--text-style-sm-strong);
   color: var(--color-on-surface);
 }
 
@@ -85,7 +85,7 @@
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-on-surface);
-  font: var(--mat-sys-body-medium);
+  font: var(--text-style-sm);
   text-align: left;
   cursor: pointer;
   transition:

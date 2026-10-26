@@ -75,6 +75,7 @@
       <form class="form" [formGroup]="form" (ngSubmit)="submit()">
         <mat-form-field appearance="outline">
           <mat-label>{{ lang.t('PROFILE_OLD_PASSWORD') }}</mat-label>
+          <mat-icon matIconPrefix aria-hidden="true">lock</mat-icon>
           <input
             matInput
             [type]="isVisible('old') ? 'text' : 'password'"
@@ -97,6 +98,7 @@
 
         <mat-form-field appearance="outline">
           <mat-label>{{ lang.t('PROFILE_NEW_PASSWORD') }}</mat-label>
+          <mat-icon matIconPrefix aria-hidden="true">lock</mat-icon>
           <input
             matInput
             [type]="isVisible('new') ? 'text' : 'password'"
@@ -127,6 +129,7 @@
 
         <mat-form-field appearance="outline">
           <mat-label>{{ lang.t('PROFILE_CONFIRM_PASSWORD') }}</mat-label>
+          <mat-icon matIconPrefix aria-hidden="true">lock</mat-icon>
           <input
             matInput
             [type]="isVisible('confirm') ? 'text' : 'password'"

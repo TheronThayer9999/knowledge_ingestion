@@ -3,6 +3,7 @@
 @use './reset';
 @use './fonts';
 @use './page-head';
+@use './material';
 
 @mixin app-theme($primary, $tertiary) {
   @include mat.theme(
@@ -40,6 +41,10 @@ html {
 .theme-cyan-orange {
   @include app-theme(mat.$cyan-palette, mat.$orange-palette);
 }
+
+// Shape/height/elevation/chữ của control Material — đặt SAU khối theme để
+// luôn thắng nếu Material (hoặc ta) có sinh --mat-* ở class palette.
+@include material.app-material;
 
 body {
   // thang chữ chuẩn của app: body 14/400 (shorthand `font:` đặt luôn

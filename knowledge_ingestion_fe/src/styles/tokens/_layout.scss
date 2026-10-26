@@ -19,6 +19,9 @@
   --content-max-width-page: 1280px;
   // panel tiện ích trang chat (phạm vi/phiên mới) — hẹp để card chat rộng
   --utility-panel-width: 280px;
+  // ô tìm kiếm ở header (pill, giữa thanh công cụ)
+  --search-max-width: 480px;
+  --search-height: 44px;
   // cụm empty state + chip gợi ý của chat
   --suggestions-max-width: 480px;
 
@@ -28,6 +31,7 @@
   --button-height-sm: 32px; // nút dẹt trong toolbar/card
   --icon-button-size: 40px; // nút chỉ có icon (vùng chạm vẫn đủ 40px)
   --list-row-height: 52px; // dòng bảng tài liệu, dòng danh sách
+  --nav-item-height: 48px; // mục sidebar (pill)
   --avatar-size: 40px;
   --avatar-size-toolbar: 36px;
 

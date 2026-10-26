@@ -82,6 +82,7 @@ export const VI_ENTRIES = [
   ['NAV_COLLAPSE', 'Thu gọn thanh điều hướng'],
   ['NAV_EXPAND', 'Mở rộng thanh điều hướng'],
   ['NAV_OPEN_MENU', 'Mở menu'],
+  ['SHELL_SEARCH_PLACEHOLDER', 'Tìm tài liệu…'],
   ['TOOLBAR_ACCOUNT_MENU', 'Tài khoản'],
   ['TOOLBAR_LOGOUT', 'Đăng xuất'],
 

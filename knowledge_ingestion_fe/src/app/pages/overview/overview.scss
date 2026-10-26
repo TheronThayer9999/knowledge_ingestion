@@ -57,7 +57,7 @@
 
 .stat-value {
   margin: 0;
-  font: var(--mat-sys-headline-small);
+  font: var(--text-style-lg);
   color: var(--color-on-surface);
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
@@ -65,13 +65,13 @@
 
 .stat-label {
   margin: 0;
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
 }
 
 .stat-hint {
   margin: var(--space-1) 0 0;
-  font: var(--mat-sys-label-small);
+  font: var(--text-style-xs-strong);
   color: var(--color-muted);
 }
 
@@ -98,7 +98,7 @@
 
 .panel-title {
   margin: 0;
-  font: var(--mat-sys-title-small);
+  font: var(--text-style-sm-strong);
   color: var(--color-on-surface);
 }
 
@@ -140,7 +140,7 @@
 
 .doc-name {
   margin: 0;
-  font: var(--mat-sys-body-medium);
+  font: var(--text-style-sm);
   color: var(--color-on-surface);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -149,7 +149,7 @@
 
 .doc-meta {
   margin: 0;
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -157,7 +157,7 @@
 }
 
 .doc-date {
-  font: var(--mat-sys-label-small);
+  font: var(--text-style-xs-strong);
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
@@ -211,12 +211,12 @@
 }
 
 .quick-title {
-  font: var(--mat-sys-body-medium);
+  font: var(--text-style-sm);
   color: var(--color-on-surface);
 }
 
 .quick-desc {
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
 }
 
@@ -238,7 +238,7 @@
 
 .tip-body {
   margin: var(--space-2) 0 0;
-  font: var(--mat-sys-body-small);
+  font: var(--text-style-xs);
   color: var(--color-muted);
 }
 
@@ -255,7 +255,7 @@
 
 .empty p {
   margin: 0;
-  font: var(--mat-sys-body-medium);
+  font: var(--text-style-sm);
 }
 
 // ---- Skeleton ----

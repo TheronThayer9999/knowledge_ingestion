@@ -21,18 +21,25 @@
   --text-size-base: 16px;
   --text-size-lg: 22px;
 
+  // line-height tách riêng để Material (chỉ nhận từng phần tử, không nhận
+  // shorthand `font:`) lấy được đúng thang của app
+  --text-line-height-xs: 16px;
+  --text-line-height-sm: 20px;
+  --text-line-height-base: 24px;
+  --text-line-height-lg: 28px;
+
   // độ đậm — component cần font-weight đơn lẻ (chữ trong nav, badge) thì lấy
   // 2 token này, không viết 500/600 bằng tay
   --text-weight-regular: 400;
   --text-weight-strong: 500;
 
-  --text-style-xs: 400 var(--text-size-xs)/16px var(--font-ui);
-  --text-style-xs-strong: 500 var(--text-size-xs)/16px var(--font-ui);
-  --text-style-sm: 400 var(--text-size-sm)/20px var(--font-ui);
-  --text-style-sm-strong: 500 var(--text-size-sm)/20px var(--font-ui);
-  --text-style-base: 400 var(--text-size-base)/24px var(--font-ui);
-  --text-style-base-strong: 500 var(--text-size-base)/24px var(--font-ui);
-  --text-style-lg: 500 var(--text-size-lg)/28px var(--font-ui);
+  --text-style-xs: 400 var(--text-size-xs)/var(--text-line-height-xs) var(--font-ui);
+  --text-style-xs-strong: 500 var(--text-size-xs)/var(--text-line-height-xs) var(--font-ui);
+  --text-style-sm: 400 var(--text-size-sm)/var(--text-line-height-sm) var(--font-ui);
+  --text-style-sm-strong: 500 var(--text-size-sm)/var(--text-line-height-sm) var(--font-ui);
+  --text-style-base: 400 var(--text-size-base)/var(--text-line-height-base) var(--font-ui);
+  --text-style-base-strong: 500 var(--text-size-base)/var(--text-line-height-base) var(--font-ui);
+  --text-style-lg: 500 var(--text-size-lg)/var(--text-line-height-lg) var(--font-ui);
   // riêng ô soạn chat: line-height 22px để cao đúng --control-height (48px)
   --text-style-input: 400 var(--text-size-sm)/22px var(--font-ui);
 

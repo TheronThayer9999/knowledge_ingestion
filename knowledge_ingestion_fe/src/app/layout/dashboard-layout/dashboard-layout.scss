@@ -5,15 +5,18 @@
 
 .shell {
   height: 100dvh;
-  background: var(--color-surface);
+  background: var(--color-page-background);
 }
 
 // ---- Sidenav ----
+// Sidebar cùng tông nền trang, KHÔNG viền cứng: Drive/Gmail phân tách bằng
+// khoảng trắng và nền pill của mục đang chọn, không bằng đường kẻ.
 .shell-nav {
   width: var(--sidebar-width);
-  background: var(--color-surface-container);
-  border-right: var(--border-width) solid var(--color-border);
-  transition: width var(--duration-base) ease;
+  background: var(--color-page-background);
+  transition:
+    width var(--duration-base) var(--easing-standard),
+    background-color var(--duration-base) var(--easing-standard);
 }
 
 .shell-nav.rail {
@@ -69,28 +72,42 @@
   padding: 0 var(--space-2) !important;
 }
 
+// Mục nav = pill như Gmail/Drive (cao --nav-item-height, bo --radius-control
+// đã có _material.scss đặt cho mọi list). Ở đây chỉ còn phần riêng của nav:
+// nền trong suốt và màu để hover/focus loá lên đúng tông primary.
 .nav-link {
+  --mat-list-list-item-container-color: transparent;
+  --mat-list-list-item-label-text-color: var(--color-on-surface);
+  --mat-list-list-item-leading-icon-color: var(--color-muted);
+  --mat-list-list-item-hover-state-layer-color: var(--color-primary);
+  --mat-list-list-item-focus-state-layer-color: var(--color-primary);
+
   margin-bottom: var(--space-1);
   border-radius: var(--radius-control);
   color: var(--color-on-surface);
   cursor: pointer;
-  transition: background-color var(--duration-fast) ease;
+  transition: background-color var(--duration-fast) var(--easing-standard);
 }
 
 .nav-link:hover {
-  background: var(--color-surface-container-high);
+  background: var(--color-accent-faint);
 }
 
-// Mục đang chọn: nền teal nhạt, bo 8px, cao bằng mọi mục khác (không đổi
-// dimension) — chỉ khác màu icon/chữ
+// Mục đang chọn: nền pill nhạt cùng tông primary + chữ/icon màu primary —
+// chỉ khác màu, không đổi kích thước nên nhãn không giật. Phải ghi đè
+// custom property của list (nhãn/icon lấy từ đó, không thừa hưởng font-weight
+// của phần tử cha).
 .nav-link.is-active {
+  --mat-list-list-item-label-text-weight: var(--text-weight-strong);
+  --mat-list-list-item-label-text-color: var(--color-primary);
+  --mat-list-list-item-leading-icon-color: var(--color-primary);
+
   background: var(--color-accent-soft);
-  color: var(--color-on-surface);
-  font-weight: var(--text-weight-strong);
+  color: var(--color-primary);
 }
 
-.nav-link.is-active mat-icon {
-  color: var(--color-primary);
+.nav-link.is-active:hover {
+  background: var(--color-accent-soft);
 }
 
 // Rail: chỉ còn icon — căn giữa để không lệch trái
@@ -104,34 +121,90 @@
   margin: 0;
 }
 
-.nav-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: var(--space-2) var(--space-3);
-  border-top: var(--border-width) solid var(--color-border);
-}
-
-.shell-nav.rail .nav-footer {
-  justify-content: center;
-}
-
 // ---- Topbar + nội dung ----
+// Header không viền, cùng nền trang (một mặt phẳng duy nhất như Drive/Gmail);
+// khi cuộn nội dung bên dưới vẫn đọc được nhờ màu chữ đậm.
 .shell-topbar {
   position: sticky;
   top: 0;
   z-index: var(--z-toolbar);
-  // icon dịch/bảng màu/sáng-tối cách đều 16px, cùng màu xám trung tính
-  gap: var(--space-4);
+  gap: var(--space-2);
   color: var(--color-muted);
-  background: var(--color-surface);
-  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--color-page-background);
 }
 
 .topbar-title {
-  margin: 0;
+  margin: 0 var(--space-2) 0 0;
   font: var(--text-style-base-strong);
   color: var(--color-on-surface);
   white-space: nowrap;
+}
+
+// Ô tìm kiếm pill ở giữa: icon mở đầu, input trong suốt, nút xóa hiện khi có chữ.
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 var(--search-max-width);
+  min-width: 0;
+  height: var(--search-height);
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-card-background);
+  color: var(--color-muted);
+  transition:
+    box-shadow var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+}
+
+// focus bằng quầng shadow nhẹ + viền đậm lên (không dùng outline vuông trên pill)
+.search-box:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: var(--elevation-2);
+}
+
+.search-icon {
+  flex: 0 0 auto;
+  font-size: var(--icon-size-md);
+}
+
+.search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-on-surface);
+  font: var(--text-style-sm);
+  // vòng focus để cho chính cái pill (bỏ outline của riêng input)
+  outline: none;
+  appearance: none;
+}
+
+.search-input::placeholder {
+  color: var(--color-muted);
+  opacity: 1;
+}
+
+.search-clear {
+  flex: 0 0 auto;
+  width: var(--button-height-sm);
+  height: var(--button-height-sm);
+}
+
+.search-clear mat-icon {
+  font-size: var(--icon-size-md);
+}
+
+// Mobile: nhường chỗ cho ô tìm kiếm — tiêu đề trang đã có lại trong content
+@media (max-width: 767px) {
+  .topbar-title {
+    display: none;
+  }
+
+  .search-box {
+    margin-inline: 0;
+  }
 }
 
 .topbar-spacer {

@@ -44,16 +44,11 @@
   color: var(--color-muted);
 }
 
-// Dropdown "Phạm vi": viền theo token (không đen đậm), cao 48px, bo 8px.
+// Dropdown "Phạm vi": hình dáng/màu viền đã có _material.scss lo toàn app;
+// ở đây chỉ còn phần riêng của ô này là chiều cao 48px và cỡ nhãn.
 // Custom property thừa hưởng xuyên biên giới component nên không cần ng-deep.
 .scope-field {
   width: 100%;
-  --mat-form-field-outlined-container-shape: var(--radius-control);
-  --mat-form-field-outlined-outline-color: var(--color-border);
-  --mat-form-field-outlined-hover-outline-color: var(--color-outline);
-  --mat-form-field-outlined-focus-outline-color: var(--color-primary);
-  --mat-form-field-outlined-focus-label-text-color: var(--color-primary);
-  --mat-form-field-outlined-caret-color: var(--color-primary);
   // Nhãn nổi nhỏ 12px, nhãn tĩnh 14px — đúng thang typography 4 cỡ
   --mat-form-field-outlined-label-text-size: var(--text-size-sm);
   --mat-form-field-outlined-focus-label-text-size: var(--text-size-xs);
@@ -62,14 +57,10 @@
   --mat-form-field-container-height: var(--control-height);
 }
 
-// Nút "Cuộc trò chuyện mới": outlined, bo 8px, full chiều ngang panel;
-// disabled chỉ mờ nhẹ (muted vẫn tương phản đủ đọc)
+// Nút "Cuộc trò chuyện mới": outlined full bề ngang panel; disabled chỉ mờ nhẹ
+// (muted vẫn tương phản đủ đọc)
 .panel-action {
   width: 100%;
-  --mat-button-outlined-container-shape: var(--radius-control);
-  --mat-button-outlined-label-text-weight: 600;
-  --mat-button-outlined-outline-color: var(--color-border);
-  --mat-button-outlined-hover-outline-color: var(--color-outline);
   --mat-button-outlined-label-text-color: var(--color-on-surface);
   --mat-button-outlined-disabled-outline-color: var(--color-border);
   --mat-button-outlined-disabled-label-text-color: var(--color-muted);
@@ -92,7 +83,7 @@
 
 // Nút gập panel nổi đè góc trên-phải card (phía giáp panel tiện ích) — không
 // chiếm dòng nào trong layout nên khung chat giữ nguyên chiều cao.
-// Bo 8px theo thang control (999px chỉ dành cho avatar/badge).
+// Bo tròn đầy theo thang control — nút icon chỉ có một glyph nên tròn là đủ rõ.
 .panel-toggle {
   position: absolute;
   top: var(--space-2);
@@ -510,15 +501,13 @@
   line-height: var(--icon-size-md);
 }
 
-// Nút Gửi/Dừng: bo 8px, cao bằng ô nhập (48px); disabled dùng teal nhạt
+// Nút Gửi/Dừng: cao bằng ô nhập (48px); disabled dùng teal nhạt
 // (--color-accent-soft) với chữ vẫn là màu primary — tương phản ≥ 3:1.
 .send-button {
   flex: 0 0 auto;
   height: var(--control-height);
-  --mat-button-filled-container-shape: var(--radius-control);
   --mat-button-filled-disabled-container-color: var(--color-accent-soft);
   --mat-button-filled-disabled-label-text-color: var(--color-primary);
-  --mat-button-outlined-container-shape: var(--radius-control);
 }
 
 // Trạng thái bật suy luận sâu phải đọc được bằng màu + nền (icon đơn thuần

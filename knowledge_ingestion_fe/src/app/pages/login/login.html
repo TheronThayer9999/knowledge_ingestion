@@ -17,6 +17,8 @@
       <form class="login-form" [formGroup]="form" (ngSubmit)="submit()">
         <mat-form-field appearance="outline">
           <mat-label>{{ lang.t('AUTH_USERNAME') }}</mat-label>
+          <!-- icon tiền tố: nhận diện ô nhập nhanh hơn đọc nhãn -->
+          <mat-icon matIconPrefix aria-hidden="true">person</mat-icon>
           <input matInput formControlName="username" autocomplete="username" />
           @if (form.controls.username.touched && form.controls.username.invalid) {
             <mat-error>{{ lang.t('AUTH_USERNAME_REQUIRED') }}</mat-error>
@@ -25,6 +27,7 @@
 
         <mat-form-field appearance="outline">
           <mat-label>{{ lang.t('AUTH_PASSWORD') }}</mat-label>
+          <mat-icon matIconPrefix aria-hidden="true">lock</mat-icon>
           <input
             matInput
             type="password"

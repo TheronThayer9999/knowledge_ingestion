@@ -1,5 +1,6 @@
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, signal, type OnDestroy } from '@angular/core';
+import { Component, computed, effect, inject, signal, type OnDestroy } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
@@ -90,6 +91,11 @@ export class Documents implements OnDestroy {
   protected readonly view = signal<ViewMode>('list');
   protected readonly loading = signal(true);
   protected readonly failed = signal(false);
+  // `?q=` do ô tìm kiếm trên APP SHELL ghi vào — trang này chỉ đọc, không tự
+  // điều hướng. URL là nguồn đúng: không có `q` nghĩa là không lọc theo header.
+  private readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  });
   /** Worker còn ghi heartbeat không — false thì bài đang chờ sẽ đứng yên */
   protected readonly workerOnline = signal(true);
   protected readonly skeletonRows = [1, 2, 3, 4, 5, 6];
@@ -154,6 +160,12 @@ export class Documents implements OnDestroy {
   constructor() {
     this.load();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
+    effect(() => {
+      const term = this.queryParams()?.get('q') ?? '';
+      if (term !== this.search()) {
+        this.search.set(term);
+      }
+    });
   }
 
   protected load(): void {

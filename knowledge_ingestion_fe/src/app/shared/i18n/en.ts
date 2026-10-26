@@ -76,6 +76,7 @@ export const EN_ENTRIES = [
   ['NAV_COLLAPSE', 'Collapse navigation'],
   ['NAV_EXPAND', 'Expand navigation'],
   ['NAV_OPEN_MENU', 'Open menu'],
+  ['SHELL_SEARCH_PLACEHOLDER', 'Search documents…'],
   ['TOOLBAR_ACCOUNT_MENU', 'Account'],
   ['TOOLBAR_LOGOUT', 'Sign out'],
 

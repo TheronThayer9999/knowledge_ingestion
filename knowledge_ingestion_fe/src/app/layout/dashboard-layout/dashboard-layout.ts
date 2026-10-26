@@ -19,7 +19,13 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatSidenavContainer, MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  NavigationEnd,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { filter, map } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
@@ -66,6 +72,13 @@ export class DashboardLayout {
   protected readonly headerActions = HEADER_ACTIONS;
   protected readonly collapsed = signal(false);
   protected readonly mobileOpen = signal(false);
+  // từ khóa trong ô tìm kiếm của header (không đồng bộ với URL lúc gõ)
+  protected readonly searchTerm = signal('');
+
+  /** Nhãn nút menu: mobile mở drawer, desktop thu/mở rail */
+  protected readonly navButtonLabel = computed<TranslationKey>(() =>
+    this.isHandset() ? 'NAV_OPEN_MENU' : this.collapsed() ? 'NAV_EXPAND' : 'NAV_COLLAPSE',
+  );
 
   protected readonly isHandset = toSignal(
     this.breakpoints.observe('(max-width: 1023px)').pipe(map((state) => state.matches)),
@@ -130,6 +143,23 @@ export class DashboardLayout {
     if (this.isHandset()) {
       this.mobileOpen.set(false);
     }
+  }
+
+  /**
+   * Tìm kiếm toàn cục: ô tìm ở header, kết quả là bảng tài liệu (trang đã có
+   * sẵn lọc theo tên) — điều hướng kèm ?q= để người dùng thấy ngay danh sách,
+   * không mở thêm một luồng tìm kiếm thứ hai trong app.
+   */
+  protected runGlobalSearch(): void {
+    const term = this.searchTerm().trim();
+    void this.router.navigate(['/app/documents'], {
+      queryParams: term === '' ? {} : { q: term },
+    });
+  }
+
+  protected clearGlobalSearch(input?: HTMLInputElement): void {
+    this.searchTerm.set('');
+    input?.focus();
   }
 
   protected logout(): void {
