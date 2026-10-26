@@ -361,7 +361,9 @@ export class UploadDialog {
       accepted.push({
         id: this.nextRowId++,
         file,
-        name: stripExtension(file.name),
+        // Giữ NGUYÊN VĂN tên file (kể cả đuôi): đó là tên user đặt, và BE còn
+        // dựa vào đuôi trong tên để đoán template chunking (.xlsx/.csv -> table).
+        name: file.name,
         status: 'pending',
         error: null,
       });
@@ -383,10 +385,6 @@ function validateFile(file: File): TranslationKey | null {
     return 'DOC_UPLOAD_TOO_LARGE';
   }
   return null;
-}
-
-function stripExtension(name: string): string {
-  return name.replace(/\.[^.]+$/, '');
 }
 
 /** Message lỗi từ backend đã là tiếng Việt và được phép lộ ra client */

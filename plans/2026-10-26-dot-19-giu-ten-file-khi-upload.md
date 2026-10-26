@@ -20,6 +20,7 @@ Hệ quả phụ (đáng sửa luôn):
 | File | Việc |
 |---|---|
 | `knowledge_ingestion_fe/.../documents/dialogs/upload-dialog.ts` | Prefill tên dòng = `file.name` (nguyên văn, có cả đuôi); xoá `stripExtension` (không còn chỗ dùng) |
+| `src/common/chunker/template_test.go` (mới) | Khoá lí do phải giữ đuôi: `DetectType` chỉ ra `table` khi tên còn `.xlsx`/`.csv` (hoặc content-type là csv/excel) |
 
 Không đổi BE: `articles.name` vốn đã lưu nguyên văn, `binding:"required,min=1,max=255"`
 vẫn hợp lệ với tên có đuôi (input FE đã có `maxlength="255"`).
@@ -44,4 +45,31 @@ vẫn hợp lệ với tên có đuôi (input FE đã có `maxlength="255"`).
 
 ## Kết quả
 
-(chờ chạy xong)
+### Kiểm tra
+
+- `npm run lint` → *All files pass linting*; `npm test` → 19 file / 103 test pass;
+  `npm run build` OK.
+- `go test ./src/common/chunker -run TestDetectTypeTheoTenFile -v` → PASS (5 ca).
+- Grep `stripExtension` trong `knowledge_ingestion_fe/src` → không còn.
+
+### E2E thật qua API (không dùng browser)
+
+User test `dot19user` (id 87), category `dot19-cat` (id 125), file thật
+`docs_test_case_and_data/Tài Liệu Mẫu/triethoc_dong_phuong_va_so_sanh.pdf`.
+
+1. `POST /api/v1/uploads/presign/batch` → `filename: "triethoc_dong_phuong_va_so_sanh.pdf"`,
+   `key: uploads/01a17724-65f4-...pdf`, `content_type: application/pdf`.
+2. `PUT <upload_url>` → **200** (file nằm trong kho SeaweedFS).
+3. `POST /api/v1/articles` với `name` = tên file đầy đủ (đúng như FE giờ gửi) → bài `id=68`,
+   response trả `"name":"triethoc_dong_phuong_va_so_sanh.pdf"`.
+4. `GET /api/v1/articles?category_id=125` → `name` vẫn còn `.pdf`.
+5. DB: `select name, content_type from articles where id=68` →
+   `triethoc_dong_phuong_va_so_sanh.pdf | application/pdf`.
+
+Kết luận: tên file user đặt được giữ nguyên từ dialog → presign → article → danh sách,
+không còn bị cắt đuôi; `content_type` vẫn do BE suy từ đuôi như cũ.
+
+### Dọn dẹp
+
+Đã xoá mềm bài `68` + category `125` của user test (API `DELETE`), dừng API dev, xoá file
+log/json tạm — không để lại dữ liệu rác trong DB dev.
