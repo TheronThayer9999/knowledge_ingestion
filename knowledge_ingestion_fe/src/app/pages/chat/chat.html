@@ -1,18 +1,21 @@
 <section class="page">
   <div class="chat-card">
-    <!-- Nút gập/mở sidebar tiện ích — nổi đè lên góc card để không chiếm
-         chiều cao của khung chat -->
-    <button
-      mat-icon-button
-      type="button"
-      class="panel-toggle"
-      [attr.aria-expanded]="panelOpen()"
-      [attr.aria-label]="lang.t('CHAT_PANEL_TOGGLE')"
-      [matTooltip]="lang.t('CHAT_PANEL_TOGGLE')"
-      (click)="togglePanel()"
-    >
-      <mat-icon aria-hidden="true">tune</mat-icon>
-    </button>
+    <!-- Thanh trên card: trước đây nút tune là absolute nổi đè góc trên-phải nên
+         bong bóng user (canh phải) chui xuống dưới, chữ bị che. Đổi sang dòng thật
+         trong luồng flex — card cao hơn một nhịp nhưng không đè nội dung nào. -->
+    <div class="card-bar">
+      <button
+        mat-icon-button
+        type="button"
+        class="panel-toggle"
+        [attr.aria-expanded]="panelOpen()"
+        [attr.aria-label]="lang.t('CHAT_PANEL_TOGGLE')"
+        [matTooltip]="lang.t('CHAT_PANEL_TOGGLE')"
+        (click)="togglePanel()"
+      >
+        <mat-icon aria-hidden="true">tune</mat-icon>
+      </button>
+    </div>
     <div class="messages" #scroller>
       @if (turns().length === 0) {
         <div class="chat-empty">
@@ -58,11 +61,29 @@
                     <p class="reasoning-body">{{ turn.reasoning }}</p>
                   </details>
                 }
-                <div class="markdown-body" [innerHTML]="turn.content | markdown"></div>
+                <!-- Chip [^n] do MarkdownPipe sinh, không phải phần tử Angular →
+                     delegate sự kiện từ khối markdown, index để tra đúng bong bóng.
+                     Token focusable (tabindex=0) nằm trên chính cái chip trong HTML
+                     đã sanitize, div này chỉ là điểm bắt sự kiện nên rule không tự
+                     suy ra được. -->
+                <!-- eslint-disable-next-line @angular-eslint/template/interactive-supports-focus -->
+                <div
+                  class="markdown-body"
+                  (click)="onCiteRefClick($event, $index)"
+                  (keydown)="onCiteRefKey($event, $index)"
+                  [innerHTML]="turn.content | markdown: lang.t('CHAT_CITE_JUMP')"
+                ></div>
 
                 @if (turn.cites && turn.cites.length > 0) {
-                  <div class="cites">
-                    <p class="cites-title">{{ lang.t('CHAT_SOURCES') }}</p>
+                  <!-- Gập theo mặc định (khuôn details.reasoning ở trên): câu trả lời
+                       dài không bị dãy nguồn chiếm chỗ cuối, bấm chip mới mở ra -->
+                  <details class="cites">
+                    <summary class="cites-title">
+                      <span class="cites-label">
+                        {{ lang.t('CHAT_SOURCES') }} ({{ turn.cites.length }})
+                      </span>
+                      <mat-icon class="cites-chevron" aria-hidden="true">expand_more</mat-icon>
+                    </summary>
                     <ul class="cites-list">
                       @for (cite of turn.cites; track cite.n) {
                         <li>
@@ -84,7 +105,7 @@
                         </li>
                       }
                     </ul>
-                  </div>
+                  </details>
                 }
               }
             </div>

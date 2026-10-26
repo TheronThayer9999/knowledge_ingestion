@@ -248,6 +248,7 @@ export const VI_ENTRIES = {
   CHAT_SOURCES: 'Nguồn trích dẫn',
   CHAT_CITE_PAGE: 'Trang',
   CHAT_CITE_OPEN: 'Mở tài liệu nguồn',
+  CHAT_CITE_JUMP: 'Nhảy tới nguồn trích dẫn',
   CHAT_PANEL_TOGGLE: 'Tiện ích hội thoại',
   CHAT_CLEAR: 'Cuộc trò chuyện mới',
   CHAT_YOU: 'Bạn',

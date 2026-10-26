@@ -76,4 +76,32 @@ Phần UI/UX trên browser anh tự kiểm tra (theo ý đã chốt).
 
 ## Kết quả
 
-(điền sau khi xong đợt)
+### Đã làm
+
+| File | Kết quả thực tế |
+|---|---|
+| `shared/markdown/citation-ref.extension.ts` | **Mới** — inline tokenizer `/^\[\^(\d{1,3})\]/` → `<sup class="md-cite-ref" role="button" tabindex="0" aria-label="…">n</sup>`. Khác plan: `Tokens.Generic` là index signature nên TS (rule `noPropertyAccessFromIndexSignature`) bắt viết `token['citeN']`, không được `token.citeN`; escape thêm `>` (plan chỉ ghi `&`/`"`/`<`) |
+| `shared/markdown/markdown.pipe.ts` | `new Marked({gfm, breaks})` + `use({extensions})`, cache `Map<string, Marked>` theo label (né sửa singleton `marked.use` toàn cục); `transform(value, jumpLabel)` — label thành tham số **bắt buộc** |
+| `shared/markdown/markdown.pipe.spec.ts` | **Mới**, 7 case, render qua component host thật để ăn luôn bước sanitize |
+| `pages/chat/chat.ts` | `onCiteRefClick`/`onCiteRefKey` → `jumpToCite` (delegate, đọc số từ `textContent`), `bubbleAt` (tra `.turn` theo `$index` qua `#scroller`), `citeItem` (khớp `.cite-n` theo chữ), `flash` (gỡ class ở `animationend`, không timer) |
+| `pages/chat/chat.html` | `div.cites` → `details.cites` + `summary.cites-title` kèm số nguồn; `.markdown-body` nhận `(click)`/`(keydown)` + label vào pipe; nút tune vào `.card-bar` |
+| `pages/chat/chat.scss` | `.card-bar` thay `position:absolute` (kèm xoá `position: relative` của `.chat-card` và `z-index: --z-card-float` — không còn ai cần mốc neo); **gộp selector** `.reasoning-summary`/`.cites-title` + chevron + focus-visible vì trang chạm ngân sách style |
+| `styles/styles.scss` | `.markdown-body .md-cite-ref` (chip) đặt toàn cục, hover đổi nền, `em` cho cỡ chữ |
+| `shared/i18n/vi.ts`/`en.ts` | `CHAT_CITE_JUMP` |
+
+### Kiểm chứng
+
+- `npx prettier --check` 9 file đã chạm → **All matched files use Prettier code style** (không đổi line endings).
+- `npx ng lint` → **All files pass linting**. Lần đầu fail 1 lỗi `@angular-eslint/template/interactive-supports-focus` ở `.markdown-body` (div có handler mà không focusable) — xử lý bằng `eslint-disable-next-line` **có comment giải thích thật**: token focusable (`tabindex=0`) nằm trên chính cái chip trong HTML đã sanitize, div chỉ là điểm bắt sự kiện delegate; không gán `tabindex="0"` cho cả khối answer chỉ để chiều lint.
+- `npx ng test --watch=false` → **20 files / 115 tests passed** (thêm 7 test mới). Đáng chú ý: test chứng minh **sanitizer của Angular giữ `class`/`role`/`tabindex`/`aria-label`** nên chip là nút bàn phím thật, **không cần fallback `<button>`** như phương án dự phòng trong plan.
+- `npx ng build` → thành công, **hết warning budget**. Lần build đầu sau khi thêm style báo `chat.scss exceeded maximum budget. Budget 10.00 kB was not met by 304 bytes` (`angular.json`: anyComponentStyle warning 10kB / **error 12kB**) → sửa bằng cách gom phần trùng với khối `.reasoning` có sẵn, **không** nâng ngân sách.
+
+### Chưa kiểm chứng (nói thật)
+
+- Chuỗi bấm-chip → mở nguồn → cuộn → nháy sáng (`jumpToCite`) **chưa có test tự động**: jsdom không có `Element.scrollIntoView` và không fired `animationend`, nên test chỉ kiểm được phần ngụy tạo. Logic này dựa vào pass UI thật trên browser — phần anh tự kiểm tra.
+- Chip chỉ hiện khi có đáp án thật, mà BE + worker đang tắt (dọn từ Đợt 22) nên chưa chạy vòng E2E FE↔BE. Render đã chắc chắn bằng spec với HTML do pipe sinh ra.
+
+### Dọn dẹp
+
+Không để lại file tạm/script; không đụng `configs/`; không đụng hằng số i18n cũ. `git status` sau commit sạch.
+

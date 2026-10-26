@@ -160,6 +160,69 @@ export class Chat {
   }
 
   /**
+   * Bấm chip `[^n]` trong đáp án: chip do MarkdownPipe sinh ra (không phải phần tử
+   * Angular) nên bắt sự kiện kiểu delegate từ .markdown-body, số nguồn đọc từ
+   * textContent vì id/data-* nằm ngoài allowlist sanitizer.
+   */
+  protected onCiteRefClick(event: MouseEvent, turnIndex: number): void {
+    this.jumpToCite(event.target, turnIndex);
+  }
+
+  /** Chip là `sup[role=button]` chứ không phải `<button>` nên bàn phím phải tự lo */
+  protected onCiteRefKey(event: KeyboardEvent, turnIndex: number): void {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+    event.preventDefault();
+    this.jumpToCite(event.target, turnIndex);
+  }
+
+  private jumpToCite(target: EventTarget | null, turnIndex: number): void {
+    const chip = target instanceof Element ? target.closest('.md-cite-ref') : null;
+    const number = Number((chip?.textContent ?? '').trim());
+    const bubble = this.bubbleAt(turnIndex);
+    if (!chip || !Number.isInteger(number) || number < 1 || !bubble) {
+      return;
+    }
+    // Nguồn mặc định gập — mở ra trước rồi mới nhảy, vì bấm số là để xem nguồn
+    const panel = bubble.querySelector<HTMLDetailsElement>('details.cites');
+    if (panel) {
+      panel.open = true;
+    }
+    const item = this.citeItem(bubble, number);
+    if (!item) {
+      return;
+    }
+    item.scrollIntoView({ block: 'nearest' });
+    this.flash(item);
+  }
+
+  /** .turn thứ index — tra từ DOM chứ không giữ reference vì danh sách thêm lượt liên tục */
+  private bubbleAt(turnIndex: number): HTMLElement | null {
+    const turn = this.scroller()?.nativeElement.querySelectorAll<HTMLElement>('.turn')[turnIndex];
+    return turn?.querySelector<HTMLElement>('.bubble') ?? null;
+  }
+
+  /** Khớp số nguồn bằng chính chữ in trên chip: danh sách và marker cùng một bộ đếm */
+  private citeItem(bubble: HTMLElement, number: number): HTMLElement | null {
+    const match = Array.from(bubble.querySelectorAll<HTMLElement>('.cite-n')).find(
+      (element) => element.textContent?.trim() === String(number),
+    );
+    return match?.closest<HTMLElement>('li') ?? null;
+  }
+
+  private flash(item: HTMLElement): void {
+    item.classList.remove('is-flash');
+    // Đọc size ép browser tính lại layout, nếu không bấm liền 2 lần cùng một
+    // nguồn thì animation không chạy lại
+    void item.offsetWidth;
+    item.classList.add('is-flash');
+    item.addEventListener('animationend', () => item.classList.remove('is-flash'), {
+      once: true,
+    });
+  }
+
+  /**
    * Dừng lúc model đang trả lời: hủy request, bỏ lượt user vừa ghi vào
    * transcript và trả câu hỏi về ô soạn — chưa có đáp án nên giữ nó trong
    * history chỉ tổ làm nhiễu ngữ cảnh lượt sau.

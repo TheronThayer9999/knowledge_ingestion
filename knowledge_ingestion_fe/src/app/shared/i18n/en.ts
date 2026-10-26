@@ -251,6 +251,7 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   CHAT_SOURCES: 'Sources',
   CHAT_CITE_PAGE: 'Page',
   CHAT_CITE_OPEN: 'Open source document',
+  CHAT_CITE_JUMP: 'Jump to cited source',
   CHAT_PANEL_TOGGLE: 'Conversation options',
   CHAT_CLEAR: 'New conversation',
   CHAT_YOU: 'You',
