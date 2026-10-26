@@ -116,6 +116,34 @@ Không đổi nội dung/ level log hiện có, chỉ thêm field.
 4. `fix(logs): chỉ gắn stack trace từ mức error`
 5. `docs(plans): ghi kết quả đợt 10`
 
+## Kết quả
+
+Backend **không đổi một dòng nào** cho tính năng upload — `POST /uploads/presign/batch`
+đã đủ (validate trọn lô trước khi ký, trả `items` đúng thứ tự, ≤ 20 file).
+
+| Phần | Thay đổi | Kiểm chứng |
+|---|---|---|
+| A — upload nhiều file | `knowledge.service.ts` (`uploadDocuments`/`presignMany`/`uploadOne`, xoá `uploadDocument`+`presign`), `upload-dialog.ts/html/scss`, `documents.ts` (`Article[]`), i18n vi/en | `npm run lint` sạch, `ng test` 18 file / **94 test** xanh (2 test mới), `npm run build` OK |
+| B — log theo file | `extract`/`index`/`compile`: thêm `articleTags`, log `nhận lô bài`, log `bắt đầu bài`, gắn `name` vào 18 dòng log per-bài; `summarize` nhận `*domain.Article` | `go build`/`vet`/`golangci-lint` sạch, `go test ./...` xanh |
+| C — stack trace | `logs.go`: `stackOptions()` + `newLogger(cfg)`, `LoadLogger` đặt `DisableStacktrace = true`; `logs_test.go` mới | test khoá: WARN không chen dòng stack, ERROR có |
+
+### Phát hiện khi làm
+
+- `zap.Config.Build(opts...)` áp `opts` **sau** `buildOptions()` (đọc source
+  `zap@v1.27.0/config.go`) → `AddStacktrace(ErrorLevel)` thắng mức `WarnLevel` của
+  `Development`; không cần dựng core bằng tay.
+- Console encoder in stack thành **các dòng nối sau entry**, không phải field
+  `stacktrace` → test phải đếm khoảng cách dòng (`errAt == warnAt+1`) thay vì
+  `strings.Contains("stacktrace")`.
+- File sink của zap giữ handle trên Windows → `t.TempDir()` + `RemoveAll` fail ở
+  bước cleanup. Test dựng core ghi vào `bytes.Buffer` và dùng đúng
+  `stackOptions()` của production (một nguồn chính sách duy nhất).
+- `article_compile_service.go` vốn đã là CRLF (`gofmt -l` báo cả file); kiểm tra
+  bằng cách normalize CRLF→LF ra file tạm rồi `gofmt -l` → sạch, nên **không**
+  convert line ending (đúng quy ước trong AGENTS).
+- File Go tạo mới bằng công cụ ghi file ra CRLF → `gofmt -w` riêng file đó để về LF
+  (không đụng file cũ).
+
 ## Ngoài phạm vi (ghi nhận, chưa làm)
 
 - Không thêm `POST /articles/batch` (1 transaction cho N bài) — FE gọi N lần như hiện tại.
