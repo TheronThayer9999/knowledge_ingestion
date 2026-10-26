@@ -113,8 +113,10 @@ describe('ConversationService', () => {
   it('messages: giữ nguyên thứ tự oldest-first và map cites/scope', async () => {
     const result = service.messages(12).toPromise();
 
-    const req = http.expectOne(api('/conversations/12/messages'));
+    // expectOne(string) so với URL đã nối query — ở đây cần so riêng path
+    const req = http.expectOne((r) => r.url === api('/conversations/12/messages'));
     expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('limit')).toBe('50');
     req.flush({
       ...ENVELOPE_OK,
       data: [
@@ -151,10 +153,12 @@ describe('ConversationService', () => {
 
   it('messages: role lạ vẫn đọc được (rơi về assistant thay vì vỡ template)', async () => {
     const result = service.messages(12).toPromise();
-    http.expectOne(api('/conversations/12/messages')).flush({
-      ...ENVELOPE_OK,
-      data: [{ id: 1, role: 'system', content: '?', created_at: '2026-10-26T09:00:00Z' }],
-    });
+    http
+      .expectOne((r) => r.url === api('/conversations/12/messages'))
+      .flush({
+        ...ENVELOPE_OK,
+        data: [{ id: 1, role: 'system', content: '?', created_at: '2026-10-26T09:00:00Z' }],
+      });
 
     expect((await result)![0].role).toBe('assistant');
     http.verify();
