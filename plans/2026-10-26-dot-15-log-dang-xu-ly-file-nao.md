@@ -79,3 +79,71 @@ Verify: `go build ./... && go vet ./... && golangci-lint run ./...` + `go test .
 - `file` là storage key, KHÔNG phải presigned URL (URL có chữ ký, hết hạn, lộ credential).
 - Log phía API không có `trace_id` sẵn — dùng `utils.TraceIDFromCtx(ctx)` như `Render` để nối với
   dòng HTTP request cùng request.
+
+## Kết quả
+
+### Đã đổi
+
+| File | Thay đổi |
+|---|---|
+| `article_extract_service.go` | thêm `fileTag` (StorageKey → URL → `"-"`), `articleTag` (`id:tên (file)`); 11 dòng log theo bài có `file`, dòng bắt đầu/xong bài có thêm `doc_type`/`content_type`; nhánh backoff đổi `storage_key` → `file` |
+| `article_index_service.go` | 12 dòng: bắt đầu bài (+`doc_type`/`content_type`), hết giờ, lỗi vĩnh viễn, backoff, không đánh dấu lỗi/done, panic, tiến trình, xong 1 bài, embed title lỗi, gọi embed, embed xong — đều có `file` |
+| `article_compile_service.go` | 13 dòng (gồm `compile: gọi LLM tóm tắt mục`, cache hit, đọc/ghi cache lỗi, panic, không có mục nào, xong 1 bài) — đều có `file` |
+| `file_service.go` | `signOne` (dùng chung ký đơn + ký lô) log `file: ký URL upload` với `filename`/`key`/`size`/`content_type`, lỗi thì WARN cùng bộ field — KHÔNG log `upload_url` |
+| `articles_service.go` | tách `detectDocType` + `logArticleCreated`; `Create` log `article: tạo bài, chờ worker` với `article_id`/`name`/`file`/`content_type`/`doc_type`/`category_id`/`user_id` |
+| `article_log_tag_test.go` | test mới `TestFileTag` (4 ca) + `TestArticleTags` (tag lô có file) |
+
+`Create` nhờ tách helper đã xuống dưới ngân sách hàm (60 dòng / 12 điểm) nên **xoá entry
+`(*articleService).Create` khỏi `functionBudgetAllowlist`** — danh sách nợ chỉ ngắn đi.
+
+### Test thật (end-to-end)
+
+API :9001 (`configs/config.local.json`) + worker chạy song song; upload qua `POST /uploads/presign`
+→ `PUT` presigned → `POST /articles` (user feuser/44, danh mục 124).
+
+| # | Bài | Việc | Kết quả |
+|---|---|---|---|
+| 1 | 65 `dot15-log-file` | `txt_noi_dung.txt` (6.5 MB) | extract xong 25 trang; index chạy tới 6880 chunk thì **dừng chủ động** (file quá lớn cho một lượt test) — xoá bài, purge dọn luôn (`found 1, purged 1`) |
+| 2 | 66 `dot15-log-file-2` | `quy_che_tree.txt` (2.6 KB) | **đủ 3 phase**: extract 1 trang → index 12 chunk → compile 11 mục; `compile: gọi LLM tóm tắt mục` hiện `file` cho từng mục |
+| 3 | 67 `dot15-log-file-3` | cùng file, chạy lại trên binary build lại | extract/index/compile đều có `file` (compile ăn cache: `compile: cache hit, không gọi LLM` cũng có `file`) |
+
+Log API (đọc được cả tiếng Việt sau khi đặt `[Console]::OutputEncoding` = UTF-8):
+
+```
+12:35:14.370 INFO services/file_service.go:119 file: ký URL upload
+  {"trace_id":"01a176b4-abc1-…","filename":"quy_che_tree.txt",
+   "key":"uploads/01a176b4-abc2-784c-8a0b-e26c095559fe.txt","size":2633,"content_type":"text/plain"}
+12:35:19.246 INFO services/articles_service.go:123 article: tạo bài, chờ worker
+  {"trace_id":"01a176b4-bebf-…","article_id":66,"name":"dot15-log-file-2",
+   "file":"uploads/01a176b4-abc2-784c-8a0b-e26c095559fe.txt","content_type":"text/plain",
+   "doc_type":"general","category_id":124,"user_id":44}
+```
+
+Log worker — cùng một `file` xuyên 3 phase (bài 66):
+
+```
+12:35:21.959 INFO extract: nhận lô bài      {"articles": ["66:dot15-log-file-2 (uploads/01a176b4-abc2-….txt)"]}
+12:35:21.959 INFO extract: bắt đầu bài     {"article_id":66,"name":"dot15-log-file-2","file":"uploads/01a176b4-abc2-….txt","doc_type":"general","content_type":"text/plain"}
+12:35:21.986 INFO extract: xong 1 bài      {…,"file":"uploads/01a176b4-abc2-….txt","doc_type":"general","pages":1,"new_pages":1,"elapsed_ms":26}
+12:35:31.969 INFO index: bắt đầu bài       {"article_id":66,"name":"dot15-log-file-2","file":"uploads/01a176b4-abc2-….txt","doc_type":"general","content_type":"text/plain"}
+12:35:32.700 INFO index: xong 1 bài        {…,"file":"uploads/01a176b4-abc2-….txt","pieces":1,"chunks":12,"elapsed_ms":730}
+12:36:… INFO compile: bắt đầu bài     {"article_id":66,"name":"dot15-log-file-2","file":"uploads/01a176b4-abc2-….txt","doc_type":"general","content_type":"text/plain"}
+12:35:36.929 INFO compile: gọi LLM tóm tắt mục
+  {"article_id":66,"name":"dot15-log-file-2","file":"uploads/01a176b4-abc2-….txt",
+   "section":"CHƯƠNG I: PHẠM VI VÀ ĐỐI TƯỢNG","chars":85,"model":"kc/nvidia/nemotron-3.5-super-vl:free"}
+12:36:52.300 INFO compile: xong 1 bài    {…,"file":"uploads/01a176b4-abc2-….txt","sections":11}
+```
+
+DB xác nhận bài 66 kết thúc `extract/index/compile = done`, `page_count=1`, 11 dòng `article_sections`.
+
+### Verify
+
+- `go build ./...`, `go vet ./...` sạch; `golangci-lint run ./...` **0 issues**; `go test ./...` xanh toàn bộ
+  (gồm `src/quality` sau khi xoá allowlist entry ở trên).
+- `codegraph sync` sau khi sửa Go.
+
+### Dọn dẹp
+
+- Bài test 65/66/67 đã `DELETE /api/v1/articles/:id` (soft delete); 65 đã purge hẳn, 66/67 chờ purge
+  theo retention. File fixture dùng lại trong `loadtest/fixtures/` (không có file rác mới trong repo).
+- Log tạm của lượt test nằm ở `%TEMP%`, không vào repo.
