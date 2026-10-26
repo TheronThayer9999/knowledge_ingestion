@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"knowledge_ingestion/src/common/chunker"
-	"knowledge_ingestion/src/common/enhancement"
 	"knowledge_ingestion/src/common/constants"
+	"knowledge_ingestion/src/common/enhancement"
 	"knowledge_ingestion/src/common/extractor"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/utils"
@@ -177,20 +177,6 @@ func (s *articleIndexService) indexClaimed(ctx context.Context, traceID string, 
 	done.Add(1)
 }
 
-// indexOne cắt + embed + upsert 1 bài, đọc nội dung theo CỬA SỔ TRƯỢT.
-//
-// BA BƯỚC, khác hẳn mô hình cũ (cắt từng trang rời rồi ghi bảng trung gian):
-//  1. Quét 1 lượt để chốt quyết định toàn file: bỏ dòng lặp header/footer,
-//     khử chữ rải hay không (xem extractor.Cleaner). Lượt này CHỈ CỘNG SỐ,
-//     không giữ text — nên file 5000 trang vẫn chỉ tốn vài chục KB.
-//  2. Quét lượt 2 theo cửa sổ INDEX_PAGE_WINDOW trang: ghép thành văn bản
-//     liền mạch rồi SplitBlocks TRONG CỬA SỔ. Nhờ vậy nhìn Điều/mục được
-//     ở tầm vài trang thay vì bị cắt vụn ở từng trang như cách cũ.
-//  3. Mỗi block cắt tại RANH GIỚI TRANG rồi mới split theo size — chunk
-//     không bao giờ tràn 2 trang nên PageNum chính xác cho trích dẫn.
-//
-// Chunk đủ INDEX_BATCH_SIZE thì embed + upsert + ghi checkpoint rồi đi tiếp,
-// nên bộ nhớ chỉ ôm 1 cửa sổ + 1 đợt, KHÔNG phụ thuộc kích thước file.
 // releaseClaims trả 1 lô bài về pending khi job bị hủy do shutdown — 1 câu
 // UPDATE, không N+1. Detached ctx vì ctx gốc đã cancel; WHERE ... processing
 // trong repo bảo vệ bài đã kịp done.
@@ -223,183 +209,291 @@ func (s *articleIndexService) indexOneSafe(ctx context.Context, traceID string, 
 	return s.indexOne(ctx, traceID, article)
 }
 
+// indexOne cắt + embed + upsert 1 bài, đọc nội dung theo CỬA SỔ TRƯỢT — chỉ
+// điều phối stage, chi tiết nằm ở indexRun bên dưới.
+//
+// BA BƯỚC, khác hẳn mô hình cũ (cắt từng trang rời rồi ghi bảng trung gian):
+//  1. Quét 1 lượt để chốt quyết định toàn file: bỏ dòng lặp header/footer,
+//     khử chữ rải hay không (xem extractor.Cleaner). Lượt này CHỈ CỘNG SỐ,
+//     không giữ text — nên file 5000 trang vẫn chỉ tốn vài chục KB.
+//  2. Quét lượt 2 theo cửa sổ INDEX_PAGE_WINDOW trang: ghép thành văn bản
+//     liền mạch rồi SplitBlocks TRONG CỬA SỔ. Nhờ vậy nhìn Điều/mục được
+//     ở tầm vài trang thay vì bị cắt vụn ở từng trang như cách cũ.
+//  3. Mỗi block cắt tại RANH GIỚI TRANG rồi mới split theo size — chunk
+//     không bao giờ tràn 2 trang nên PageNum chính xác cho trích dẫn.
+//
+// Chunk đủ INDEX_BATCH_SIZE thì embed + upsert + ghi checkpoint rồi đi tiếp,
+// nên bộ nhớ chỉ ôm 1 cửa sổ + 1 đợt, KHÔNG phụ thuộc kích thước file.
 func (s *articleIndexService) indexOne(ctx context.Context, traceID string, article *domain.Article) error {
-	start := time.Now()
-	// Pass 1: chốt quyết định toàn file.
-	cleaner, err := s.buildCleaner(ctx, article)
-	if err != nil {
+	r := newIndexRun(s, ctx, traceID, article)
+	if err := r.prepare(); err != nil {
 		return err
 	}
-	// Checkpoint: đã upsert N chunk đầu. Chunk sinh lại tất định từ cùng
-	// text + cùng cấu hình, và PointID tất định nên bỏ qua N chunk đầu là an
-	// toàn — lần chạy sau chỉ làm nốt phần còn lại.
-	resumeFrom := article.IndexDoneChunks
-
-	batch := make([]*domain.VectorPoint, 0, constants.INDEX_BATCH_SIZE)
-	total := resumeFrom
-	// carry là tiêu đề mục nối xuyên: chunk kế tiếp không tìm thấy tiêu đề
-	// thì thừa hưởng mục trước, nên chunk giữa Điều không bao giờ mù ngữ cảnh
-	// (xem chunker.Annotate).
-	carry := ""
-
-	flush := func() error {
-		if len(batch) == 0 {
-			return nil
-		}
-		if err := s.upsertBatch(ctx, traceID, article, batch); err != nil {
-			return err
-		}
-		batch = batch[:0]
-		// Ghi checkpoint SAU khi Qdrant báo thành công: thứ tự
-		// Qdrant-trước-DB-sau. Lỗi ở giữa thì kỳ sau làm lại đúng đợt đó,
-		// upsert cùng PointID nên không sinh point trùng.
-		//
-		// total KHÔNG cộng thêm ở đây: vòng sinh chunk đã tăng sẵn khi append
-		// vào batch, cộng thêm lần nữa là checkpoint vượt thật.
-		det := worker.Detach(ctx)
-		defer det.Close()
-		if err := s.articleRepo.MarkIndexProgress(det.Ctx, article.ID, total); err != nil {
-			return fmt.Errorf("ghi checkpoint: %w", err)
-		}
-		// Log mỗi đợt: file lớn chạy hàng chục phút, không có dòng nào thì
-		// lúc chết không biết đang ở đâu.
-		logs.Infow("index: tiến trình",
-			"trace_id", traceID, "article_id", article.ID,
-			"chunks", total, "elapsed_ms", time.Since(start).Milliseconds())
+	if err := eachPageWindow(ctx, s.pageRepo, article.ID, r.indexWindow); err != nil {
+		return err
+	}
+	if r.stopped {
+		// Bài bị xoá giữa chừng: dừng im lặng, không mark done.
 		return nil
 	}
-
-	// Chạy lại từ đầu khi chưa có checkpoint: dọn point cũ trước khi ghi đè,
-	// để đổi cấu hình chunker (sinh NÊN chunk khác) không để lại đuôi thừa
-	// trong Qdrant. Delete theo filter là idempotent, bài chưa có point nào
-	// thì khớp 0 vẫn success.
-	if resumeFrom == 0 {
-		// Đừng bắt đầu xóa toàn bộ vector của bài nếu job đã bị hủy — thao
-		// tác này dùng detached ctx nên sẽ chạy tiếp bất chấp shutdown.
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		det := worker.Detach(ctx)
-		if err := s.vectors.DeleteByArticle(det.Ctx, article.ID); err != nil {
-			det.Close()
-			return fmt.Errorf("dọn vector cũ: %w", err)
-		}
-		det.Close()
+	if err := r.flush(); err != nil {
+		return err
 	}
+	return r.finish()
+}
 
+// eachPageWindow duyệt article_pages theo cửa sổ INDEX_PAGE_WINDOW trang cho tới
+// khi HẾT TRANG — điều kiện dừng DUY NHẤT nằm đúng một chỗ ở đây.
+//
+// TUYỆT ĐỐI không suy ra "hết file" từ một lượt đọc ngắn hơn window: cửa sổ bị
+// cắt ngắn vì chạm INDEX_WINDOW_MAX_CHARS vẫn trả về đủ trang, coi lượt ngắn là
+// hết file là âm thầm bỏ sót nửa tài liệu (TestIndexOneReadsInWindows khoá đúng
+// cái này). fn trả seq của trang kế tiếp CẦN đọc — trang chưa dùng hết trong
+// lượt này phải được đọc lại ở lượt sau, không được nhảy qua.
+func eachPageWindow(ctx context.Context, repo domain.IArticlePageRepository, articleID int64,
+	fn func(pages []*domain.ArticlePage) (next int, err error)) error {
 	afterSeq := 0
-	piecesSeen := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		pages, err := s.pageRepo.ListPagesRange(ctx, article.ID, afterSeq, constants.INDEX_PAGE_WINDOW)
+		pages, err := repo.ListPagesRange(ctx, articleID, afterSeq, constants.INDEX_PAGE_WINDOW)
 		if err != nil {
 			return fmt.Errorf("đọc trang: %w", err)
 		}
 		if len(pages) == 0 {
-			// Hết trang — đây mới là điều kiện dừng DUY NHẤT. Không được kết
-			// luận "hết file" từ lượt đọc ngắn hơn INDEX_PAGE_WINDOW: cửa sổ
-			// bị cắt ngắn vì chạm INDEX_WINDOW_MAX_CHARS vẫn trả về đủ trang,
-			// và coi lượt ngắn là hết file thì âm thầm bỏ sót nửa tài liệu.
-			break
+			return nil
 		}
-		win := newPageWindow()
-		for _, p := range pages {
-			win.add(p.PageNum, cleaner.Apply(p.Text))
-			afterSeq = p.Seq + 1
-			piecesSeen++
-			// Cửa sổ vừa đủ rồi thì dừng nhét thêm: bảo đảm trần ký tự kể cả
-			// với loại file 1-trang chứa cả file.
-			if win.chars() >= constants.INDEX_WINDOW_MAX_CHARS {
-				break
-			}
+		next, err := fn(pages)
+		if err != nil {
+			return err
 		}
-		for _, b := range chunker.SplitBlocks(win.text()) {
-			for _, piece := range win.cuts(b.Start, b.End) {
-				if strings.TrimSpace(piece.text) == "" {
-					continue
-				}
-				// Lỗi splitter (tầng semantic gọi Ollama) là transient — trả
-				// về để caller backoff, không failed oan như lỗi dữ liệu hỏng.
-				// Chọn template theo loại tài liệu của bài (laws/table/...) —
-				// bọc baseSplitter, fallback general = base.
-				tmpl := chunker.NewTemplate(chunker.NormalizeType(article.DocType), s.baseSplitter)
-				if tmpl == nil {
-					tmpl = s.baseSplitter
-				}
-				if article.DocType == "" {
-					tmpl = chunker.NewTemplate(chunker.DetectType(article.ContentType, article.Name), s.baseSplitter)
-					if tmpl == nil {
-						tmpl = s.baseSplitter
-					}
-				}
-				parts, err := tmpl.Split(ctx, piece.text)
-				if err != nil {
-					return fmt.Errorf("cắt chunk: %w", err)
-				}
-				// Gán mục cho từng chunk: block có tiêu đề thì lấy đó làm gốc,
-				// không thì thừa hưởng carry.
-				base := carry
-				if b.Heading != "" {
-					base = b.Heading
-				}
-				annotated, carryNext := chunker.Annotate(parts, base)
-				carry = carryNext
-				for _, p := range annotated {
-					// Chunk đã upsert ở lần chạy trước: bỏ qua, chỉ đếm để
-					// index nối tiếp.
-					if total < resumeFrom {
-						total++
-						continue
-					}
-					// Prepend tiêu đề mục (chunker.Annotate đã gán lúc cắt) để
-					// vector + Qdrant payload luôn mang ngữ cảnh Điều — agent
-					// attribute đúng mục, full-text "ĐIỀU 5" cũng trúng chunk
-					// giữa Điều. Bản lưu trong payload là bản dùng thật.
-					text := chunker.HeaderFor(p.Section) + p.Text
-					batch = append(batch, &domain.VectorPoint{
-						ID:         utils.NewPointID(article.ID, total),
-						ArticleID:  article.ID,
-						UserID:     article.UserID,
-						CategoryID: article.CategoryID,
-						ChunkIndex: total,
-						PageNum:    piece.page,
-						Section:    p.Section,
-						Text:       text,
-					})
-					total++
-					if len(batch) >= constants.INDEX_BATCH_SIZE {
-						if err := flush(); err != nil {
-							return err
-						}
-						// Bài bị xoá giữa chừng thì dừng ngay (đỡ tốn tiền
-						// Ollama), dọn vector vừa làm để không còn rác mà purge
-						// không thấy. Check mỗi đợt vì 1 bài 500 trang chạy
-						// hàng chục phút — 1 SELECT rẻ hơn nhiều so với gọi
-						// Ollama thừa.
-						alive, aerr := s.ensureAlive(ctx, traceID, article)
-						if aerr != nil {
-							return aerr
-						}
-						if !alive {
-							return nil
-						}
-					}
-				}
-			}
-		}
+		afterSeq = next
 	}
-	if err := flush(); err != nil {
+}
+
+// indexRun là trạng thái của MỘT bài đang index: cleaner + template đã chốt,
+// checkpoint, đợt chunk đang gom và carry tiêu đề mục. Tách thành struct để
+// indexOne chỉ còn điều phối stage — mỗi hàm dưới đây nằm gọn trong ngân sách
+// hàm của repo (src/quality/function_budget_test.go).
+type indexRun struct {
+	svc     *articleIndexService
+	ctx     context.Context
+	traceID string
+	article *domain.Article
+	start   time.Time
+
+	cleaner    *extractor.Cleaner
+	tmpl       chunker.Chunker
+	resumeFrom int
+	total      int
+	carry      string
+	piecesSeen int
+	stopped    bool
+	batch      []*domain.VectorPoint
+}
+
+func newIndexRun(svc *articleIndexService, ctx context.Context, traceID string, article *domain.Article) *indexRun {
+	return &indexRun{
+		svc:        svc,
+		ctx:        ctx,
+		traceID:    traceID,
+		article:    article,
+		start:      time.Now(),
+		resumeFrom: article.IndexDoneChunks,
+		// total khởi từ checkpoint: chunk đầu tiên của lần này mang đúng số
+		// thứ tự tiếp theo, không đánh lại từ 0.
+		total: article.IndexDoneChunks,
+		batch: make([]*domain.VectorPoint, 0, constants.INDEX_BATCH_SIZE),
+	}
+}
+
+// prepare chốt các quyết định toàn file MỘT lần thay vì mỗi lát cắt: pass 1 dò
+// header/footer + chữ rải (buildCleaner) và chọn template theo loại tài liệu.
+// Template vốn stateless nên dựng lại từng piece chỉ tốn cấp phát vô ích.
+func (r *indexRun) prepare() error {
+	cleaner, err := r.svc.buildCleaner(r.ctx, r.article)
+	if err != nil {
 		return err
 	}
-	if total == 0 {
+	r.cleaner = cleaner
+	r.tmpl = r.svc.resolveTemplate(r.article)
+	return r.dropStaleVectors()
+}
+
+// dropStaleVectors dọn point cũ khi chạy lại từ đầu: đổi cấu hình chunker sinh
+// NÊN chunk khác, không dọn thì Qdrant còn đuôi thừa. Delete theo filter là
+// idempotent — bài chưa có point nào thì khớp 0 vẫn success.
+func (r *indexRun) dropStaleVectors() error {
+	if r.resumeFrom != 0 {
+		return nil
+	}
+	// Đừng bắt đầu xóa toàn bộ vector của bài nếu job đã bị hủy — thao tác này
+	// dùng detached ctx nên sẽ chạy tiếp bất chấp shutdown.
+	if err := r.ctx.Err(); err != nil {
+		return err
+	}
+	det := worker.Detach(r.ctx)
+	defer det.Close()
+	if err := r.svc.vectors.DeleteByArticle(det.Ctx, r.article.ID); err != nil {
+		return fmt.Errorf("dọn vector cũ: %w", err)
+	}
+	return nil
+}
+
+// indexWindow nhận 1 lượt đọc trang, ghép thành cửa sổ rồi cắt chunk. Trả seq
+// của trang kế tiếp cần đọc (xem eachPageWindow).
+func (r *indexRun) indexWindow(pages []*domain.ArticlePage) (int, error) {
+	win := newPageWindow()
+	used := 0
+	for _, p := range pages {
+		win.add(p.PageNum, r.cleaner.Apply(p.Text))
+		r.piecesSeen++
+		used++
+		// Cửa sổ vừa đủ rồi thì dừng nhét thêm: bảo đảm trần ký tự kể cả với
+		// loại file 1-trang chứa cả file. Trang chưa nhét vào cửa sổ này vẫn
+		// nằm trong lượt đọc đã lấy về nên next phải là trang CHƯA dùng.
+		if win.chars() >= constants.INDEX_WINDOW_MAX_CHARS {
+			break
+		}
+	}
+	stop, err := r.consumeWindow(win)
+	r.stopped = stop
+	return pages[used-1].Seq + 1, err
+}
+
+// consumeWindow cắt cửa sổ thành block → lát theo trang → chunk. Trả stop =
+// true khi bài đã bị xoá giữa chừng (dừng im lặng, không mark done).
+//
+// SplitBlocks chạy TRONG cửa sổ nên vẫn thấy tiêu đề Điều ở tầm vài trang;
+// mỗi block cắt tại ranh giới trang trước khi split để chunk không tràn 2 trang.
+func (r *indexRun) consumeWindow(win *pageWindow) (bool, error) {
+	for _, b := range chunker.SplitBlocks(win.text()) {
+		for _, pc := range win.cuts(b.Start, b.End) {
+			if strings.TrimSpace(pc.text) == "" {
+				continue
+			}
+			stop, err := r.appendPiece(pc, b)
+			if err != nil || stop {
+				return stop, err
+			}
+		}
+	}
+	return false, nil
+}
+
+// appendPiece split 1 lát rồi gán mục cho từng chunk. Lỗi splitter (tầng
+// semantic gọi Ollama) là transient — trả về để caller backoff, không failed
+// oan như lỗi dữ liệu hỏng.
+func (r *indexRun) appendPiece(pc piece, b chunker.Block) (bool, error) {
+	parts, err := r.tmpl.Split(r.ctx, pc.text)
+	if err != nil {
+		return false, fmt.Errorf("cắt chunk: %w", err)
+	}
+	// Gán mục cho từng chunk: block có tiêu đề thì lấy đó làm gốc, không thì
+	// thừa hưởng carry.
+	base := r.carry
+	if b.Heading != "" {
+		base = b.Heading
+	}
+	annotated, carryNext := chunker.Annotate(parts, base)
+	r.carry = carryNext
+	return r.addChunks(annotated, pc.page)
+}
+
+// addChunks đẩy chunk vào đợt; đủ INDEX_BATCH_SIZE thì flush rồi hỏi bài còn
+// sống không. Check mỗi đợt vì 1 bài 500 trang chạy hàng chục phút — 1 SELECT
+// rẻ hơn nhiều so với gọi Ollama thừa cho bài đã bị xoá.
+func (r *indexRun) addChunks(annotated []chunker.SectionedChunk, page int) (bool, error) {
+	for _, p := range annotated {
+		// Chunk đã upsert ở lần chạy trước: bỏ qua, chỉ đếm để index nối tiếp.
+		if r.total < r.resumeFrom {
+			r.total++
+			continue
+		}
+		// Prepend tiêu đề mục (chunker.Annotate đã gán lúc cắt) để vector +
+		// Qdrant payload luôn mang ngữ cảnh Điều — agent attribute đúng mục,
+		// full-text "ĐIỀU 5" cũng trúng chunk giữa Điều. Bản lưu trong payload
+		// là bản dùng thật.
+		r.batch = append(r.batch, &domain.VectorPoint{
+			ID:         utils.NewPointID(r.article.ID, r.total),
+			ArticleID:  r.article.ID,
+			UserID:     r.article.UserID,
+			CategoryID: r.article.CategoryID,
+			ChunkIndex: r.total,
+			PageNum:    page,
+			Section:    p.Section,
+			Text:       chunker.HeaderFor(p.Section) + p.Text,
+		})
+		r.total++
+		if len(r.batch) < constants.INDEX_BATCH_SIZE {
+			continue
+		}
+		if err := r.flush(); err != nil {
+			return false, err
+		}
+		alive, err := r.svc.ensureAlive(r.ctx, r.traceID, r.article)
+		if err != nil {
+			return false, err
+		}
+		if !alive {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// flush embed + upsert đợt đang gom rồi ghi checkpoint. Ghi checkpoint SAU khi
+// Qdrant báo thành công: thứ tự Qdrant-trước-DB-sau. Lỗi ở giữa thì kỳ sau làm
+// lại đúng đợt đó, upsert cùng PointID nên không sinh point trùng.
+//
+// total KHÔNG cộng thêm ở đây: vòng sinh chunk đã tăng sẵn khi append, cộng
+// thêm lần nữa là checkpoint vượt thật.
+func (r *indexRun) flush() error {
+	if len(r.batch) == 0 {
+		return nil
+	}
+	if err := r.svc.upsertBatch(r.ctx, r.traceID, r.article, r.batch); err != nil {
+		return err
+	}
+	r.batch = r.batch[:0]
+	det := worker.Detach(r.ctx)
+	defer det.Close()
+	if err := r.svc.articleRepo.MarkIndexProgress(det.Ctx, r.article.ID, r.total); err != nil {
+		return fmt.Errorf("ghi checkpoint: %w", err)
+	}
+	// Log mỗi đợt: file lớn chạy hàng chục phút, không có dòng nào thì lúc chết
+	// không biết đang ở đâu.
+	logs.Infow("index: tiến trình",
+		"trace_id", r.traceID, "article_id", r.article.ID,
+		"chunks", r.total, "elapsed_ms", time.Since(r.start).Milliseconds())
+	return nil
+}
+
+// finish log tổng kết; không trang nào ra chữ là lỗi dữ liệu (ErrInvalid) chứ
+// không phải "index xong 0 chunk".
+func (r *indexRun) finish() error {
+	if r.total == 0 {
 		return fmt.Errorf("%w: không có trang nào ra chữ để chunk", extractor.ErrInvalid)
 	}
-	logs.Infow("index: xong 1 bài", "trace_id", traceID, "article_id", article.ID,
-		"pieces", piecesSeen, "chunks", total,
-		"elapsed_ms", time.Since(start).Milliseconds())
+	logs.Infow("index: xong 1 bài", "trace_id", r.traceID, "article_id", r.article.ID,
+		"pieces", r.piecesSeen, "chunks", r.total,
+		"elapsed_ms", time.Since(r.start).Milliseconds())
 	return nil
+}
+
+// resolveTemplate chọn template theo loại tài liệu của bài (laws/table/...),
+// bọc baseSplitter; không có template phù hợp thì dùng base (general). DocType
+// trống thì đoán từ content-type + tên file. Stateless nên chỉ gọi 1 lần/bài.
+func (s *articleIndexService) resolveTemplate(article *domain.Article) chunker.Chunker {
+	kind := chunker.NormalizeType(article.DocType)
+	if article.DocType == "" {
+		kind = chunker.DetectType(article.ContentType, article.Name)
+	}
+	if tmpl := chunker.NewTemplate(kind, s.baseSplitter); tmpl != nil {
+		return tmpl
+	}
+	return s.baseSplitter
 }
 
 // buildCleaner là pass 1 — quét mọi trang theo cửa sổ CHỈ ĐỂ CỘNG SỐ, không
@@ -408,23 +502,16 @@ func (s *articleIndexService) indexOne(ctx context.Context, traceID string, arti
 // header/footer không".
 func (s *articleIndexService) buildCleaner(ctx context.Context, article *domain.Article) (*extractor.Cleaner, error) {
 	cleaner := extractor.NewCleaner(article.PageCount, extractor.RepeatOptions{})
-	afterSeq := 0
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		pages, err := s.pageRepo.ListPagesRange(ctx, article.ID, afterSeq, constants.INDEX_PAGE_WINDOW)
-		if err != nil {
-			return nil, fmt.Errorf("quét trang: %w", err)
-		}
-		if len(pages) == 0 {
-			return cleaner, nil
-		}
+	err := eachPageWindow(ctx, s.pageRepo, article.ID, func(pages []*domain.ArticlePage) (int, error) {
 		for _, p := range pages {
 			cleaner.Scan(p.Text)
-			afterSeq = p.Seq + 1
 		}
+		return pages[len(pages)-1].Seq + 1, nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	return cleaner, nil
 }
 
 // upsertBatch gán vector cho 1 đợt chunk rồi upsert Qdrant.
@@ -499,13 +586,6 @@ func (s *articleIndexService) upsertBatch(ctx context.Context, traceID string, a
 	return nil
 }
 
-// lookupCache hỏi cache cho cả đợt chunk. Trả về:
-//   - cached: map[hash]vector — chỉ chứa hash CÓ trong cache;
-//   - missIdx: chỉ số trong texts cần gọi model;
-//   - missTexts: text của các phần tử missIdx, đúng thứ tự.
-//
-// Cache không bắt buộc phải có: cache lỗi thì coi như toàn bộ miss và log,
-// job vẫn chạy được. Một bộ cache hỏng không được làm hỏng việc index.
 // ensureAlive kiểm tra bài còn sống — bài chết thì dọn vector vừa làm rồi trả
 // (false, nil) để caller dừng mà không mark done. Lỗi DB (kể cả ctx hủy giữa
 // chừng) trả về error để indexClaimed xử lý đúng: cancellation → release

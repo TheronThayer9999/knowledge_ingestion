@@ -387,6 +387,50 @@ func TestPageWindowCuts(t *testing.T) {
 	}
 }
 
+// TestIndexWindowStopsAtCharCap khoá hệ quả của trần INDEX_WINDOW_MAX_CHARS:
+// cửa sổ dừng giữa lượt đọc thì next phải là trang CHƯA dùng (không phải trang
+// kế của trang đầu) — sai một số là trang bị cắt khỏi cửa sổ sẽ bị đọc lại
+// (chunk nhân đôi) hoặc bị nhảy qua (mất nội dung).
+func TestIndexWindowStopsAtCharCap(t *testing.T) {
+	big := strings.Repeat("a", constants.INDEX_WINDOW_MAX_CHARS)
+	pageList := pagesFrom("trang một", big, "trang ba")
+	arts := &indexStubArticles{alive: true}
+	vec := &indexStubVectors{}
+	svc := newIndexSvc(arts, &indexStubPages{pages: pageList}, vec).(*articleIndexService)
+	r := newIndexRun(svc, context.Background(), "trace-6",
+		&domain.Article{BaseModel: domain.BaseModel{ID: 42}, PageCount: len(pageList)})
+	if err := r.prepare(); err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+
+	next, err := r.indexWindow(pageList) // 1 lượt đọc trả cả 3 trang
+	if err != nil {
+		t.Fatalf("indexWindow: %v", err)
+	}
+	if next != 3 {
+		t.Fatalf("next = %d, muốn 3 (trang 1,2 đã dùng; trang 3 chưa)", next)
+	}
+	if r.piecesSeen != 2 {
+		t.Errorf("piecesSeen = %d, muốn 2 (trang 2 đã chạm trần ký tự)", r.piecesSeen)
+	}
+	if len(r.batch) == 0 {
+		t.Fatal("cửa sổ không sinh chunk nào")
+	}
+	for _, p := range r.batch {
+		if p.PageNum > 2 {
+			t.Errorf("chunk thuộc trang %d — trang 3 chưa vào cửa sổ", p.PageNum)
+		}
+	}
+
+	// Lượt sau đọc từ seq 3: nhận đúng trang còn lại, không nhảy qua trang nào.
+	if _, err := r.indexWindow(pageList[2:]); err != nil {
+		t.Fatalf("indexWindow lượt 2: %v", err)
+	}
+	if r.piecesSeen != 3 {
+		t.Errorf("piecesSeen = %d, muốn 3 sau 2 lượt — có trang bị bỏ sót/đọc lặp", r.piecesSeen)
+	}
+}
+
 var (
 	_ domain.ArticleIndexQueue      = (*indexStubArticles)(nil)
 	_ domain.IArticlePageRepository = (*indexStubPages)(nil)
