@@ -16,3 +16,32 @@ $bp-lg: 1280px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+// ---- Bố cục .page-head dùng chung cho MỌI trang trong APP SHELL ----
+// Khai báo MỘT lần ở đây (file này chỉ có biến + mixin nên không sinh CSS
+// trùng vào style của từng trang). Trang chỉ @use rồi chọn biến thể,
+// KHÔNG copy lại rule .page-head trong .scss của mình.
+// $collapse-bp: ngưỡng rộng mà head gập thành cột — mỗi trang chọn riêng
+// vì cụm action của mỗi trang dài/ngắn khác nhau.
+
+// title + subtitle xếp dọc (settings, profile)
+@mixin page-head-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+// title bên trái + cụm hành động bên phải, tự wrap, gập cột dưới $collapse-bp
+// (overview, documents)
+@mixin page-head-split($collapse-bp) {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+
+  @media (max-width: $collapse-bp) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

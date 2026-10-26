@@ -1,4 +1,6 @@
 // Trang hồ sơ — chỉ dùng token, bố cục 2 cột trên desktop.
+@use '../../../styles/mixins' as *;
+
 :host {
   display: block;
 }
@@ -11,9 +13,9 @@
   margin: 0 auto;
 }
 
+// title + subtitle xếp dọc (bố cục dùng chung ở _mixins.scss)
 .page-head {
-  display: flex;
-  flex-direction: column;
+  @include page-head-stack;
 }
 
 // ---- Thẻ chung ----

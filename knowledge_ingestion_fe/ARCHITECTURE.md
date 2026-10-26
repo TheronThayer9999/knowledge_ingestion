@@ -55,10 +55,55 @@ src/main.ts
 ## KHÔNG động vào nếu không có yêu cầu rõ ràng
 
 - `src/app/layout/dashboard-layout/**` (shell + shell.config.ts)
-- `src/styles/_tokens.scss`, `src/styles/_page-head.scss`, `src/styles/styles.scss` (theme/tokens)
+- `src/styles/_tokens.scss`, `src/styles/_page-head.scss`, `src/styles/_mixins.scss`,
+  `src/styles/styles.scss` (theme/tokens + mixin bố cục dùng chung)
 - `app.routes.ts` phần layout cha-con (router structure)
-- `index.html` script chống FOUC (song song với `core/theme/theme.service.ts` —
-  thêm palette phải sửa CẢ HAI nơi theo chủ đích)
+- `index.html` script chống FOUC — đã BỎ danh sách palette trùng lặp, nguồn duy
+  nhất là `THEME_PALETTES`; hợp đồng `THEME_STORAGE_KEY` + `THEME_CLASS_PREFIX`
+  do `theme.service.spec.ts` khóa lại (thêm palette xem playbook F)
+- `index.html` phần `<head>` font — Roboto + Material Icons **tự host** qua npm
+  (`@fontsource/roboto`, `material-icons`) và khai báo trong `angular.json > styles`.
+  CẤM thêm link Google Fonts CDN trở lại: môi trường chặn CDN làm `mat-icon` in ra
+  chữ (`space_dashboard`) thay vì icon. CI `ci-fe.yml` grep tên host để chặn.
+
+## Playbook mở rộng (làm đúng thứ tự là không rối)
+
+**A. Thêm trang mới** (vd Reports) — 4 bước, thiếu 1 bước là test/lint fail:
+1. Tạo `src/app/pages/reports/` (`.ts` `.html` `.scss` `.spec.ts`) — component chỉ
+   trả về `.page` + `.page-head`, KHÔNG dựng header/sidebar. `.page-head` dùng
+   mixin `page-head-split(<bp>)` (row + action phải) hoặc `page-head-stack` (cột)
+   từ `src/styles/_mixins.scss` — không viết lại rule bố cục trong file trang.
+2. `app.routes.ts`: thêm route CON vào `children` của `/app` (loadComponent lazy).
+3. `shell.config.ts`: thêm 1 dòng `{ path: '/app/reports', icon: '...', label: 'NAV_REPORTS' }`
+   vào `NAV_GROUPS` → menu + title topbar tự ra, không sửa template shell.
+4. i18n: thêm `NAV_REPORTS` vào `src/app/shared/i18n/vi.ts` VÀ `en.ts` (thiếu là build fail).
+→ `shell-routes.spec.ts` kiểm 2 chiều route con ↔ mục nav, nên bước 2/3 lệch nhau là đỏ.
+
+**B. Thêm nút góc phải header**: 1 dòng vào `HEADER_ACTIONS` (component tự lấy
+state qua service — không nhận `@Input` từ shell).
+
+**C. Trang cần action/panel riêng** (nút upload, filter, toggle panel): đặt trong
+`.page-head` hoặc body của CHÍNH trang đó (như `.panel-toggle` trong `chat.scss`) —
+không sửa `dashboard-layout.html`. Muốn có slot thật trong shell → xin duyệt (quy tắc 4).
+
+**D. Cần giá trị size/màu mới**: thêm token vào `_tokens.scss` (primitive rồi mới
+đến alias), không viết số trong `.scss` của trang. Trang cần cao vừa viewport thì
+dùng `--content-viewport-height`.
+
+**E. Cần component dùng chung**: chỉ dời sang `src/app/shared/` khi CÓ TỪ 2 nơi dùng;
+1 trang dùng thì để trong thư mục trang đó (tránh shared phình).
+
+**F. Thêm palette theme mới**: 1 phần tử vào `THEME_PALETTES` (`core/theme/theme.service.ts`)
++ 1 block `.theme-<id>` trong `styles.scss`. `index.html` KHÔNG phải sửa — script FOUC chỉ
+áp định dạng `theme-<palette>` và palette lạ tự rơi về mặc định của `:root`.
+
+**G. Cần thêm chữ/cỡ font mới (weight, subset)**: thêm dòng `node_modules/@fontsource/roboto/<subset>-<weight>.css`
+vào `styles` của `angular.json` — KHÔNG tải font bằng tay, KHÔNG dùng link CDN, và giữ đúng
+4 độ đậm trong token (`--text-style-*` chỉ dùng 400/600, M3 cần thêm 300/500/700).
+
+**H. Mỗi lớp tự bắt lỗi riêng** — sửa gì thì chạy cái đó:
+lệch menu/route → `npm test` · dựng chrome ngoài shell → `npm run lint` ·
+trang phình to → budget `anyComponentStyle` 10kB của build · lệch theme → build fail vì thiếu key i18n.
 
 ## Bảo vệ
 

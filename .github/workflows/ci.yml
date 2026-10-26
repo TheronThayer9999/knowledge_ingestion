@@ -1,9 +1,34 @@
-name: CI
+name: CI (Go)
 
+# Chỉ chạy khi thay đổi ảnh hưởng tới backend Go. Thay đổi thuần frontend
+# (knowledge_ingestion_fe/**), markdown, plan, dữ liệu mẫu... KHÔNG kéo Go
+# build/test lại nữa — xem ci-fe.yml cho luồng Angular.
 on:
   push:
     branches: [master]
+    paths:
+      - 'cmd/**'
+      - 'src/**'
+      - 'schema/**'
+      - 'configs/**'
+      - 'prompts/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'docs/**'
+      - '.github/workflows/ci.yml'
   pull_request:
+    paths:
+      - 'cmd/**'
+      - 'src/**'
+      - 'schema/**'
+      - 'configs/**'
+      - 'prompts/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'docs/**'
+      - '.github/workflows/ci.yml'
+  # đổi đường dẫn ở trên mà vẫn muốn chạy: bấm Run workflow
+  workflow_dispatch:
 
 permissions:
   contents: read

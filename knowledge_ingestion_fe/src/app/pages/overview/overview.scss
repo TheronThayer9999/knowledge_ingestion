@@ -1,4 +1,6 @@
 // Trang tổng quan — chỉ dùng token, không hardcode màu/kích thước rời.
+@use '../../../styles/mixins' as *;
+
 :host {
   display: block;
 }
@@ -11,12 +13,9 @@
   gap: var(--space-5);
 }
 
+// title trái + nút upload phải, gập cột dưới 599px (bố cục dùng chung ở _mixins.scss)
 .page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
+  @include page-head-split(599px);
 }
 
 // ---- Trạng thái lỗi ----
@@ -310,11 +309,6 @@
 }
 
 @media (max-width: 599px) {
-  .page-head {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .stats {
     grid-template-columns: minmax(0, 1fr);
   }

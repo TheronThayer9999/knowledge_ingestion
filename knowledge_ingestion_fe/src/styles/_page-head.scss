@@ -1,7 +1,7 @@
 // Tiêu đề trang dùng chung cho MỌI trang nằm trong APP SHELL.
 // Khai báo một lần ở đây — trang KHÔNG copy lại .page-title/.page-subtitle.
-// (`.page-head` cố ý KHÔNG gom: mỗi trang có bố cục khác nhau — row + actions
-//  như overview/documents, hay column như settings/profile.)
+// Bố cục của `.page-head` (row có action / cột xếp dọc) là mixin trong
+// _mixins.scss (`page-head-split`, `page-head-stack`) — trang @use rồi chọn.
 .page-title {
   margin: 0;
   font: var(--mat-sys-headline-small);

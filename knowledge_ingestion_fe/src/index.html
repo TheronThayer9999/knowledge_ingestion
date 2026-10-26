@@ -8,16 +8,21 @@
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <script>
       // Áp theme trước khi Angular boot để tránh nháy màu (FOUC).
-      // Cùng storage key/format với ThemeService (src/app/core/theme/theme.service.ts).
+      // Danh sách palette KHÔNG khai báo ở đây — nguồn duy nhất là ThemeService
+      // (src/app/core/theme/theme.service.ts). Script chỉ kiểm tra định dạng rồi
+      // áp class `theme-<palette>`: palette lạ không có rule CSS tương ứng nên
+      // :root (azure) vẫn là mặc định, và ThemeService dọn class đó khi boot.
       (function () {
-        var palettes = ['azure', 'rose-red', 'magenta-violet', 'cyan-orange'];
         var state = null;
         try {
           state = JSON.parse(localStorage.getItem('ki.theme') || 'null');
         } catch (e) {
           state = null;
         }
-        var palette = state && palettes.indexOf(state.palette) !== -1 ? state.palette : 'azure';
+        var palette =
+          state && typeof state.palette === 'string' && /^[a-z][a-z-]*$/.test(state.palette)
+            ? state.palette
+            : 'azure';
         var mode =
           state && (state.mode === 'light' || state.mode === 'dark')
             ? state.mode
@@ -28,12 +33,10 @@
         document.documentElement.style.colorScheme = mode;
       })();
     </script>
-    <link rel="preconnect" href="https://fonts.gstatic.com" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
-      rel="stylesheet"
-    />
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+    <!-- Font Roboto + Material Icons TỰ HOST qua npm (@fontsource/roboto,
+         material-icons) và khai báo trong angular.json > styles. KHÔNG thêm lại
+         link Google Fonts vào đây: môi trường chặn CDN sẽ làm mat-icon in ra
+         chữ thay vì icon, và CI (ci-fe.yml) đang chặn bằng grep tên host. -->
   </head>
   <body>
     <app-root></app-root>

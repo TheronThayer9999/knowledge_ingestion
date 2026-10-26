@@ -30,7 +30,25 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles/styles.scss"]
+            // Font TỰ HOST (không dùng CDN Google Fonts nữa — xem ARCHITECTURE.md):
+            // Roboto 4 độ đậm như link CDN cũ (300/400/500/700), chỉ lấy subset
+            // latin + latin-ext + vietnamese để khỏi kéo cyrillic/greek/math vào dist.
+            "styles": [
+              "node_modules/@fontsource/roboto/latin-300.css",
+              "node_modules/@fontsource/roboto/latin-ext-300.css",
+              "node_modules/@fontsource/roboto/vietnamese-300.css",
+              "node_modules/@fontsource/roboto/latin-400.css",
+              "node_modules/@fontsource/roboto/latin-ext-400.css",
+              "node_modules/@fontsource/roboto/vietnamese-400.css",
+              "node_modules/@fontsource/roboto/latin-500.css",
+              "node_modules/@fontsource/roboto/latin-ext-500.css",
+              "node_modules/@fontsource/roboto/vietnamese-500.css",
+              "node_modules/@fontsource/roboto/latin-700.css",
+              "node_modules/@fontsource/roboto/latin-ext-700.css",
+              "node_modules/@fontsource/roboto/vietnamese-700.css",
+              "node_modules/material-icons/iconfont/filled.css",
+              "src/styles/styles.scss"
+            ]
           },
           "configurations": {
             "production": {

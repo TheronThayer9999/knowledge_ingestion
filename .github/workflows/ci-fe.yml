@@ -1,0 +1,47 @@
+name: CI (Angular)
+
+# Luồng riêng cho frontend: chỉ chạy khi có thay đổi trong knowledge_ingestion_fe/
+# (hoặc chính file này). Thay đổi backend Go không kích hoạt job này và ngược lại
+# — xem ci.yml.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'knowledge_ingestion_fe/**'
+      - '.github/workflows/ci-fe.yml'
+  pull_request:
+    paths:
+      - 'knowledge_ingestion_fe/**'
+      - '.github/workflows/ci-fe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: lint, build, test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: knowledge_ingestion_fe
+    steps:
+      - uses: actions/checkout@v6
+      # Chặn sớm (trước npm ci): font phải tự host, không để link Google Fonts
+      # quay lại index.html — môi trường chặn CDN là mat-icon thành chữ.
+      - name: index.html khong duoc con link Google Fonts CDN
+        run: |
+          if grep -Eq 'fonts\.(googleapis|gstatic)\.com' src/index.html; then
+            echo "::error::index.html con link Google Fonts CDN - them font vao angular.json > styles (xem ARCHITECTURE.md)" >&2
+            exit 1
+          fi
+      - uses: actions/setup-node@v5
+        with:
+          # Angular 21 yêu cầu Node ^20.19 || ^22.12 || ^24
+          node-version: 22
+          cache: npm
+          cache-dependency-path: knowledge_ingestion_fe/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test -- --watch=false

@@ -1,13 +1,27 @@
 import { TestBed } from '@angular/core/testing';
-import { THEME_PALETTES, ThemeService } from './theme.service';
+import {
+  DEFAULT_THEME_PALETTE,
+  THEME_CLASS_PREFIX,
+  THEME_PALETTES,
+  THEME_STORAGE_KEY,
+  ThemeService,
+} from './theme.service';
 
 describe('ThemeService', () => {
   const root = document.documentElement;
 
   beforeEach(() => {
     localStorage.clear();
-    root.classList.remove(...THEME_PALETTES.map((palette) => `theme-${palette}`));
+    root.classList.remove(...THEME_PALETTES.map((palette) => `${THEME_CLASS_PREFIX}${palette}`));
     root.style.removeProperty('color-scheme');
+  });
+
+  it('locks the storage-key/class-prefix contract shared with the FOUC script', () => {
+    // index.html không import được TS — hai hằng số này là hợp đồng duy nhất
+    // giữa script chống FOUC và service, đổi là phải đổi cả hai nơi.
+    expect(THEME_STORAGE_KEY).toBe('ki.theme');
+    expect(THEME_CLASS_PREFIX).toBe('theme-');
+    expect(THEME_PALETTES).toContain(DEFAULT_THEME_PALETTE);
   });
 
   it('defaults to the azure palette', () => {
@@ -42,14 +56,17 @@ describe('ThemeService', () => {
     theme.setPalette('cyan-orange');
     theme.setMode('dark');
 
-    expect(JSON.parse(localStorage.getItem('ki.theme')!)).toEqual({
+    expect(JSON.parse(localStorage.getItem(THEME_STORAGE_KEY)!)).toEqual({
       palette: 'cyan-orange',
       mode: 'dark',
     });
   });
 
   it('restores stored state and ignores invalid values', () => {
-    localStorage.setItem('ki.theme', JSON.stringify({ palette: 'magenta-violet', mode: 'dark' }));
+    localStorage.setItem(
+      THEME_STORAGE_KEY,
+      JSON.stringify({ palette: 'magenta-violet', mode: 'dark' }),
+    );
     const theme = TestBed.inject(ThemeService);
 
     expect(theme.palette()).toBe('magenta-violet');
@@ -58,10 +75,25 @@ describe('ThemeService', () => {
 
     // Injector mới để service đọc lại state vừa ghi — giá trị hỏng phải fallback về mặc định
     TestBed.resetTestingModule();
-    localStorage.setItem('ki.theme', JSON.stringify({ palette: 'nope', mode: 'purple' }));
+    localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ palette: 'nope', mode: 'purple' }));
     const fallback = TestBed.inject(ThemeService);
 
     expect(THEME_PALETTES).toContain(fallback.palette());
     expect(['light', 'dark']).toContain(fallback.mode());
+  });
+
+  it('cleans unknown theme-* classes added by the FOUC script before boot', () => {
+    // Storage chứa palette sai định dạng → script FOUC vẫn gắn class `theme-<...>`;
+    // service phải dọn hết class theme-* chứ không để sót rác trên <html>.
+    root.classList.add(`${THEME_CLASS_PREFIX}palette-khong-ton-tai`);
+    localStorage.setItem(
+      THEME_STORAGE_KEY,
+      JSON.stringify({ palette: 'rose-red', mode: 'light' }),
+    );
+
+    const theme = TestBed.inject(ThemeService);
+
+    expect(root.classList.contains(`${THEME_CLASS_PREFIX}palette-khong-ton-tai`)).toBe(false);
+    expect(root.classList.contains(`${THEME_CLASS_PREFIX}${theme.palette()}`)).toBe(true);
   });
 });

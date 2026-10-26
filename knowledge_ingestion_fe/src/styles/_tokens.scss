@@ -112,6 +112,9 @@
   --dialog-width-lg: 720px;
 
   // Z-index
+  // lớp nổi BÊN TRONG card (nút gập panel của trang chat...) — thấp hơn mọi
+  // --z-* khác, chỉ tạo stacking context cục bộ trong card của nó.
+  --z-card-float: 1;
   --z-toolbar: 10;
   --z-sidenav: 15;
   --z-drawer: 20;
