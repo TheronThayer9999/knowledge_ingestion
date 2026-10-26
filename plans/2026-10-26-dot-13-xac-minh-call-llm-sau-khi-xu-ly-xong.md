@@ -73,3 +73,45 @@ khi xong (API :9001 vẫn để chạy vì FE đang dùng).
 - Không sửa UI/nhãn i18n (nếu cần đổi cách hiển thị phase thì tách đợt 14).
 - Không đổi `default_provider`, không sửa `config.local.json`.
 - Bài 47 sẽ được compile thật (đó là chạy đúng chức năng, không phải chỉnh dữ liệu).
+
+## Kết quả
+
+### Bằng chứng chạy thật (worker 12:03:04 → 12:10:34, `default_provider=9router`)
+
+| Mốc (giờ máy) | Log / dữ liệu | Ý nghĩa với UI |
+|---|---|---|
+| 22/10 15:10 | `articles` id 47: `extract=done`, `index=done` từ 22/10 | Nội dung bài 47 đã "xử lý xong" từ 3 ngày trước |
+| 12:03:04.426 | `compile: nhận lô bài … ["47:tmp_big_policy"]` | Worker nhận đúng bài **chỉ còn thiếu compile** |
+| 12:03:04.644 | `compile: gọi LLM tóm tắt mục` Điều 1, `model=kc/nvidia/nemotron-3.5-super-vl:free` | **LLM được gọi dù dữ liệu đã xong từ 22/10** |
+| 12:03:04.498 | `extract: xong 1 bài` 63 (70ms) | extract 63 xong |
+| 12:03:15.116 | `index: xong 1 bài` 63 (embed 453ms, bge-m3) | **63 = done/done/pending** — nội dung đã index, search được |
+| 12:03:27 → 12:04:05 | poll `GET /pipeline/articles` mỗi 2s: `63:done/done/pending`, `64:pending/pending/pending` → 12:03:35 `64:done/pending/pending` → 12:03:45 `64:done/done/pending` | UI chỉ thấy "Chờ xử lý", **không thấy LLM đang chạy** |
+| 12:04:13 → 12:10:33 | tiếp 30+ dòng `compile: gọi LLM` cho 47 (Điều 2 … Điều 36) | Cùng lúc 63/64 đã `done/done/pending` |
+| suốt 7 phút | không có dòng `compile: nhận lô bài` nào cho 63/64 | Compile của 2 bài nhỏ bị **chặn đầu dòng** bởi bài 47 |
+
+Thời gian 1 call LLM compile (9router, model free): 3 call đầu **68s / 74s / 68s**, sau khi "ấm" còn **~5s/call** ⇒ biến thiên rất lớn; bài 47 (~36 mục) chưa xong sau 7 phút.
+
+Sau test: dừng worker, trả bài 47 về `compile_status=pending` (giữ `compile_attempts=2`) để không treo lease;
+63/64 dừng ở `done/done/pending` (đúng tiến độ, worker tắt thì đứng yên).
+
+### Đánh giá
+
+1. **Kết luận: đúng thiết kế, không phải bug.** "Đã xử lý" theo nghĩa *nội dung* (extract + index) xong
+   trước; LLM chỉ chạy ở phase **compile** (tóm tắt mục) vì vậy log vẫn gọi LLM sau mốc đó. Ba mốc UI
+   khác nhau, dễ gây hiểu nhầm:
+   - Dialog upload báo **"Xong"** = upload + `POST /articles` thành công → pipeline còn `pending` cả 3 phase.
+   - Badge danh sách **"Đã xử lý"** (hoặc ẩn) = **cả 3 phase done**, kể cả compile.
+   - Nên nếu thấy "xong" ở dialog upload rồi log gọi LLM → đúng: LLM là bước sau upload.
+2. **Vấn đề thật sự lộ ra: compile bị chặn đầu dòng.** `compile-articles` là 1 goroutine/schedule,
+   `runOnce` chờ `wg.Wait()` của cả lô rồi mới tới kỳ sau; bài 47 (~36 mục) giữ slot hơn 7 phút nên
+   63/64 (mỗi bài 1 mục, ~5s) không được compile dù đã `index=done`. Đề xuất: claim theo lô nhỏ +
+   không chờ cả lô (`COMPILE_CLAIM_LIMIT`/pool hiện 2), hoặc ưu tiên bài ít mục trước.
+3. **Chọn model cho compile**: `kc/nvidia/nemotron-3.5-super-vl:free` có call 68–74s. Compile đang dùng
+   chung `llms.default_provider` với chat ⇒ đáng tách provider riêng cho compile (hoặc chọn model nhanh
+   hơn: đo ở đợt 12 `meta/muse-glimmer-30b` chỉ ~12s/lượt chat) và log thêm `provider` bên cạnh `model`.
+4. **Cache không cứu được**: `compile_attempts=2` nhưng không có dòng `compile: cache hit` nào (đã bật
+   `LOG_LEVEL=debug`) ⇒ 2 lần trước fail trước khi ghi cache; đúng như kỳ vọng, cache chỉ giúp lần chạy lại
+   khi mục đã tóm tắt thành công.
+5. **UI nên nói rõ đang ở phase nào**: hiện chỉ có 1 nhãn gộp; với bài đã index mà compile đang chạy,
+   người dùng thấy "Chờ xử lý" (hoặc tệ hơn: dialog upload "Xong") trong khi LLM đang chạy. Đề xuất
+   badge phụ "Đang tóm tắt" khi `extract=index=done && compile=processing` (tách đợt UI riêng).
