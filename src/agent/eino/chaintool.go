@@ -37,5 +37,5 @@ import (
 func NewChainTool[I, O any](name, desc string, fn func(ctx context.Context, in I) (O, error)) (tool.InvokableTool, error) {
 	chain := compose.NewChain[I, O]()
 	chain.AppendLambda(compose.InvokableLambda(fn))
-	return graphtool.NewInvokableGraphTool[I, O](chain, name, desc)
+	return graphtool.NewInvokableGraphTool(chain, name, desc)
 }
