@@ -1,0 +1,24 @@
+<figure class="chart">
+  <!-- Vỏ ngoài role=img: với screen reader đây là một ảnh nên aria-label phải
+       nói được kiểu biểu đồ + tên + nguồn (canvas do echarts vẽ không có chữ nào) -->
+  <div class="chart-plot" #canvas role="img" [attr.aria-label]="ariaLabel()"></div>
+
+  @if (!ready() && !failed()) {
+    <p class="chart-status" role="status">{{ lang.t('CHAT_CHART_LOADING') }}</p>
+  }
+  @if (failed()) {
+    <p class="chart-status is-error" role="status">{{ lang.t('CHAT_CHART_FAILED') }}</p>
+    <!-- Tên biểu đồ nằm trong canvas (spec.title) — canvas không vẽ được thì
+         phải còn lại hàng chữ kẻo mất luôn tiêu đề -->
+    @if (captionText()) {
+      <p class="chart-title">{{ captionText() }}</p>
+    }
+  }
+
+  <figcaption class="chart-caption">
+    <button type="button" class="chart-source" (click)="citeClick.emit(n())">
+      <mat-icon aria-hidden="true">insert_chart_outlined</mat-icon>
+      <span>{{ lang.t('CHAT_CHART_SOURCE') }} {{ n() }}</span>
+    </button>
+  </figcaption>
+</figure>

@@ -36,7 +36,7 @@
           </div>
         </div>
       } @else {
-        @for (turn of turns(); track $index) {
+        @for (turn of turns(); track $index; let turnIndex = $index) {
           <div
             class="turn"
             [class.user]="turn.role === 'user'"
@@ -81,6 +81,21 @@
                   (keydown)="onCiteRefKey($event, $index)"
                   [innerHTML]="turn.content | markdown: lang.t('CHAT_CITE_JUMP')"
                 ></div>
+
+                <!-- Biểu đồ do backend cắt số từ chunk đã dẫn, vẽ dưới đáp án và TRÊN
+                     khối nguồn để chip "Nguồn n" ở chart nhảy đúng mục bên dưới.
+                     Lặp theo $index vì hai biểu đồ có thể cùng nguồn n (khác kiểu).
+                     turnIndex là biệt danh của index vòng ngoài — $index ở đây là
+                     thứ tự biểu đồ, dùng nhầm thì nhảy sai bong bóng. -->
+                @for (chart of turn.charts; track $index) {
+                  <app-chart
+                    [n]="chart.n"
+                    [kind]="chart.kind"
+                    [caption]="chart.caption"
+                    [options]="chart.spec"
+                    (citeClick)="onChartCite($event, turnIndex)"
+                  />
+                }
 
                 @if (turn.cites && turn.cites.length > 0) {
                   <!-- Gập theo mặc định (khuôn details.reasoning ở trên): câu trả lời

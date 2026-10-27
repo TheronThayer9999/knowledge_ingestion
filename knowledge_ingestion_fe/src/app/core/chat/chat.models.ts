@@ -15,10 +15,24 @@ export interface ChatCite {
   snippet: string;
 }
 
+/**
+ * Biểu đồ backend DỰNG sẵn từ chunk đã dẫn (Đợt 26): mọi con số trong `spec`
+ * đều do server cắt từ tài liệu, LLM chỉ được chọn nguồn `n` / kiểu / tiêu đề.
+ * FE vì thế không tính toán gì thêm — chỉ đưa `spec` vào ECharts vẽ.
+ */
+export interface ChatChart {
+  n: number;
+  kind: string;
+  /** ECharts option (bar/line: xAxis + series[0].data; pie: series[0].data) */
+  spec: Record<string, unknown>;
+  caption: string;
+}
+
 export interface ChatAnswer {
   answer: string;
   questionType: string;
   cites: ChatCite[];
+  charts: ChatChart[];
   /** Đoạn model tự suy nghĩ trước khi đáp — rỗng khi backend không trả reasoning */
   reasoning: string;
 }
@@ -50,6 +64,8 @@ export interface SavedMessage {
   role: ChatRole;
   content: string;
   cites: ChatCite[];
+  /** Biểu đồ đã lưu (cột `charts` jsonb) — mở lại phiên là vẽ y như lúc trả lời */
+  charts: ChatChart[];
   /** backend ghi scope thật của từng lượt, không suy từ phiên */
   categoryIds: number[];
   provider: string;
@@ -75,10 +91,18 @@ export interface ChatCiteDto {
   snippet: string;
 }
 
+export interface ChatChartDto {
+  n: number;
+  kind: string;
+  spec?: Record<string, unknown> | null;
+  caption: string;
+}
+
 export interface ChatResponseDto {
   answer: string;
   question_type: string;
   cites?: ChatCiteDto[];
+  charts?: ChatChartDto[];
   reasoning?: string;
 }
 
@@ -99,6 +123,7 @@ export interface ChatMessageDto {
   role: string;
   content: string;
   cites?: ChatCiteDto[];
+  charts?: ChatChartDto[];
   effective_category_ids?: number[];
   provider?: string;
   model?: string;
@@ -116,12 +141,23 @@ export function toCite(dto: ChatCiteDto): ChatCite {
   };
 }
 
+export function toChatChart(dto: ChatChartDto): ChatChart {
+  return {
+    n: dto.n,
+    kind: dto.kind,
+    // spec thiếu thì để object rỗng: component vẽ chỗ trống chứ không vỡ template
+    spec: dto.spec ?? {},
+    caption: dto.caption ?? '',
+  };
+}
+
 export function toChatAnswer(dto: ChatResponseDto): ChatAnswer {
   return {
     answer: dto.answer,
     questionType: dto.question_type,
     reasoning: dto.reasoning ?? '',
     cites: (dto.cites ?? []).map(toCite),
+    charts: (dto.charts ?? []).map(toChatChart),
   };
 }
 
@@ -149,6 +185,7 @@ export function toSavedMessage(dto: ChatMessageDto): SavedMessage {
     role: dto.role === 'user' ? 'user' : 'assistant',
     content: dto.content,
     cites: (dto.cites ?? []).map(toCite),
+    charts: (dto.charts ?? []).map(toChatChart),
     categoryIds: dto.effective_category_ids ?? [],
     provider: dto.provider ?? '',
     model: dto.model ?? '',

@@ -1,0 +1,69 @@
+/* Host là custom element (display:inline mặc định) — chặn thành block để biểu
+   đồ chiếm hàng riêng trong bong bóng, không bị line-box ăn mòn */
+:host {
+  display: block;
+}
+
+/* Biểu đồ trong bong bóng chat: cao cố định vì echarts cần kích thước thật lúc
+   init, chiều rộng thì theo bong bóng (ResizeObserver trong component vẽ lại). */
+.chart {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  min-width: 0;
+}
+
+.chart-plot {
+  width: 100%;
+  height: 260px;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.chart-status {
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.chart-status.is-error {
+  color: var(--color-danger);
+}
+
+.chart-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Chip nguồn cùng bộ đếm với chip [^n] trong đáp án: bấm là nhảy tới mục nguồn */
+.chart-source {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-soft);
+  color: var(--color-primary);
+  font: var(--text-style-xs-strong);
+  cursor: pointer;
+}
+
+.chart-source mat-icon {
+  font-size: var(--icon-size-sm);
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+/* Hàng chữ dự phòng khi canvas không vẽ được (tiêu đề thật nằm trong canvas) */
+.chart-title {
+  font: var(--text-style-xs);
+  font-family: var(--font-serif);
+  color: var(--color-muted);
+  margin: 0;
+  min-width: 0;
+}

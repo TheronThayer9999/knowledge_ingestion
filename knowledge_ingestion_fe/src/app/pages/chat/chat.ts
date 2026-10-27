@@ -18,13 +18,14 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { map, Observable, of, Subscription, switchMap, tap } from 'rxjs';
 import { CONVERSATION_PAGE, ConversationService } from '../../core/chat/conversation.service';
-import type { ChatCite, Conversation } from '../../core/chat/chat.models';
+import type { ChatChart, ChatCite, Conversation } from '../../core/chat/chat.models';
 import { ChatService } from '../../core/chat/chat.service';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
 import type { Category } from '../../core/knowledge/knowledge.models';
 import { KnowledgeService } from '../../core/knowledge/knowledge.service';
 import { MessageService } from '../../shared/feedback/message.service';
 import { MarkdownPipe } from '../../shared/markdown/markdown.pipe';
+import { EchartsChart } from '../../shared/chart/echarts-chart';
 import {
   DocumentDetailDialog,
   type DocumentDetailData,
@@ -34,6 +35,11 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   cites?: ChatCite[];
+  /**
+   * Biểu đồ backend dựng từ chunk đã dẫn — con số nào cũng có nguồn, FE chỉ vẽ.
+   * Lượt của user và câu trả lời không có biểu đồ thì để trống.
+   */
+  charts?: ChatChart[];
   /** Phần model suy nghĩ (chỉ có ở lượt bật suy luận sâu) — hiển thị dạng gập */
   reasoning?: string;
   /**
@@ -71,6 +77,7 @@ const DAY_MS = 86_400_000;
     MatSelectModule,
     MatTooltipModule,
     MarkdownPipe,
+    EchartsChart,
   ],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
@@ -242,6 +249,7 @@ export class Chat {
             role: row.role,
             content: row.content,
             cites: row.cites,
+            charts: row.charts,
             // reasoning không được lưu (không có cột) — mở lại phiên chỉ còn đáp án
             scopeIds: row.categoryIds,
           })),
@@ -415,11 +423,27 @@ export class Chat {
   private jumpToCite(target: EventTarget | null, turnIndex: number): void {
     const chip = target instanceof Element ? target.closest('.md-cite-ref') : null;
     const number = Number((chip?.textContent ?? '').trim());
-    const bubble = this.bubbleAt(turnIndex);
-    if (!chip || !Number.isInteger(number) || number < 1 || !bubble) {
+    if (!chip || !Number.isInteger(number) || number < 1) {
       return;
     }
-    // Nguồn mặc định gập — mở ra trước rồi mới nhảy, vì bấm số là để xem nguồn
+    this.scrollToCite(turnIndex, number);
+  }
+
+  /**
+   * Bấm chip nguồn dưới biểu đồ: cùng một bộ đếm với chip `[^n]` trong đáp án
+   * nên đi chung đường nhảy — biểu đồ không tự mở dialog tài liệu, nó chỉ dẫn
+   * xuống khối nguồn để người đọc bấm tiếp vào bài.
+   */
+  protected onChartCite(number: number, turnIndex: number): void {
+    this.scrollToCite(turnIndex, number);
+  }
+
+  /** Mở khối nguồn (mặc định gập) rồi nhảy tới mục thứ `number` trong cùng bong bóng */
+  private scrollToCite(turnIndex: number, number: number): void {
+    const bubble = this.bubbleAt(turnIndex);
+    if (!bubble) {
+      return;
+    }
     const panel = bubble.querySelector<HTMLDetailsElement>('details.cites');
     if (panel) {
       panel.open = true;
@@ -501,6 +525,7 @@ export class Chat {
               role: 'assistant',
               content: answer.answer,
               cites: answer.cites,
+              charts: answer.charts,
               reasoning: answer.reasoning,
             },
           ]);

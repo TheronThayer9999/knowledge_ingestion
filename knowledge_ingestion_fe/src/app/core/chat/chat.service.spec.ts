@@ -93,4 +93,32 @@ describe('ChatService', () => {
     expect((await result)!.reasoning).toBe('');
     http.verify();
   });
+
+  /**
+   * Biểu đồ (Đợt 26): mapper giữ nguyên spec do backend dựng, KHÔNG đụng vào
+   * con số nào. Thiếu `charts` thì trả mảng rỗng — đối xứng với BE (luôn là []).
+   */
+  it('charts đi từ DTO vào answer, thiếu thì là mảng rỗng', async () => {
+    const chart = {
+      n: 9,
+      kind: 'bar',
+      spec: {
+        xAxis: { type: 'category', data: ['NV01'] },
+        series: [{ type: 'bar', data: [800000] }],
+      },
+      caption: 'Nguồn: [^9] · Phân bố phụ cấp',
+    };
+    const withCharts = service.send({ message: 'hỏi' }).toPromise();
+    http.expectOne(api('/chat')).flush({ ...ENVELOPE_OK, data: { ...ANSWER, charts: [chart] } });
+
+    const answer = await withCharts;
+    expect(answer!.charts).toEqual([
+      { n: 9, kind: 'bar', spec: chart.spec, caption: chart.caption },
+    ]);
+
+    const withoutCharts = service.send({ message: 'hỏi' }).toPromise();
+    http.expectOne(api('/chat')).flush({ ...ENVELOPE_OK, data: ANSWER });
+    expect((await withoutCharts)!.charts).toEqual([]);
+    http.verify();
+  });
 });

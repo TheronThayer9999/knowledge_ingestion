@@ -133,6 +133,14 @@ describe('ConversationService', () => {
           role: 'assistant',
           content: 'Mức phí là 8.000 VNĐ[^1].',
           cites: [{ n: 1, article_id: 8, page_num: 4, chunk_index: 2, snippet: 'Điều 13' }],
+          charts: [
+            {
+              n: 1,
+              kind: 'bar',
+              spec: { series: [{ type: 'bar', data: [800000] }] },
+              caption: 'Nguồn: [^1] · Phụ cấp theo nhân viên',
+            },
+          ],
           provider: 'openrouter',
           thinking: false,
           created_at: '2026-10-26T09:00:30Z',
@@ -143,9 +151,19 @@ describe('ConversationService', () => {
     const rows = (await result)!;
     expect(rows.map((row) => row.id)).toEqual([107, 108]);
     expect(rows[0].cites).toEqual([]);
+    expect(rows[0].charts).toEqual([]);
     expect(rows[0].categoryIds).toEqual([7]);
     expect(rows[1].cites).toEqual([
       { n: 1, articleId: 8, pageNum: 4, chunkIndex: 2, snippet: 'Điều 13' },
+    ]);
+    // Mở lại phiên thì biểu đồ phải hiện ra y hệt lúc trả lời (Đợt 26)
+    expect(rows[1].charts).toEqual([
+      {
+        n: 1,
+        kind: 'bar',
+        spec: { series: [{ type: 'bar', data: [800000] }] },
+        caption: 'Nguồn: [^1] · Phụ cấp theo nhân viên',
+      },
     ]);
     expect(rows[1].thinking).toBe(false);
     http.verify();
