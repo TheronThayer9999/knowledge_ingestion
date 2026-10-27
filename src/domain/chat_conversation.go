@@ -64,6 +64,11 @@ type ChatMessage struct {
 	// Cites là jsonb mảng ChatCite đã đánh số 1..N — không tách bảng riêng vì
 	// chẳng có query nào trên từng cite, chỉ có "cả mảng của message".
 	Cites string `json:"cites" gorm:"type:jsonb;not null;default:'[]'"`
+	// Charts là jsonb mảng ChatChart đã dựng xong (Đợt 26) — lưu để mở lại phiên
+	// biểu đồ vẫn vẽ y như lượt vừa hỏi, không phải gọi tool xin vẽ lại.
+	// Default '[]' vì AutoMigrate thêm cột NOT NULL vào bảng đã có dữ liệu mà
+	// không có default thì fail (cùng lý do với Cites).
+	Charts string `json:"charts" gorm:"type:jsonb;not null;default:'[]'"`
 	// EffectiveCategoryIDs ghi lại phạm vi HIỆU LỰC của lượt này (S4): đổi scope
 	// giữa hội thoại là chuyện thật, để sau này UI chỉ ra được "lượt này tra
 	// trong phạm vi nào" thay vì suy từ scope hiện tại của phiên.

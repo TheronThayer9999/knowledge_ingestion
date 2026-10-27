@@ -261,6 +261,10 @@ type WorkerConfig struct {
 // sửa prompt rồi restart app là ăn, không cần build lại.
 type AgentConfig struct {
 	PromptDir string `json:"prompt_dir"`
+	// ChartEnabled bật tool chart_from_cite (Đợt 26). Con trỏ để "không ghi gì
+	// trong config" = BẬT (default của tính năng), chỉ `false` tường minh mới tắt
+	// — nút dừng cho một tính năng đụng cả 4 tầng mà không phải revert code.
+	ChartEnabled *bool `json:"chart_enabled"`
 }
 
 // VLMConfig cấu hình model đọc ẢNH (qwen-vl). CỐ Ý tách khỏi llms.providers:

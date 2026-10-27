@@ -146,6 +146,7 @@ type bareCategories struct{ domain.ICategoryRepositoryImpl }
 var toolArgStructs = []any{
 	KnowledgeSearchArgs{}, ListCategoriesArgs{}, ReadContextArgs{}, ArticleInfoArgs{},
 	ListSectionsArgs{}, ReadArticleArgs{}, ListUnreadablePagesArgs{}, ListSheetsArgs{}, ReadSheetArgs{},
+	ChartFromCiteArgs{},
 }
 
 // TestToolArgTagsHaveNoCommaInDescription khoá một cái bẫy im lặng: eino dựng JSON
@@ -182,18 +183,7 @@ func TestToolArgTagsHaveNoCommaInDescription(t *testing.T) {
 // lỡ tay trả slice rỗng, thì test này gãy thay vì để model "không biết" tool tồn
 // tại một cách âm thầm.
 func TestDefaultToolsExposeAllNames(t *testing.T) {
-	vectors := &bareVectors{}
-	tools, err := NewDefaultTools(ToolDeps{
-		Hybrid:     retrieval.NewHybridSearcher(nil, vectors, &fakeIssueArticles{}),
-		Vectors:    vectors,
-		Categories: &bareCategories{},
-		Articles:   &fakeIssueArticles{},
-		Pages:      &fakeIssuePages{},
-		PageText:   &fakeTextPages{},
-	})
-	if err != nil {
-		t.Fatalf("NewDefaultTools: %v", err)
-	}
+	tools := defaultToolsForTest(t, true)
 
 	seen := make(map[string]bool, len(tools))
 	for _, tl := range tools {
@@ -212,12 +202,49 @@ func TestDefaultToolsExposeAllNames(t *testing.T) {
 		}
 		seen[info.Name] = true
 	}
-	for _, want := range []string{ListSheetsName, ReadSheetName} {
+	for _, want := range []string{ListSheetsName, ReadSheetName, ChartFromCiteName} {
 		if !seen[want] {
 			t.Fatalf("thiếu tool %s trong danh sách model nhận", want)
 		}
 	}
-	if len(tools) != 9 {
+	if len(tools) != 10 {
 		t.Fatalf("số tool đổi (%d) — cập nhật prompt/test nếu cố ý thêm/bớt", len(tools))
+	}
+}
+
+// defaultToolsForTest dựng bộ tool với cờ chart bật/tắt — dependency nil hết vì
+// test chỉ đọc Info, không gọi vào method nào.
+func defaultToolsForTest(t *testing.T, chartEnabled bool) []einotool.BaseTool {
+	t.Helper()
+	vectors := &bareVectors{}
+	tools, err := NewDefaultTools(ToolDeps{
+		Hybrid:       retrieval.NewHybridSearcher(nil, vectors, &fakeIssueArticles{}),
+		Vectors:      vectors,
+		Categories:   &bareCategories{},
+		Articles:     &fakeIssueArticles{},
+		Pages:        &fakeIssuePages{},
+		PageText:     &fakeTextPages{},
+		ChartEnabled: chartEnabled,
+	})
+	if err != nil {
+		t.Fatalf("NewDefaultTools: %v", err)
+	}
+	return tools
+}
+
+// `agent.chart_enabled = false` là nút dừng của cả tính năng: model phải KHÔNG
+// thấy tool chart nữa, nếu không nó vẫn xin vẽ biểu đồ rồi nhận kết quả rỗng.
+func TestChartToolHiddenWhenDisabled(t *testing.T) {
+	for _, tl := range defaultToolsForTest(t, false) {
+		info, err := tl.Info(context.Background())
+		if err != nil {
+			t.Fatalf("Info: %v", err)
+		}
+		if info.Name == ChartFromCiteName {
+			t.Fatal("tắt chart_enabled mà model vẫn thấy tool chart_from_cite")
+		}
+	}
+	if got := defaultToolsForTest(t, true); len(got) != 10 {
+		t.Fatalf("bật chart_enabled phải có 10 tool, got %d", len(got))
 	}
 }

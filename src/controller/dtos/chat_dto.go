@@ -41,12 +41,32 @@ type ChatCite struct {
 	Snippet    string `json:"snippet" example:"Điều 13... phạt 0.05%/ngày..."`
 }
 
+// ChatChart là một biểu đồ backend tự dựng từ chunk đã dẫn (Đợt 26). Model chỉ
+// được chọn nguồn/loại/tiêu đề/tên cột — `spec` là ECharts option do code sinh
+// ra và đã bị cổng validate đối chiếu từng con số với series, nên FE cứ vẽ
+// thẳng, không cần (và không được) sửa số.
+type ChatChart struct {
+	// N là số trích dẫn nguồn của biểu đồ — khớp đúng [^n] trong answer, FE bấm
+	// chip "Nguồn: [n]" là nhảy sang source panel.
+	N int `json:"n" example:"1"`
+	// Kind là loại THỰC vẽ (bar|line|pie), có thể khác loại model xin khi dữ
+	// liệu không hợp với line và rơi về bar.
+	Kind string `json:"kind" example:"bar"`
+	// Spec là option ECharts nguyên văn cho component chart.
+	Spec map[string]any `json:"spec"`
+	// Caption là chú thích đã kèm khuôn nguồn, để hiển thị dưới biểu đồ.
+	Caption string `json:"caption" example:"Nguồn: [^1] · Phụ cấp theo nhân viên"`
+}
+
 // ChatResponse là câu trả lời hoàn chỉnh — answer là Markdown để ReactJS
 // render bằng react-markdown, cites để map component trích dẫn.
 type ChatResponse struct {
 	Answer       string      `json:"answer" example:"Mức phạt là **0.05%/ngày**[^1]."`
 	QuestionType string      `json:"question_type" example:"lookup"`
 	Cites        []*ChatCite `json:"cites"`
+	// Charts là biểu đồ của lượt này — dựng từ collector chứ không từ lời model,
+	// buildCharts luôn trả mảng (kể cả rỗng) nên FE không gặp null.
+	Charts []*ChatChart `json:"charts"`
 	// Reasoning là đoạn model tự suy nghĩ trước khi đáp (chỉ có khi backend
 	// trả reasoning, vd Ollama bật `think`) — omitempty để mặc định response
 	// không đổi hình dạng với model không hỗ trợ.

@@ -146,13 +146,15 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 }
 
 // compose dựng response cuối của một lượt: đánh số cites, chuẩn hoá khuôn [^n]
-// trong answer, dán nhãn question_type, và ghi lượt xuống phiên nếu có.
+// trong answer, dán nhãn question_type, graft biểu đồ tool đã dựng, và ghi lượt
+// xuống phiên nếu có.
 //
 // Tách khỏi Chat() vì Chat đã đầy ngân sách (guardrail
 // src/quality/function_budget_test.go), không phải vì nó tái sử dụng được.
 func (s *chatService) compose(ctx context.Context, res eino.RunResult, model, message string,
 	in turnInput, userID int64, session *port.ChatSession) *dtos.ChatResponse {
 	cites := buildCites(res.Hits)
+	charts := buildCharts(res.Charts)
 	// Answer do model viết nên còn lệch khuôn ([*2], số bịa ra, "Article ID 54") —
 	// BE chốt lại theo đúng cites vừa dựng ở trên trước khi trả FE.
 	answer, droppedMarkers := normalizeCitations(res.Answer, len(cites))
@@ -161,11 +163,12 @@ func (s *chatService) compose(ctx context.Context, res eino.RunResult, model, me
 			"trace_id", utils.TraceIDFromCtx(ctx),
 			"dropped_markers", droppedMarkers, "cites", len(cites))
 	}
-	s.persist(ctx, session, in, userID, message, answer, cites)
+	s.persist(ctx, session, in, userID, message, answer, cites, charts)
 	return &dtos.ChatResponse{
 		Answer:       answer,
 		QuestionType: s.label(ctx, model, message, res.Searched),
 		Cites:        cites,
+		Charts:       charts,
 		Reasoning:    clipReasoning(res.Reasoning),
 	}
 }
@@ -225,7 +228,7 @@ func (s *chatService) plan(dto *dtos.ChatRequest, session *port.ChatSession) tur
 // xong là đánh đổi tệ hơn để nguyên một lượt mất trắng trong DB — nên log ERROR
 // thật to (kèm conversation_id để chữa tay nếu cần) rồi đi tiếp.
 func (s *chatService) persist(ctx context.Context, session *port.ChatSession, in turnInput,
-	userID int64, question, answer string, cites []*dtos.ChatCite) {
+	userID int64, question, answer string, cites []*dtos.ChatCite, charts []*dtos.ChatChart) {
 	// hai điều kiện chặn giống resolveSession: không có phiên (request cũ) hoặc
 	// không có cổng lưu (fake/test) thì coi như chế độ lưu đang tắt.
 	if session == nil || s.sessions == nil {
@@ -237,6 +240,7 @@ func (s *chatService) persist(ctx context.Context, session *port.ChatSession, in
 		Question:       question,
 		Answer:         answer,
 		Cites:          cites,
+		Charts:         charts,
 		CategoryIDs:    in.CategoryIDs,
 		Provider:       in.Provider,
 		Model:          in.Model,
@@ -274,6 +278,26 @@ func buildCites(hits []*domain.ScoredChunk) []*dtos.ChatCite {
 		})
 	}
 	return cites
+}
+
+// buildCharts map biểu đồ tool chart_from_cite đã dựng (nằm trong collector)
+// ra DTO cho frontend, đối xứng với buildCites. Chart đến từ collector chứ không
+// từ lời model — model không có đường nào nhét số vào spec (Đợt 26 §2). Trả
+// mảng rỗng khi lượt không vẽ gì, FE không phải gặp null.
+func buildCharts(charts []*eino.CollectedChart) []*dtos.ChatChart {
+	out := make([]*dtos.ChatChart, 0, len(charts))
+	for _, ch := range charts {
+		if ch == nil {
+			continue
+		}
+		out = append(out, &dtos.ChatChart{
+			N:       ch.N,
+			Kind:    ch.Kind,
+			Spec:    ch.Spec,
+			Caption: ch.Caption,
+		})
+	}
+	return out
 }
 
 // run gọi agent 1 lượt kèm log call + chốt chặn retry — tách khỏi Chat để hàm

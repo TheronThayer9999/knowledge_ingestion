@@ -35,17 +35,20 @@ type ChatSession struct {
 }
 
 // ChatTurn là một lượt thành công cần ghi xuống: câu hỏi + câu trả lời đã chuẩn
-// hoá (sau normalizeCitations) + cites + phạm vi hiệu lực của lượt này.
+// hoá (sau normalizeCitations) + cites + charts + phạm vi hiệu lực của lượt này.
 type ChatTurn struct {
 	ConversationID int64
 	UserID         int64
 	Question       string
 	Answer         string
 	Cites          []*dtos.ChatCite
-	CategoryIDs    []int64
-	Provider       string
-	Model          string
-	Thinking       bool
+	// Charts là biểu đồ backend đã dựng (Đợt 26) — lưu cùng message để mở lại
+	// phiên vẫn thấy biểu đồ, không phải chạy lại tool.
+	Charts      []*dtos.ChatChart
+	CategoryIDs []int64
+	Provider    string
+	Model       string
+	Thinking    bool
 }
 
 // IChatSessions là cổng lưu hội thoại — agent KHAI BÁO cái nó cần (Load +

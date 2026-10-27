@@ -110,12 +110,14 @@ func stripCitations(s string) string {
 // RunResult là output 1 lượt chat: câu trả lời markdown + hits đã gom qua các
 // lượt gọi tool (để dựng cites, khớp [^n] trong answer) + cờ đã đọc tài liệu
 // (để dán nhãn question_type, kể cả khi không gom được hit nào) + reasoning —
-// phần model tự nghĩ trước khi đáp, chỉ có khi backend bật `think`.
+// phần model tự nghĩ trước khi đáp, chỉ có khi backend bật `think` + charts do
+// tool chart_from_cite dựng từ chính chunk đã dẫn.
 type RunResult struct {
 	Answer    string
 	Reasoning string
 	Hits      []*domain.ScoredChunk
 	Searched  bool
+	Charts    []*CollectedChart
 }
 
 // Run chạy agent 1 lượt: history + câu hỏi hiện tại đi vào, loop tool lặp
@@ -176,17 +178,29 @@ func (a *ChatAgent) Run(ctx context.Context, model string, history []dtos.ChatHi
 	if strings.TrimSpace(answer) == "" {
 		warnEmptyAnswer(ctx, query)
 	}
-	var hits = make([]*domain.ScoredChunk, 0)
-	searched := false
-	if scope, ok := ScopeFrom(ctx); ok && scope.Collector != nil {
-		hits, searched = scope.Collector.Snapshot()
-	}
+	hits, searched, charts := collectorSnapshot(ctx)
 	return RunResult{
 		Answer:    answer,
 		Reasoning: strings.Join(reasonings, "\n\n"),
 		Hits:      hits,
 		Searched:  searched,
+		Charts:    charts,
 	}, nil
+}
+
+// collectorSnapshot chốt kết quả gom được của lượt: hit để dựng cites, cờ đã
+// tra cứu để dán nhãn, chart để trả FE. Tách hàm vì Run đã sát ngân sách
+// (src/quality/function_budget_test.go) — ba thứ này đọc chung một chỗ dưới
+// lock của collector.
+func collectorSnapshot(ctx context.Context) ([]*domain.ScoredChunk, bool, []*CollectedChart) {
+	hits := make([]*domain.ScoredChunk, 0)
+	charts := make([]*CollectedChart, 0)
+	searched := false
+	if scope, ok := ScopeFrom(ctx); ok && scope.Collector != nil {
+		hits, searched = scope.Collector.Snapshot()
+		charts = scope.Collector.SnapshotCharts()
+	}
+	return hits, searched, charts
 }
 
 // warnEmptyAnswer báo lượt model trả answer rỗng (model free thỉnh thoảng vậy,

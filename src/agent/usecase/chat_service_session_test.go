@@ -130,7 +130,7 @@ func TestResolveSessionNilStoreRunsChatWithoutPersistence(t *testing.T) {
 		t.Fatalf("session = %+v err = %v, want nil/nil khi cổng lưu tắt", session, err)
 	}
 
-	svc.persist(context.Background(), &port.ChatSession{ConversationID: 5}, turnInput{}, 7, "hỏi", "đáp", nil)
+	svc.persist(context.Background(), &port.ChatSession{ConversationID: 5}, turnInput{}, 7, "hỏi", "đáp", nil, nil)
 }
 
 // TestResolveSessionPassesUserID khoá điều kiện quyền: repo lọc theo user_id,
@@ -180,8 +180,9 @@ func TestPersistWritesMergedChoices(t *testing.T) {
 		Thinking:    true,
 	}
 	cites := []*dtos.ChatCite{{N: 1, ArticleID: 8, PageNum: 4}}
+	charts := []*dtos.ChatChart{{N: 1, Kind: "bar", Caption: "Nguồn: [^1] · Phụ cấp"}}
 
-	svc.persist(context.Background(), &port.ChatSession{ConversationID: 5}, in, 7, "hỏi", "đáp[^1]", cites)
+	svc.persist(context.Background(), &port.ChatSession{ConversationID: 5}, in, 7, "hỏi", "đáp[^1]", cites, charts)
 
 	turn := store.turn
 	if turn == nil {
@@ -196,6 +197,9 @@ func TestPersistWritesMergedChoices(t *testing.T) {
 	if len(turn.Cites) != 1 || turn.Cites[0].ArticleID != 8 {
 		t.Errorf("cites = %+v, phải lưu theo message", turn.Cites)
 	}
+	if len(turn.Charts) != 1 || turn.Charts[0].N != 1 {
+		t.Errorf("charts = %+v, biểu đồ phải lưu theo message để mở lại phiên vẫn thấy", turn.Charts)
+	}
 }
 
 // TestPersistFailureDoesNotBreakAnswer: DB chết sau khi model đã đáp xong thì
@@ -205,7 +209,7 @@ func TestPersistFailureDoesNotBreakAnswer(t *testing.T) {
 	store := &chatSessionStub{appendErr: stderrors.New("db chết")}
 	svc := &chatService{sessions: store}
 
-	svc.persist(context.Background(), &port.ChatSession{ConversationID: 5}, turnInput{}, 7, "hỏi", "đáp", nil)
+	svc.persist(context.Background(), &port.ChatSession{ConversationID: 5}, turnInput{}, 7, "hỏi", "đáp", nil, nil)
 	if store.turn == nil {
 		t.Error("AppendTurn không được gọi dù có session")
 	}

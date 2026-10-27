@@ -32,12 +32,13 @@ func newProviderAgents(
 	pageText domain.ArticlePageText) (*ProviderAgents, error) {
 
 	tools, err := eino.NewDefaultTools(eino.ToolDeps{
-		Hybrid:     hybrid,
-		Vectors:    vectors,
-		Categories: categoryRepo,
-		Articles:   articleRepo,
-		Pages:      pageIssues,
-		PageText:   pageText,
+		Hybrid:       hybrid,
+		Vectors:      vectors,
+		Categories:   categoryRepo,
+		Articles:     articleRepo,
+		Pages:        pageIssues,
+		PageText:     pageText,
+		ChartEnabled: chartEnabled(cfg),
 	})
 	if err != nil {
 		return nil, err
@@ -84,4 +85,13 @@ func newClassifyPrompts(cfg config.IConfig) (question.Prompts, error) {
 // File thiếu thì app fail-fast vì không còn bản mặc định trong code.
 func newChatPrompts(cfg config.IConfig) (synthesis.Prompts, error) {
 	return synthesis.LoadPrompts(cfg.GetAgent().PromptDir)
+}
+
+// chartEnabled đọc cờ `agent.chart_enabled`: bỏ trống trong config = BẬT (dù
+// là tính năng mới), chỉ `false` tường minh mới tắt. Đặt ở loader thay vì
+// config.Load vì cấu hình cũ (không có key) phải giữ nguyên hành vi mà không
+// cần sửa file config nào.
+func chartEnabled(cfg config.IConfig) bool {
+	c := cfg.GetAgent().ChartEnabled
+	return c == nil || *c
 }

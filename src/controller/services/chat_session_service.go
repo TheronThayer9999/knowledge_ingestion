@@ -252,14 +252,18 @@ func (s *chatSessionService) AppendTurn(ctx context.Context, turn *port.ChatTurn
 	if err != nil {
 		return err
 	}
+	charts, err := dtos.EncodeCharts(turn.Charts)
+	if err != nil {
+		return err
+	}
 	scope, err := dtos.EncodeIDList(turn.CategoryIDs)
 	if err != nil {
 		return err
 	}
 	now := time.Now()
 	msgs := []*domain.ChatMessage{
-		newChatMessage(turn, domain.MessageRoleUser, turn.Question, "[]", scope),
-		newChatMessage(turn, domain.MessageRoleAssistant, turn.Answer, cites, scope),
+		newChatMessage(turn, domain.MessageRoleUser, turn.Question, "[]", "[]", scope),
+		newChatMessage(turn, domain.MessageRoleAssistant, turn.Answer, cites, charts, scope),
 	}
 	return s.uow.InTx(ctx, func(txCtx context.Context) error {
 		if err := s.msgRepo.Append(txCtx, msgs); err != nil {
@@ -277,12 +281,13 @@ func (s *chatSessionService) AppendTurn(ctx context.Context, turn *port.ChatTurn
 	})
 }
 
-func newChatMessage(turn *port.ChatTurn, role, content, cites, scope string) *domain.ChatMessage {
+func newChatMessage(turn *port.ChatTurn, role, content, cites, charts, scope string) *domain.ChatMessage {
 	return &domain.ChatMessage{
 		ConversationID:       turn.ConversationID,
 		Role:                 role,
 		Content:              content,
 		Cites:                cites,
+		Charts:               charts,
 		EffectiveCategoryIDs: scope,
 		Provider:             turn.Provider,
 		Model:                turn.Model,

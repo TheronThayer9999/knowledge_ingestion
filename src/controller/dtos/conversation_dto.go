@@ -54,15 +54,18 @@ type ConversationResponse struct {
 // ChatMessageResponse là 1 message đã lưu. `cites` về đúng nguyên mảng lúc trả
 // lời — mở lại phiên là chip `[^n]` (Đợt 23) sống lại được, không phải đoán lại.
 type ChatMessageResponse struct {
-	ID          int64       `json:"id" example:"108"`
-	Role        string      `json:"role" example:"assistant"`
-	Content     string      `json:"content"`
-	Cites       []*ChatCite `json:"cites"`
-	CategoryIDs []int64     `json:"effective_category_ids,omitempty"`
-	Provider    string      `json:"provider,omitempty" example:"openrouter"`
-	Model       string      `json:"model,omitempty" example:"google/gemma-4-31b-it:free"`
-	Thinking    bool        `json:"thinking"`
-	CreatedAt   time.Time   `json:"created_at"`
+	ID      int64       `json:"id" example:"108"`
+	Role    string      `json:"role" example:"assistant"`
+	Content string      `json:"content"`
+	Cites   []*ChatCite `json:"cites"`
+	// Charts về nguyên spec đã dựng — mở lại phiên là biểu đồ vẽ lại y hệt
+	// (Đợt 26), user không phải xin vẽ lần hai.
+	Charts      []*ChatChart `json:"charts"`
+	CategoryIDs []int64      `json:"effective_category_ids,omitempty"`
+	Provider    string       `json:"provider,omitempty" example:"openrouter"`
+	Model       string       `json:"model,omitempty" example:"google/gemma-4-31b-it:free"`
+	Thinking    bool         `json:"thinking"`
+	CreatedAt   time.Time    `json:"created_at"`
 }
 
 func ToConversationResponse(conv *domain.Conversation) (*ConversationResponse, error) {
@@ -91,6 +94,10 @@ func ToMessageResponse(msg *domain.ChatMessage) (*ChatMessageResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	charts, err := DecodeCharts(msg.Charts)
+	if err != nil {
+		return nil, err
+	}
 	ids, err := DecodeIDList(msg.EffectiveCategoryIDs)
 	if err != nil {
 		return nil, err
@@ -100,6 +107,7 @@ func ToMessageResponse(msg *domain.ChatMessage) (*ChatMessageResponse, error) {
 		Role:        msg.Role,
 		Content:     msg.Content,
 		Cites:       cites,
+		Charts:      charts,
 		CategoryIDs: ids,
 		Provider:    msg.Provider,
 		Model:       msg.Model,
@@ -174,6 +182,34 @@ func decodeCites(raw string) ([]*ChatCite, error) {
 		return nil, err
 	}
 	return cites, nil
+}
+
+// EncodeCharts mã hoá biểu đồ của lượt xuống jsonb `messages.charts`. nil ->
+// "[]": cột NOT NULL có default nên không bao giờ nhận rỗng, và message của
+// user (không có chart nào) cũng ghi cùng một hình dạng.
+func EncodeCharts(charts []*ChatChart) (string, error) {
+	if len(charts) == 0 {
+		return "[]", nil
+	}
+	raw, err := json.Marshal(charts)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// DecodeCharts đọc mảng biểu đồ đã lưu. Chart hỏng (spec bị sửa tay) làm cả
+// message lỗi chứ không trả biểu đồ cụt — cùng luật với decodeCites: thà để
+// caller log thấy mất nguồn còn hơn vẽ số không rõ từ đâu.
+func DecodeCharts(raw string) ([]*ChatChart, error) {
+	if raw == "" || raw == "[]" {
+		return nil, nil
+	}
+	var charts []*ChatChart
+	if err := json.Unmarshal([]byte(raw), &charts); err != nil {
+		return nil, err
+	}
+	return charts, nil
 }
 
 // ClipTitle cắt câu hỏi đầu tiên thành title phiên theo RUNE (tiếng Việt không
