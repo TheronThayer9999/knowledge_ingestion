@@ -62,6 +62,9 @@ type HitCollector struct {
 	mu   sync.Mutex
 	Hits []*domain.ScoredChunk
 	seen map[string]int
+	// Charts gom biểu đồ tool chart_from_cite dựng được trong lượt — chat_service
+	// map ra DTO từ đây chứ không từ lời model.
+	Charts []*CollectedChart
 	// Searched đánh dấu agent đã đọc tài liệu (search/info/sections/context),
 	// kể cả khi kết quả rỗng không gom được hit nào — nhãn question_type dựa
 	// vào cờ này chứ không dựa vào số cites (tool đếm Điều không sinh cites).
@@ -81,6 +84,47 @@ func (c *HitCollector) Snapshot() ([]*domain.ScoredChunk, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.Hits, c.Searched
+}
+
+// SnapshotCharts trả danh sách biểu đồ đã dựng. Hàm riêng chứ không sửa chữ ký
+// Snapshot để không đụng mọi chỗ đang gọi Snapshot.
+func (c *HitCollector) SnapshotCharts() []*CollectedChart {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Charts
+}
+
+// Cite tra nguồn theo số trích dẫn [^n] — đúng cách Add đánh số (n = index+1
+// trong Hits). Tool chỉ được vẽ từ nguồn model đã nhìn thấy; n ngoài phạm vi
+// là model bịa, phải trả false để tool từ chối chứ không suy đoán.
+func (c *HitCollector) Cite(n int) (*domain.ScoredChunk, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if n < 1 || n > len(c.Hits) {
+		return nil, false
+	}
+	return c.Hits[n-1], true
+}
+
+// AddChart ghi một biểu đồ, trả false khi vượt trần. Trùng y hệt (cùng nguồn,
+// cùng loại, cùng tiêu đề) coi như đã có và trả true — model gọi lại hai lần
+// không được nhân đôi biểu đồ trên màn hình.
+func (c *HitCollector) AddChart(chart *CollectedChart) bool {
+	if chart == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, old := range c.Charts {
+		if old.N == chart.N && old.Kind == chart.Kind && old.Caption == chart.Caption {
+			return true
+		}
+	}
+	if len(c.Charts) >= maxCollectedCharts {
+		return false
+	}
+	c.Charts = append(c.Charts, chart)
+	return true
 }
 
 // Add gom hits, trả n cho từng hit theo thứ tự đầu vào — hit trùng PointID

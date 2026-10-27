@@ -32,10 +32,10 @@ const (
 	kindPie  = "pie"
 )
 
-// dataPoint là một điểm trên biểu đồ.
+// dataPoint là một điểm trên biểu đồ — nhãn để trên trục, giá trị để vẽ cột.
 type dataPoint struct {
-	Label string
-	Value float64
+	Label string  `json:"label"`
+	Value float64 `json:"value"`
 }
 
 // seriesResult là kết quả trích chuỗi số. Points rỗng thì Note bắt buộc giải
