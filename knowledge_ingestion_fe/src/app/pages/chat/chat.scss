@@ -47,140 +47,6 @@
   color: var(--color-muted);
 }
 
-// Dropdown "Phạm vi": hình dáng/màu viền đã có _material.scss lo toàn app;
-// ở đây chỉ còn phần riêng của ô này là chiều cao 48px và cỡ nhãn.
-// Custom property thừa hưởng xuyên biên giới component nên không cần ng-deep.
-.scope-field {
-  width: 100%;
-  // Nhãn nổi nhỏ 12px, nhãn tĩnh 14px — đúng thang typography 4 cỡ
-  --mat-form-field-outlined-label-text-size: var(--text-size-sm);
-  --mat-form-field-outlined-focus-label-text-size: var(--text-size-xs);
-  // 12px trên/dưới + phần chữ 24px = control cao đúng --control-height (48px)
-  --mat-form-field-container-vertical-padding: var(--space-3);
-  --mat-form-field-container-height: var(--control-height);
-}
-
-// Nút trong panel ("Cuộc trò chuyện mới", "Tải thêm", "Thử lại"): full bề ngang
-// panel; disabled chỉ mờ nhẹ (muted vẫn tương phản đủ đọc)
-.panel-action {
-  width: 100%;
-  --mat-button-outlined-label-text-color: var(--color-on-surface);
-  --mat-button-outlined-disabled-outline-color: var(--color-border);
-  --mat-button-outlined-disabled-label-text-color: var(--color-muted);
-}
-
-// ---- Danh sách phiên (sidebar) ----
-// Nav cuộn độc lập trong panel: danh sách dài không đẩy tiêu đề/nút ra khỏi
-// tầm nhìn. Chiều cao lấy từ phần còn lại của panel (min-height: 0 để flex
-// con được phép co lại).
-.sessions {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-height: 0;
-}
-
-.sessions-heading {
-  margin: 0;
-  font: var(--text-style-xs-strong);
-  color: var(--color-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.sessions-status {
-  margin: 0;
-  font: var(--text-style-xs);
-  color: var(--color-muted);
-}
-
-.panel-hint {
-  margin: 0;
-  font: var(--text-style-xs);
-  color: var(--color-muted);
-}
-
-.session-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
-// Mỗi mục: nút mở (chiếm chỗ) + 2 nút icon. is-active dùng accent-soft cộng
-// viền trái 2px — chỉ đổi màu thì không đủ nói trạng thái (a11y)
-.session {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding-left: var(--space-1);
-  border-left: var(--border-width) solid transparent;
-  border-radius: var(--radius-sm);
-}
-
-.session:hover {
-  background: var(--color-surface-container);
-}
-
-.session.is-active {
-  border-left-color: var(--color-primary);
-  background: var(--color-accent-soft);
-}
-
-.session-main {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-  padding: var(--space-2);
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.session-title {
-  overflow: hidden;
-  font: var(--text-style-sm-strong);
-  color: var(--color-on-surface);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.session-meta {
-  font: var(--text-style-xs);
-  color: var(--color-muted);
-}
-
-.session-actions {
-  display: flex;
-  flex: 0 0 auto;
-}
-
-.session-remove {
-  color: var(--color-danger);
-}
-
-// Ô đổi tên inline chiếm đúng chỗ nút mở (layout không giật khi chuyển trạng thái)
-.session-rename {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin: var(--space-1) var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-field);
-  background: var(--color-surface);
-  color: var(--color-on-surface);
-  font: var(--text-style-input);
-}
-
 .transcript-loading {
   margin: 0;
   font: var(--text-style-sm);
@@ -193,6 +59,16 @@
   margin: calc(-1 * var(--space-1)) 0 var(--space-2);
   font: var(--text-style-xs);
   color: var(--color-muted);
+}
+
+// Badge model (Đợt 28): provider · model đã trả lời lượt này. Nằm ngay dưới
+// chữ đáp án, trước khối biểu đồ/nguồn — đọc xong câu là biết model nào đã
+// viết, không phải cuộn tới cuối bong bóng.
+.turn-model {
+  margin: var(--space-2) 0 0;
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
 }
 
 // ---- Khung chat ----
@@ -209,21 +85,35 @@
   overflow: hidden;
 }
 
-// Thanh trên card — nút gập panel nằm TRONG luồng (không absolute) nên bong
-// bóng user canh phải không bao giờ chui xuống dưới nút nữa (lỗi anh chụp).
-// Desktop: nút ở góc trên-TRÁI, sát panel tiện ích cùng phía.
+// Thanh trên card — nút gập sidebar đứng đầu hàng (nó điều khiển chính panel
+// bên trái), rồi tới cụm chip phạm vi/suy luận sâu/phiên mới chiếm phần còn lại
+// và tự xuống dòng khi hẹp. Nút nằm TRONG luồng (không absolute) nên bong bóng
+// user canh phải không bao giờ chui xuống dưới nút.
 .card-bar {
   display: flex;
-  justify-content: flex-start;
+  align-items: flex-start;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-2) 0;
   flex: 0 0 auto;
 }
 
+app-chat-context-chips {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 // Bo tròn đầy theo thang control — nút icon chỉ có một glyph nên tròn là đủ rõ.
 .panel-toggle {
+  flex: 0 0 auto;
   border-radius: var(--radius-control);
   background: var(--color-surface-container-high);
   color: var(--color-muted);
+}
+
+// Lớp phủ drawer: chỉ hiện ở màn hẹp (xem @media 767px) — desktop không có
+// overlay nào nên nút này phải ra khỏi mắt và khỏi thứ tự Tab.
+.scrim {
+  display: none;
 }
 
 .messages {
@@ -410,7 +300,7 @@
 
 // Summary của HAI khối gập được (suy nghĩ của model + nguồn trích dẫn) dùng
 // chung một khuôn, nên gom selector lại thay vì viết lặp — style của trang này
-// đã chạm ngân sách anyComponentStyle (angular.json: warning 10kB, error 12kB).
+// đã chạm ngân sách anyComponentStyle (angular.json: warning 14kB, error 16kB).
 .reasoning-summary,
 .cites-title {
   display: flex;
@@ -634,13 +524,27 @@
 
 // ---- Ô soạn ----
 // Cùng nền trắng với toàn card — chỉ tách bằng đường kẻ mảnh phía trên,
-// KHÔNG tô nền xám khác.
+// KHÔNG tô nền xám khác. wrap để dòng nhắc "Chờ trả lời xong…" rơi xuống
+// hàng riêng thay vì chen giữa ô nhập và nút Gửi.
 .composer {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-2);
   padding: var(--space-3);
   border-top: var(--border-width) solid var(--color-border);
+}
+
+// Đang chờ đáp án: viền ô nhập đổi nhẹ (không khoá cứng, vẫn gõ trước được)
+.composer.is-busy .composer-input {
+  border-color: var(--color-outline);
+}
+
+.composer-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font: var(--text-style-xs);
+  color: var(--color-muted);
 }
 
 // CDK autosize đo riêng chiều cao PHẦN CHỮ (nó tạm bỏ padding/border lúc
@@ -737,8 +641,8 @@
 }
 
 // ---- Responsive ----
-// Dưới 1024px: panel tiện ích bỏ sang ngang, thả thành thanh nằm phía trên
-// khu vực chat (vẫn gập được bằng nút toggle).
+// 768–1023px: panel tiện ích thả thành thanh ngang phía trên khung chat (vẫn
+// gập được bằng nút toggle) — hành vi cũ, chỉ bỏ các control đã chuyển vào chip.
 @media (max-width: 1023px) {
   .page {
     flex-direction: column;
@@ -754,58 +658,67 @@
     padding: var(--space-4);
   }
 
-  // Panel đã nằm ngang phía trên nên trả nút gập sang góc trên-PHẢI để không
-  // đè lên hàng control đầu tiên của panel
-  .card-bar {
-    justify-content: flex-end;
-  }
-
   // Trong thanh ngang chỉ cần tiêu đề, bỏ mô tả phụ cho gọn
   .panel-subtitle {
     display: none;
   }
 
-  .scope-field {
-    flex: 1 1 auto;
-    max-width: var(--utility-panel-width);
-  }
-
-  .panel-action {
-    width: auto;
-    margin-left: auto;
-  }
-
-  // Ở thanh ngang: phiên chiếm nguyên hàng dưới và cuộn trong ô cao 180px,
-  // trang chat không bị danh sách dài đẩy xuống dưới
-  .sessions {
+  // Ở thanh ngang: danh sách phiên chiếm nguyên hàng dưới và cuộn trong ô cao
+  // 180px, trang chat không bị danh sách dài đẩy xuống dưới. Nhóm ngày vẫn nằm
+  // trong component con nên chỉ cần chặn chiều cao ở host.
+  app-chat-sessions {
     flex: 1 1 100%;
     max-height: 180px;
-    overflow-y: auto;
-  }
-
-  .panel-hint {
-    flex: 1 1 100%;
   }
 }
 
+// Dưới 768px: sidebar thành DRAWER phủ trượt từ trái, kèm lớp phủ đóng được.
+// Chừa lại hành vi 768–1023px ở trên (thanh ngang) — chỉ đổi khi thật sự hết chỗ.
 @media (max-width: 767px) {
   .bubble {
     max-width: calc(100% - var(--avatar-size));
   }
 
-  // Màn rất hẹp: thanh panel xếp thành 2 dòng (tiêu đề + control full ngang)
   .side-panel {
-    flex-wrap: wrap;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: var(--z-drawer);
+    width: min(88vw, var(--utility-panel-width));
+    // Panel ngang của breakpoint trên bị ghi đè: drawer là cột dọc, cuộn riêng
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    // Bo hai góc phải; mép trái sát màn hình nên để vuông.
+    border-top-right-radius: var(--radius-card);
+    border-bottom-right-radius: var(--radius-card);
+    animation: drawer-in var(--duration-slow) var(--easing-decelerate);
   }
 
-  .scope-field {
-    max-width: none;
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-sidenav);
+    border: 0;
+    padding: 0;
+    background: var(--color-scrim);
+    cursor: pointer;
   }
 
-  // Hai nút action xuống dòng riêng nên trả về bề ngang đầy đủ
-  .panel-action {
-    width: 100%;
-    margin-left: 0;
+  app-chat-sessions {
+    max-height: none;
+  }
+}
+
+// Trượt vào từ mép trái; máy bật "giảm chuyển động" thì _motion.scss đã ép
+// animation-duration về 0 nên drawer hiện tức thì.
+@keyframes drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(0);
   }
 }
 

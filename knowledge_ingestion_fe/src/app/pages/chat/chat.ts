@@ -12,20 +12,24 @@ import {
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { map, Observable, of, Subscription, switchMap, tap } from 'rxjs';
 import { CONVERSATION_PAGE, ConversationService } from '../../core/chat/conversation.service';
 import type { ChatChart, ChatCite, Conversation } from '../../core/chat/chat.models';
+import { clipSessionTitle } from '../../core/chat/chat.models';
 import { ChatService } from '../../core/chat/chat.service';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
 import type { Category } from '../../core/knowledge/knowledge.models';
 import { KnowledgeService } from '../../core/knowledge/knowledge.service';
+import type { LlmProviderOption } from '../../core/llm/llm.models';
+import { LlmService } from '../../core/llm/llm.service';
 import { MessageService } from '../../shared/feedback/message.service';
 import { MarkdownPipe } from '../../shared/markdown/markdown.pipe';
+import { createStreamReveal } from '../../shared/markdown/stream-reveal';
 import { EchartsChart } from '../../shared/chart/echarts-chart';
+import { ChatContextChips, type ModelChoice } from './chat-context-chips';
+import { ChatSessions } from './chat-sessions';
 import {
   DocumentDetailDialog,
   type DocumentDetailData,
@@ -47,16 +51,23 @@ interface ChatMessage {
    * chưa có nên để trống — mở lại phiên mới thấy dòng phạm vi dưới tin.
    */
   scopeIds?: number[];
+  /**
+   * Provider/model THỰC đã trả lời lượt này (Đợt 28) — vẽ badge dưới đáp án.
+   * Lượt mới lấy từ response, lượt mở lại từ cột đã lưu trong DB.
+   */
+  provider?: string;
+  model?: string;
 }
 
 const SUGGESTIONS: TranslationKey[] = ['CHAT_SUGGEST_1', 'CHAT_SUGGEST_2', 'CHAT_SUGGEST_3'];
 
-const MINUTE_MS = 60_000;
-const DAY_MS = 86_400_000;
+/** Nhịp hé lộ đáp án ~30fps — đủ mượt cho "đang gõ", đủ thưa để marked không phải parse 60 lần/giây */
+const REVEAL_INTERVAL_MS = 33;
 
 /**
  * Chat RAG có phiên: mọi lượt gắn vào một `conversation_id` đã lưu ở DB,
- * sidebar liệt kê/tìm lại/đổi tên/xoá phiên.
+ * sidebar liệt kê/tìm lại/đổi tên/xoá phiên (danh sách ở `chat-sessions.ts`,
+ * chip phạm vi/suy luận sâu ở `chat-context-chips.ts`).
  *
  * Hai quyết định contract chi phối phần còn lại:
  * - Phiên tạo LAZY (bấm "Phiên mới" chưa tạo row nào) ngay trước lượt gửi đầu
@@ -66,6 +77,10 @@ const DAY_MS = 86_400_000;
  * (plan() trong agent/usecase/chat_service.go), không có cách nào nói "bỏ phạm
  * vi" hay "tắt thinking" giữa chừng — nên hai lựa chọn đó bị khoá khi phiên đã
  * có lượt, muốn đổi thì tạo phiên mới.
+ *
+ * Sidebar CẬP NHẬT TRƯỚC (optimistic): bump số tin nhắn + mốc thời gian
+ * ngay lúc bấm gửi, không đợi đáp án; `refreshSidebar()` sau lượt xong vẫn là
+ * nguồn thật chốt lại, nên lệch tạm thời không bao giờ đi vào DB.
  */
 @Component({
   selector: 'app-chat',
@@ -73,20 +88,25 @@ const DAY_MS = 86_400_000;
     TextFieldModule,
     MatButtonModule,
     MatIconModule,
-    MatFormFieldModule,
-    MatSelectModule,
     MatTooltipModule,
     MarkdownPipe,
     EchartsChart,
+    ChatSessions,
+    ChatContextChips,
   ],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
+  // Esc đóng drawer ở màn hẹp. Nghe ở document chứ không trên <aside>: mở drawer
+  // bằng nút toggle thì focus vẫn nằm trên nút (ngoài drawer), nên listener gắn
+  // trong aside sẽ không bao giờ nhận phím.
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
 })
 export class Chat {
   protected readonly lang = inject(LangService);
   private readonly chat = inject(ChatService);
   private readonly sessions = inject(ConversationService);
   private readonly knowledge = inject(KnowledgeService);
+  private readonly llm = inject(LlmService);
   private readonly messages = inject(MessageService);
   private readonly dialog = inject(MatDialog);
   private readonly injector = inject(Injector);
@@ -99,8 +119,24 @@ export class Chat {
   protected readonly sending = signal(false);
   /** Suy luận sâu: gửi `thinking: true` để model chịu khó nghĩ trước khi đáp */
   protected readonly thinking = signal(false);
-  /** Sidebar tiện ích (danh sách phiên + phạm vi + phiên mới) — ẩn để khung chat rộng hơn */
-  protected readonly panelOpen = signal(true);
+  /**
+   * Provider/model đang chọn cho lượt kế tiếp (Đợt 28). Rỗng = theo cấu hình
+   * mặc định — đó là lựa chọn hợp lệ, KHÁC với "chưa biết": cần phân biệt
+   * "chưa chọn" và "chọn theo cấu hình" thì mới giữ được lựa chọn khi mở phiên.
+   */
+  protected readonly provider = signal('');
+  protected readonly model = signal('');
+  /**
+   * Provider sẵn sàng để chọn (backend đã dựng agent). Rỗng = chưa tải được
+   * options → ẩn chip mô hình, chat vẫn chạy bằng mặc định cấu hình.
+   */
+  protected readonly providers = signal<LlmProviderOption[]>([]);
+  /**
+   * Sidebar tiện ích (danh sách phiên + phạm vi + phiên mới) — ẩn để khung chat
+   * rộng hơn. Màn hẹp thì mặc định ĐÓNG: drawer phủ + scrim sẽ che mất khung chat
+   * ngay lần mở trang nếu để true.
+   */
+  protected readonly panelOpen = signal(!this.isNarrowViewport());
   protected readonly suggestions = SUGGESTIONS;
 
   protected readonly conversations = signal<Conversation[]>([]);
@@ -110,12 +146,16 @@ export class Chat {
   protected readonly listFailed = signal(false);
   protected readonly listHasMore = signal(false);
   protected readonly turnsLoading = signal(false);
-  /** Đang đổi tên inline ở mục nào (null là không đổi) */
-  protected readonly renamingId = signal<number | null>(null);
-  protected readonly renameDraft = signal('');
 
   /** Request đang bay — giữ subscription để nút Dừng hủy được giữa chừng */
   private pending?: Subscription;
+  /**
+   * Chữ đang hé lộ của đáp án cuối; null = không hoạt cảnh, in nguyên văn.
+   * Nguồn dữ liệu VẪN là `turns` (đáp án đầy đủ ngay từ đầu), nên chip nguồn
+   * và hành vi trích dẫn không hề đổi — chỉ mặt chữ hiện dần (Đợt 27).
+   */
+  protected readonly revealText = signal<string | null>(null);
+  private revealTimer?: ReturnType<typeof setInterval>;
 
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
 
@@ -133,12 +173,60 @@ export class Chat {
       next: (categories) => this.categories.set(categories),
       error: () => this.categories.set([]),
     });
+    this.loadProviders();
     this.loadSessions();
     // Rời trang giữa lúc đang chờ câu trả lời thì đừng để request treo
-    this.destroyRef.onDestroy(() => this.pending?.unsubscribe());
+    this.destroyRef.onDestroy(() => {
+      this.pending?.unsubscribe();
+      this.stopReveal();
+    });
+  }
+
+  /**
+   * Nạp danh sách provider để chip mô hình có gì để chọn. Lỗi thì im lặng:
+   * backend có thể cũ (chưa có endpoint) hoặc token hết hạn — chip ẩn đi là
+   * đủ, báo toast làm phiền người đang chat.
+   */
+  private loadProviders(): void {
+    this.llm.options().subscribe({
+      next: (options) => {
+        // Provider chưa dựng được agent (thiếu key) không chọn được ở chat —
+        // admin vẫn thấy trong Settings để biết cấu hình sai ở đâu.
+        this.providers.set(options.providers.filter((item) => item.available));
+      },
+      error: () => this.providers.set([]),
+    });
+  }
+
+  /**
+   * Chọn provider/model cho lượt kế tiếp. KHÔNG khoá theo phiên: backend nhận
+   * provider/model mỗi lượt và lưu per-message nên đổi giữa hội thoại hợp lệ.
+   */
+  protected selectModel(choice: ModelChoice): void {
+    this.provider.set(choice.provider);
+    this.model.set(choice.model);
+  }
+
+  /** Nhãn hiển thị của provider — rơi về slug khi không có trong danh sách options */
+  protected providerLabel(slug: string): string {
+    return this.providers().find((item) => item.slug === slug)?.label ?? slug;
+  }
+
+  /** Badge dưới đáp án: `provider · model` — rỗng khi lượt không có thông tin */
+  protected modelBadge(turn: ChatMessage): string {
+    if (!turn.provider) {
+      return '';
+    }
+    const label = this.providerLabel(turn.provider);
+    return turn.model ? `${label} · ${turn.model}` : label;
   }
 
   protected toggleThinking(): void {
+    // Chip KHÔNG bị disabled thật (để còn đọc được tooltip), nên chốt ở đây
+    if (this.sending()) {
+      this.messages.warning('CHAT_BUSY_HINT');
+      return;
+    }
     if (this.sessionLocked()) {
       this.messages.warning('CHAT_LOCKED_HINT');
       return;
@@ -146,20 +234,49 @@ export class Chat {
     this.thinking.update((value) => !value);
   }
 
+  /** Chip phạm vi đã tự chặn khi phiên khoá/đang bận nên tới đây là được đổi */
+  protected selectScope(id: number): void {
+    this.scope.set(id);
+  }
+
+  /** Nhãn cho chip phạm vi: 0 là toàn bộ kho, id lạ (thư mục bị xoá) in nguyên id */
+  protected readonly scopeLabel = computed(() =>
+    this.scope() === 0 ? this.lang.t('CHAT_SCOPE_ALL') : this.categoryNames([this.scope()]),
+  );
+
   protected togglePanel(): void {
     this.panelOpen.update((value) => !value);
   }
 
-  protected onInput(event: Event): void {
-    this.draft.set((event.target as HTMLTextAreaElement).value);
+  /** Scrim/Esc bên drawer đóng sidebar — chỉ có nghĩa khi đang mở */
+  protected closePanel(): void {
+    if (this.panelOpen()) {
+      this.panelOpen.set(false);
+    }
   }
 
-  protected onScopeChange(value: number): void {
-    if (this.sessionLocked()) {
-      // mat-select đã disabled khi khoá, nhưng giữ guard cho chắc (bàn phím/IME)
+  /**
+   * Esc chỉ đóng DRAWER (<768px) — desktop panel nằm trong luồng, đóng ngang
+   * hứng phím Esc của người dùng đang gõ dở. Bỏ qua khi Esc đang đóng menu/dialog
+   * (overlay tự xử lý lớp của nó trước, không được đóng luôn thứ phía sau).
+   */
+  protected onEscape(event: Event): void {
+    if (!this.panelOpen() || !this.isNarrowViewport()) {
       return;
     }
-    this.scope.set(value);
+    if (event.target instanceof Element && event.target.closest('.cdk-overlay-container')) {
+      return;
+    }
+    this.closePanel();
+  }
+
+  /** drawer overlay chỉ tồn tại dưới 768px — khớp đúng @media trong chat.scss */
+  private isNarrowViewport(): boolean {
+    return window.matchMedia?.('(max-width: 767px)').matches === true;
+  }
+
+  protected onInput(event: Event): void {
+    this.draft.set((event.target as HTMLTextAreaElement).value);
   }
 
   /** Enter gửi, Shift+Enter xuống dòng; bỏ qua khi IME đang ghép chữ */
@@ -168,6 +285,11 @@ export class Chat {
       return;
     }
     event.preventDefault();
+    // Khoá MỀM: ô nhập vẫn gõ được giữa lúc chờ đáp án, Enter chỉ nhắc chứ không gửi
+    if (this.sending()) {
+      this.messages.warning('CHAT_WAIT_REPLY_HINT');
+      return;
+    }
     this.send();
   }
 
@@ -226,7 +348,7 @@ export class Chat {
     }
     this.activeId.set(null);
     this.turns.set([]);
-    this.renamingId.set(null);
+    this.stopReveal();
     this.thinking.set(false);
     this.scope.set(0);
   }
@@ -236,11 +358,17 @@ export class Chat {
     if (this.sending() || this.activeId() === conversation.id) {
       return;
     }
-    this.renamingId.set(null);
     this.activeId.set(conversation.id);
     this.applySessionChoices(conversation);
+    // Màn hẹp: chọn phiên xong thì đóng drawer để thấy ngay hội thoại vừa mở;
+    // desktop thì panel nằm trong luồng, đóng lại là mất chỗ chọn phiên khác.
+    if (this.isNarrowViewport()) {
+      this.closePanel();
+    }
     this.turnsLoading.set(true);
     this.turns.set([]);
+    // Mở lại phiên cũ: đáp án đã nằm nguyên văn trong DB, KHÔNG hoạt cảnh lại
+    this.stopReveal();
     this.sessions.messages(conversation.id).subscribe({
       next: (rows) => {
         this.turnsLoading.set(false);
@@ -252,6 +380,10 @@ export class Chat {
             charts: row.charts,
             // reasoning không được lưu (không có cột) — mở lại phiên chỉ còn đáp án
             scopeIds: row.categoryIds,
+            // provider/model đã lưu per-message — badge dưới đáp án khôi phục
+            // đúng, không đoán theo lựa chọn hiện tại
+            provider: row.provider,
+            model: row.model,
           })),
         );
         this.scrollToBottom();
@@ -266,59 +398,28 @@ export class Chat {
     });
   }
 
-  /** Phiên nhớ lựa chọn của nó — mở lại là khôi phục phạm vi + thinking */
+  /** Phiên nhớ lựa chọn của nó — mở lại là khôi phục phạm vi + thinking + model */
   private applySessionChoices(conversation: Conversation): void {
     this.thinking.set(conversation.thinking);
     this.scope.set(conversation.categoryIds.length === 1 ? conversation.categoryIds[0] : 0);
+    // Phiên lưu provider/model rỗng nghĩa là "theo cấu hình" — đặt rỗng để
+    // chip hiện đúng nhãn mặc định, không giữ lựa chọn của phiên trước.
+    this.provider.set(conversation.provider);
+    this.model.set(conversation.model);
   }
 
-  protected beginRename(conversation: Conversation): void {
-    if (this.sending()) {
-      this.messages.warning('CHAT_BUSY_HINT');
-      return;
-    }
-    this.renamingId.set(conversation.id);
-    this.renameDraft.set(conversation.title);
-  }
-
-  protected onRenameInput(event: Event): void {
-    this.renameDraft.set((event.target as HTMLInputElement).value);
-  }
-
-  protected onRenameKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      this.cancelRename();
-      return;
-    }
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      this.saveRename();
-    }
-  }
-
-  protected cancelRename(): void {
-    this.renamingId.set(null);
-  }
-
-  protected saveRename(): void {
-    const id = this.renamingId();
-    const title = this.renameDraft().trim();
-    if (id === null) {
-      return;
-    }
-    this.renamingId.set(null);
-    const current = this.conversations().find((item) => item.id === id);
-    // Không đổi gì hoặc rỗng thì khỏi gọi PATCH (backend bound min=1 nên rỗng là 400)
-    if (title === '' || title === current?.title) {
-      return;
-    }
-    this.sessions.rename(id, title).subscribe({
+  /**
+   * Đổi tên inline mà sidebar phát lên (ô nhập + Enter lưu/Esc hủy nằm trong
+   * `chat-sessions.ts`). Rỗng hoặc không đổi đã bị component con chặn ở đó.
+   */
+  protected onRename(request: { id: number; title: string }): void {
+    this.sessions.rename(request.id, request.title).subscribe({
       next: (updated) => this.upsertSession(updated),
       error: (error: unknown) => this.messages.errorFromApi(error, 'AUTH_ERROR_GENERIC'),
     });
   }
 
+  /** Xoá luôn qua hộp xác nhận — không có đường nào xoá im lặng từ menu ⋯ */
   protected async confirmDelete(conversation: Conversation): Promise<void> {
     if (this.sending()) {
       this.messages.warning('CHAT_BUSY_HINT');
@@ -338,29 +439,6 @@ export class Chat {
       },
       error: (error: unknown) => this.messages.errorFromApi(error, 'AUTH_ERROR_GENERIC'),
     });
-  }
-
-  protected isSessionActive(conversation: Conversation): boolean {
-    return this.activeId() === conversation.id;
-  }
-
-  /** Mốc thời gian tương đối cho sidebar; quá 7 ngày thì in ngày tuyệt đối */
-  protected sessionTime(conversation: Conversation): string {
-    const then = conversation.lastMessageAt.getTime();
-    const mins = Math.max(0, Math.round((Date.now() - then) / MINUTE_MS));
-    if (mins < 1) {
-      return this.lang.t('CHAT_TIME_NOW');
-    }
-    if (mins < 60) {
-      return this.withCount('CHAT_TIME_MIN', mins);
-    }
-    if (mins < 60 * 24) {
-      return this.withCount('CHAT_TIME_HOUR', Math.round(mins / 60));
-    }
-    if (mins < 60 * 24 * 7) {
-      return this.withCount('CHAT_TIME_DAY', Math.round((Date.now() - then) / DAY_MS));
-    }
-    return this.formatDate(conversation.lastMessageAt);
   }
 
   // --------------------------------------------------------------- transcript
@@ -490,6 +568,9 @@ export class Chat {
     this.pending?.unsubscribe();
     this.pending = undefined;
     this.sending.set(false);
+    this.stopReveal();
+    // Lượt user bị gỡ khỏi transcript thì số đếm trên sidebar cũng phải lùi lại
+    this.bumpSession(this.activeId(), -1);
     this.dropLastUserTurn();
     this.refreshSidebar();
   }
@@ -501,10 +582,13 @@ export class Chat {
     }
     this.sending.set(true);
     this.draft.set('');
-    this.pending = this.resolveSession()
+    this.stopReveal();
+    this.pending = this.resolveSession(question)
       .pipe(
         tap(() => {
           this.turns.update((list) => [...list, { role: 'user', content: question }]);
+          // Nhóm 2: đếm tin nhắn + mốc hoạt động nhảy tại chỗ ngay lúc bấm gửi
+          this.bumpSession(this.activeId(), 1);
           this.scrollToBottom();
         }),
         switchMap((sessionId) =>
@@ -513,12 +597,16 @@ export class Chat {
             conversationId: sessionId,
             categoryId: this.scope() || null,
             thinking: this.thinking(),
+            // Rỗng = theo cấu hình, nên để trống cho backend tự resolve
+            provider: this.provider() || undefined,
+            model: this.model() || undefined,
           }),
         ),
       )
       .subscribe({
         next: (answer) => {
           this.pending = undefined;
+          this.bumpSession(this.activeId(), 1);
           this.turns.update((list) => [
             ...list,
             {
@@ -527,17 +615,23 @@ export class Chat {
               cites: answer.cites,
               charts: answer.charts,
               reasoning: answer.reasoning,
+              // Backend trả provider/model ĐÃ resolve — badge dưới đáp án nói
+              // đúng model nào thực sự chạy, không đoán theo lựa chọn trên chip.
+              provider: answer.provider,
+              model: answer.model,
             },
           ]);
           this.sending.set(false);
+          this.startReveal(answer.answer);
           this.scrollToBottom();
-          // Backend điền title từ câu hỏi đầu + dời mốc last_message_at: sidebar
-          // phải nạp lại mới thấy tên và thứ tự mới của phiên vừa tạo
+          // Backend vẫn có thể điền title/dời mốc: sidebar nạp lại để chốt số
+          // liệu thật sau khi hoạt cảnh đã bắt đầu (optimistic ở trên là hiển thị)
           this.refreshSidebar();
         },
         error: (error: unknown) => {
           this.pending = undefined;
           this.sending.set(false);
+          this.bumpSession(this.activeId(), -1);
           this.recoverQuestion(question);
           this.messages.errorFromApi(error, 'AUTH_ERROR_GENERIC');
           this.scrollToBottom();
@@ -547,17 +641,23 @@ export class Chat {
 
   /**
    * Id phiên cho lượt sắp gửi: đang có phiên thì dùng lại, chưa có thì tạo
-   * NGAY LÚC NÀY (lazy) với phạm vi + thinking đang chọn.
+   * NGAY LÚC NÀY (lazy) với phạm vi + thinking + model đang chọn.
    */
-  private resolveSession(): Observable<number> {
+  private resolveSession(question: string): Observable<number> {
     const existing = this.activeId();
     if (existing) {
       return of(existing);
     }
     return this.sessions
       .create({
+        // Nhóm 1: FE tự đặt title ngay câu đầu nên sidebar có tên lập tức, không
+        // chờ nạp lại. Backend chỉ điền title khi còn rỗng (SetTitleIfEmpty) nên
+        // gửi trước không xung đột, cũng không cần thêm endpoint nào.
+        title: clipSessionTitle(question),
         categoryIds: this.scope() ? [this.scope()] : [],
         thinking: this.thinking(),
+        provider: this.provider() || undefined,
+        model: this.model() || undefined,
       })
       .pipe(
         tap((conversation) => {
@@ -574,6 +674,27 @@ export class Chat {
       const others = list.filter((item) => item.id !== conversation.id);
       return [conversation, ...others];
     });
+  }
+
+  /**
+   * Bump cập nhật trước (optimistic) số tin nhắn của một phiên tại chỗ. Không cần
+   * dời chỗ: `groupSessions` đã sắp theo `lastMessageAt` nên hàng vừa gõ tự nổi lên đầu.
+   */
+  private bumpSession(id: number | null, delta: number): void {
+    if (id === null) {
+      return;
+    }
+    this.conversations.update((list) =>
+      list.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              messageCount: Math.max(0, item.messageCount + delta),
+              lastMessageAt: new Date(),
+            }
+          : item,
+      ),
+    );
   }
 
   /**
@@ -601,30 +722,78 @@ export class Chat {
       return false;
     }
     this.turns.set(turns.slice(0, -1));
-    this.draft.set(last.content);
+    // Ô nhập không khoá cứng nữa (nhóm 8): người dùng có thể đã gõ dở câu kế tiếp
+    // trong lúc chờ — nối câu bị gỡ xuống đầu, giữ nguyên chữ họ đã gõ thêm.
+    const typed = this.draft();
+    this.draft.set(typed.trim() === '' ? last.content : `${last.content}\n\n${typed}`);
     return true;
   }
 
-  /** "3 lượt" — đếm message của phiên trong sidebar */
-  protected turnCountLabel(count: number): string {
-    return this.withCount('CHAT_SESSION_TURNS', count);
+  // ------------------------------------------------------------------ hoạt cảnh
+
+  /**
+   * Hé lộ đáp án từ từ cho giống "đang gõ". Chỉ là mặt chữ: `turns` đã cầm đáp án
+   * đầy đủ ngay từ đầu, nên chip nguồn, biểu đồ và mọi hành vi trích dẫn KHÔNG
+   * đổi. `splitRevealChunks` bảo đảm không bao giờ cắt nửa marker `[^n]`.
+   */
+  private startReveal(text: string): void {
+    const reveal = this.prefersReducedMotion() ? null : createStreamReveal(text);
+    if (reveal === null) {
+      this.revealText.set(null);
+      return;
+    }
+    this.revealText.set('');
+    this.revealTimer = setInterval(() => {
+      this.revealText.set(reveal.step());
+      if (reveal.isComplete) {
+        this.stopReveal();
+        return;
+      }
+      // Theo sát dòng chữ mới mà không mượt từng pixel — mượt 30fps đã đủ đọc
+      this.scrollToBottom('auto');
+    }, REVEAL_INTERVAL_MS);
   }
 
-  private withCount(key: TranslationKey, n: number): string {
-    // i18n của app không có cơ chế nội suy, nên thay {n} tại chỗ dùng
-    return this.lang.t(key).replace('{n}', String(n));
+  /** Cắt timer và trả về null: template in nguyên văn đáp án, tức là "gõ xong" */
+  private stopReveal(): void {
+    if (this.revealTimer !== undefined) {
+      clearInterval(this.revealTimer);
+      this.revealTimer = undefined;
+    }
+    this.revealText.set(null);
   }
 
-  private formatDate(date: Date): string {
-    const pad = (value: number): string => String(value).padStart(2, '0');
-    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+  /**
+   * Chữ của một lượt: nếu hoạt cảnh đang chạy thì lượt CUỐI in theo số chữ đã hé
+   * lộ, mọi lượt khác (và mọi lượt mở lại từ DB) in nguyên văn.
+   */
+  protected displayText(turn: ChatMessage, index: number): string {
+    const revealed = this.revealText();
+    if (revealed === null || !this.isRevealingTurn(index)) {
+      return turn.content;
+    }
+    return revealed;
   }
 
-  private scrollToBottom(): void {
+  /**
+   * Lượt có hoạt cảnh đang chạy là lượt cuối — lượt cũ in nguyên văn nên không
+   * bị ẩn theo. Template dùng cờ này để chưa vẽ khối nguồn/biểu đồ của lượt
+   * đang gõ dở: chip `[^n]` trỏ vào mục chưa hiện sẽ nhảy vô chỗ trống.
+   */
+  protected isRevealingTurn(index: number): boolean {
+    return this.revealText() !== null && index === this.turns().length - 1;
+  }
+
+  /** Hệ thống yêu cầu giảm chuyển động thì in hết một lần, không gõ giả lập */
+  private prefersReducedMotion(): boolean {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  }
+
+  private scrollToBottom(behavior: ScrollBehavior = 'smooth'): void {
     afterNextRender(
       () => {
         const element = this.scroller()?.nativeElement;
-        element?.scrollTo({ top: element.scrollHeight, behavior: 'smooth' });
+        element?.scrollTo({ top: element.scrollHeight, behavior });
       },
       { injector: this.injector },
     );

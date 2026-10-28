@@ -40,6 +40,7 @@ trong `archive/`.
 | 23 | 2026-10-26 | Chat FE: `[^n]` thành chip bấm được, gập NGUỒN TRÍCH DẪN, hết đè icon tune | [file](archive/2026-10/2026-10-26-dot-23-chat-fe-footnote-va-nguon-gap.md) | `85ede27` |
 | 24 | 2026-10-26 | Session chat lưu DB — S1 + S4 theo `RAG_RESEARCH.md` §6.7 (backend) | [file](archive/2026-10/2026-10-26-dot-24-session-chat-db-s1-s4.md) | `b6df004` |
 | 25 | 2026-10-26 | Trả lời như chuyên gia (mục 10 prompt) + eval đa provider theo lô 9router/nvidia/openrouter (trần 40 req/phút) + UI/UX phiên chat ở FE (sidebar, resume, đổi tên/xoá) + data phức tạp (Excel multi-sheet) + tài liệu demo | [file](archive/2026-10/2026-10-26-dot-25-tra-loi-nhu-chuyen-gia-va-eval-da-provider.md) | `cb21484` |
+| 27 | 2026-10-27 | Sidebar quản lý phiên (nhóm 1–9) + hiệu ứng stream đáp án ở FE (không đổi API/BE) | [file](archive/2026-10/2026-10-27-dot-27-sidebar-phien-va-hieu-ung-stream.md) | chưa commit |
 
 Ghi chú: mốc **Ngày** lấy theo tiền tố tên file (ngày viết kế hoạch) — Đợt 3..9 mang
 `2026-10-27` dù Đợt 10..22 lại là `2026-10-26`, nên đừng tin thứ tự tên file, hãy xếp

@@ -1,0 +1,109 @@
+<div class="chips" role="group" [attr.aria-label]="lang.t('CHAT_CHIPS_GROUP')">
+  <button
+    type="button"
+    class="chip"
+    [class.is-locked]="isLocked()"
+    [matMenuTriggerFor]="isLocked() ? null : scopeMenu"
+    [attr.aria-disabled]="isLocked()"
+    [matTooltip]="locked() ? lang.t('CHAT_CHIP_LOCKED_HINT') : lang.t('CHAT_SCOPE_HINT')"
+    (click)="chooseScope(scopeId())"
+  >
+    <mat-icon aria-hidden="true">folder_open</mat-icon>
+    <span class="chip-label">{{ lang.t('CHAT_SCOPE') }}:</span>
+    <span class="chip-value">{{ scopeLabel() }}</span>
+    <mat-icon class="chip-caret" aria-hidden="true">expand_more</mat-icon>
+  </button>
+
+  <mat-menu #scopeMenu="matMenu">
+    <button mat-menu-item type="button" (click)="chooseScope(0)">
+      <span class="menu-slot">
+        @if (scopeId() === 0) {
+          <mat-icon aria-hidden="true">check</mat-icon>
+        }
+      </span>
+      <span>{{ lang.t('CHAT_SCOPE_ALL') }}</span>
+    </button>
+    @for (category of categories(); track category.id) {
+      <button mat-menu-item type="button" (click)="chooseScope(category.id)">
+        <span class="menu-slot">
+          @if (scopeId() === category.id) {
+            <mat-icon aria-hidden="true">check</mat-icon>
+          }
+        </span>
+        <span>{{ category.name }}</span>
+      </button>
+    }
+  </mat-menu>
+
+  <button
+    type="button"
+    class="chip"
+    [class.is-active]="thinking()"
+    [class.is-locked]="isLocked()"
+    [attr.aria-pressed]="thinking()"
+    [attr.aria-disabled]="isLocked()"
+    [matTooltip]="locked() ? lang.t('CHAT_CHIP_LOCKED_HINT') : lang.t('CHAT_THINKING_HINT')"
+    (click)="toggleDeepThinking()"
+  >
+    <mat-icon aria-hidden="true">psychology</mat-icon>
+    <span class="chip-label">{{ lang.t('CHAT_CHIP_THINKING') }}:</span>
+    <span class="chip-value">{{ lang.t(thinking() ? 'CHAT_ON' : 'CHAT_OFF') }}</span>
+  </button>
+
+  <!-- Chip MÔ HÌNH (Đợt 28): đổi được giữa hội thoại vì backend nhận
+       provider/model mỗi lượt. Ẩn hẳn khi backend không trả danh sách
+       provider (lỗi tải options) — chat vẫn chạy bằng mặc định cấu hình. -->
+  @if (hasProviders()) {
+    <button
+      type="button"
+      class="chip"
+      [class.is-active]="modelSelected()"
+      [matMenuTriggerFor]="modelMenu"
+      [matTooltip]="lang.t('CHAT_MODEL_HINT')"
+    >
+      <mat-icon aria-hidden="true">memory</mat-icon>
+      <span class="chip-label">{{ lang.t('CHAT_MODEL') }}:</span>
+      <span class="chip-value">{{ modelLabel() }}</span>
+      <mat-icon class="chip-caret" aria-hidden="true">expand_more</mat-icon>
+    </button>
+
+    <mat-menu #modelMenu="matMenu">
+      <button mat-menu-item type="button" (click)="chooseModel('', '')">
+        <span class="menu-slot">
+          @if (provider() === '') {
+            <mat-icon aria-hidden="true">check</mat-icon>
+          }
+        </span>
+        <span>{{ lang.t('CHAT_MODEL_CONFIG') }}</span>
+      </button>
+      @for (item of providers(); track item.slug) {
+        <!-- Nhóm theo provider: dòng tiêu đề không bấm được -->
+        <button mat-menu-item type="button" class="menu-heading" disabled>
+          <span class="menu-slot"></span>
+          <span>{{ item.label }}</span>
+        </button>
+        @for (model of modelsOf(item); track model) {
+          <button mat-menu-item type="button" (click)="chooseModel(item.slug, model)">
+            <span class="menu-slot">
+              @if (isModelSelected(item.slug, model)) {
+                <mat-icon aria-hidden="true">check</mat-icon>
+              }
+            </span>
+            <span class="menu-model">{{ model }}</span>
+          </button>
+        }
+      }
+    </mat-menu>
+  }
+
+  <button
+    matButton="outlined"
+    type="button"
+    class="chip-action"
+    [matTooltip]="lang.t('CHAT_CLEAR')"
+    (click)="newSession.emit()"
+  >
+    <mat-icon aria-hidden="true">add</mat-icon>
+    <span>{{ lang.t('CHAT_NEW_SESSION') }}</span>
+  </button>
+</div>

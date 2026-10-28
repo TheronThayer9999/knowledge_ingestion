@@ -57,6 +57,7 @@ export const THEME_COLOR_KEYS = [
   'on-tertiary-container',
   'error-container',
   'on-error-container',
+  'scrim',
 ] as const;
 
 export type ThemeColorKey = (typeof THEME_COLOR_KEYS)[number];

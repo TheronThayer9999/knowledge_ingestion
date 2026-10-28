@@ -52,4 +52,8 @@
   // --faint = nền hover rất mờ, --soft = nền "đang chọn" (pill như Gmail).
   --color-accent-soft: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
   --color-accent-faint: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
+
+  // Lớp phủ dưới drawer/overlay: scrim M3 pha loãng để nội dung nền vẫn thấy
+  // mờ mà drawer đủ tách — 32% là mức Material dùng cho navigation drawer.
+  --color-scrim: color-mix(in srgb, var(--mat-sys-scrim) 32%, transparent);
 }

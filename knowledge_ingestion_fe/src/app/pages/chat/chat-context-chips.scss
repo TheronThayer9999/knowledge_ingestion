@@ -1,0 +1,107 @@
+// Chip ngữ cảnh đầu khung chat (Đợt 27 nhóm 5) — token thôi, không màu tay.
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+// Chip là nhãn + giá trị, không phải chữ rơi tự do: ellipsis giữ hàng một dòng
+// khi tên danh mục dài, bề ngang co theo sidebar/chất lượng màn hình.
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  min-width: 0;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+  font: var(--text-style-xs-strong);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+}
+
+.chip:hover,
+.chip:focus-visible {
+  background: var(--color-surface-container);
+}
+
+.chip mat-icon {
+  font-size: var(--icon-size-sm);
+  color: var(--color-muted);
+}
+
+.chip-label {
+  color: var(--color-muted);
+}
+
+.chip-value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chip-caret {
+  flex: 0 0 auto;
+}
+
+.chip.is-active {
+  border-color: var(--color-primary);
+  background: var(--color-accent-soft);
+}
+
+.chip.is-active mat-icon {
+  color: var(--color-primary);
+}
+
+// Khoá mềm (aria-disabled): mờ nhưng vẫn focus được để đọc tooltip
+.chip.is-locked {
+  color: var(--color-muted);
+  background: var(--color-surface-container);
+  cursor: not-allowed;
+}
+
+.chip.is-locked .chip-value,
+.chip.is-locked .chip-label,
+.chip.is-locked mat-icon {
+  color: var(--color-muted);
+}
+
+.chip-action {
+  flex: 0 0 auto;
+  --mat-button-outlined-label-text-color: var(--color-on-surface);
+}
+
+.menu-slot {
+  display: inline-flex;
+  width: var(--icon-size-sm);
+}
+
+.menu-slot mat-icon {
+  font-size: var(--icon-size-sm);
+  color: var(--color-primary);
+}
+
+// Dòng nhóm provider trong menu mô hình: nhãn tĩnh, không bấm được
+.menu-heading {
+  font: var(--text-style-xs-strong);
+  color: var(--color-muted);
+}
+
+// Id model dài ("kc/nvidia/nemotron-3.5-super-vl:free") — xuống dòng được
+// thay vì tràn ngang menu
+.menu-model {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

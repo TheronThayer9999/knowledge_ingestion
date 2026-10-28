@@ -9,12 +9,31 @@
         type="button"
         class="panel-toggle"
         [attr.aria-expanded]="panelOpen()"
-        [attr.aria-label]="lang.t('CHAT_PANEL_TOGGLE')"
-        [matTooltip]="lang.t('CHAT_PANEL_TOGGLE')"
+        [attr.aria-controls]="panelOpen() ? 'chat-sessions' : null"
+        [attr.aria-label]="lang.t(panelOpen() ? 'CHAT_SIDEBAR_HIDE' : 'CHAT_SIDEBAR_SHOW')"
+        [matTooltip]="lang.t(panelOpen() ? 'CHAT_SIDEBAR_HIDE' : 'CHAT_SIDEBAR_SHOW')"
         (click)="togglePanel()"
       >
-        <mat-icon aria-hidden="true">tune</mat-icon>
+        <mat-icon aria-hidden="true">menu</mat-icon>
       </button>
+      <!-- Chip phạm vi + suy luận sâu (nhóm 5): nằm NGAY ĐẦU khung chat vì chúng
+           là thuộc tính của phiên đang mở, không phải cài đặt rời rạc trong sidebar.
+           Phiên đã có tin nhắn thì chip khoá, tooltip nói rõ phải tạo phiên mới. -->
+      <app-chat-context-chips
+        [scopeId]="scope()"
+        [scopeLabel]="scopeLabel()"
+        [thinking]="thinking()"
+        [locked]="sessionLocked()"
+        [busy]="sending()"
+        [categories]="categories()"
+        [providers]="providers()"
+        [provider]="provider()"
+        [model]="model()"
+        (pickScope)="selectScope($event)"
+        (toggleThinking)="toggleThinking()"
+        (newSession)="startNewSession()"
+        (pickModel)="selectModel($event)"
+      />
     </div>
     <div class="messages" #scroller>
       @if (turnsLoading()) {
@@ -79,25 +98,38 @@
                   class="markdown-body"
                   (click)="onCiteRefClick($event, $index)"
                   (keydown)="onCiteRefKey($event, $index)"
-                  [innerHTML]="turn.content | markdown: lang.t('CHAT_CITE_JUMP')"
+                  [innerHTML]="displayText(turn, turnIndex) | markdown: lang.t('CHAT_CITE_JUMP')"
                 ></div>
+
+                <!-- Badge model (Đợt 28): provider · model THỰC đã trả lời lượt
+                     này — lượt mới lấy từ response, lượt mở lại lấy từ cột đã
+                     lưu trong DB. Ẩn khi đang hé lộ chữ để không nhảy theo từng
+                     dòng; rỗng = backend không có thông tin thì không in. -->
+                @if (!isRevealingTurn(turnIndex) && modelBadge(turn); as badge) {
+                  <p class="turn-model">{{ badge }}</p>
+                }
 
                 <!-- Biểu đồ do backend cắt số từ chunk đã dẫn, vẽ dưới đáp án và TRÊN
                      khối nguồn để chip "Nguồn n" ở chart nhảy đúng mục bên dưới.
                      Lặp theo $index vì hai biểu đồ có thể cùng nguồn n (khác kiểu).
                      turnIndex là biệt danh của index vòng ngoài — $index ở đây là
                      thứ tự biểu đồ, dùng nhầm thì nhảy sai bong bóng. -->
-                @for (chart of turn.charts; track $index) {
-                  <app-chart
-                    [n]="chart.n"
-                    [kind]="chart.kind"
-                    [caption]="chart.caption"
-                    [options]="chart.spec"
-                    (citeClick)="onChartCite($event, turnIndex)"
-                  />
+                <!-- Nhóm 9: chưa gõ xong thì chưa vẽ biểu đồ + khối nguồn của ĐÚNG
+                     lượt đang hé lộ (lượt cũ in nguyên văn nên không bị ẩn theo) —
+                     chip `[^n]` trỏ vào mục chưa hiện sẽ nhảy vô chỗ trống -->
+                @if (!isRevealingTurn(turnIndex)) {
+                  @for (chart of turn.charts; track $index) {
+                    <app-chart
+                      [n]="chart.n"
+                      [kind]="chart.kind"
+                      [caption]="chart.caption"
+                      [options]="chart.spec"
+                      (citeClick)="onChartCite($event, turnIndex)"
+                    />
+                  }
                 }
 
-                @if (turn.cites && turn.cites.length > 0) {
+                @if (!isRevealingTurn(turnIndex) && turn.cites && turn.cites.length > 0) {
                   <!-- Gập theo mặc định (khuôn details.reasoning ở trên): câu trả lời
                        dài không bị dãy nguồn chiếm chỗ cuối, bấm chip mới mở ra -->
                   <details class="cites">
@@ -153,7 +185,10 @@
       }
     </div>
 
-    <div class="composer">
+    <!-- Khoá MỀM khi đang chờ đáp án (nhóm 8): textarea vẫn nhập được để viết
+         sẵn câu kế tiếp, chỉ Enter bị chặn + có dòng nhắc — không disabled vì
+         disabled sẽ kéo ô nhập ra khỏi thứ tự Tab và khó đọc chữ đang gõ -->
+    <div class="composer" [class.is-busy]="sending()">
       <textarea
         cdkTextareaAutosize
         cdkAutosizeMinRows="1"
@@ -164,7 +199,6 @@
         (keydown)="onKeydown($event)"
         [placeholder]="lang.t('CHAT_PLACEHOLDER')"
         [attr.aria-label]="lang.t('CHAT_PLACEHOLDER')"
-        [disabled]="sending()"
       ></textarea>
       <div class="composer-actions">
         <button
@@ -175,7 +209,7 @@
           [attr.aria-pressed]="thinking()"
           [attr.aria-label]="lang.t('CHAT_THINKING_TOGGLE')"
           [matTooltip]="sessionLocked() ? lang.t('CHAT_LOCKED_HINT') : lang.t('CHAT_THINKING_HINT')"
-          [disabled]="sending() || sessionLocked()"
+          [attr.aria-disabled]="sending() || sessionLocked()"
           (click)="toggleThinking()"
         >
           <mat-icon aria-hidden="true">psychology</mat-icon>
@@ -198,135 +232,52 @@
           </button>
         }
       </div>
+      <!-- Dòng nhắc đặt SAU cụm nút để flex-wrap đẩy nó xuống hàng riêng (đặt
+           trước sẽ đẩy nút Gửi xuống theo vì flex-basis 100%) -->
+      @if (sending()) {
+        <p class="composer-hint" role="status">{{ lang.t('CHAT_WAIT_REPLY_HINT') }}</p>
+      }
     </div>
 
     <p class="disclaimer">{{ lang.t('CHAT_ENTER_HINT') }} · {{ lang.t('CHAT_DISCLAIMER') }}</p>
   </div>
 
-  <!-- Panel tiện ích đặt SAU card chat → nằm bên phải trên desktop;
-       dưới 1024px CSS order kéo lên đầu trang thành thanh thả ngang -->
+  <!-- Panel tiện ích đặt SAU card chat → nằm bên trái trên desktop (CSS order);
+       dưới 1024px thành thanh thả ngang, dưới 768px thành drawer phủ trượt từ trái -->
   @if (panelOpen()) {
-    <aside class="side-panel">
+    <!-- Lớp phủ chỉ có tác dụng ở màn hẹp (CSS ẩn trên desktop); là nút thật để
+         bấm ra ngoài đóng được bằng chuột/bàn phím, không phải div[click] -->
+    <button
+      type="button"
+      class="scrim"
+      [attr.aria-label]="lang.t('CHAT_SIDEBAR_CLOSE')"
+      (click)="closePanel()"
+    ></button>
+
+    <aside id="chat-sessions" class="side-panel">
       <div class="panel-head">
         <h2 class="panel-title">{{ lang.t('CHAT_TITLE') }}</h2>
         <p class="panel-subtitle">{{ lang.t('CHAT_SUBTITLE') }}</p>
       </div>
 
-      <button matButton="filled" type="button" class="panel-action" (click)="startNewSession()">
-        <mat-icon aria-hidden="true">add</mat-icon>
-        {{ lang.t('CHAT_CLEAR') }}
-      </button>
-
-      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="scope-field">
-        <mat-label>{{ lang.t('CHAT_SCOPE') }}</mat-label>
-        <mat-select
-          [value]="scope()"
-          (selectionChange)="onScopeChange($event.value)"
-          [disabled]="sending() || sessionLocked()"
-        >
-          <mat-option [value]="0">{{ lang.t('CHAT_SCOPE_ALL') }}</mat-option>
-          @for (category of categories(); track category.id) {
-            <mat-option [value]="category.id">{{ category.name }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-      @if (sessionLocked()) {
-        <p class="panel-hint">{{ lang.t('CHAT_LOCKED_HINT') }}</p>
-      }
-
-      <!-- Danh sách phiên: nav + ul toàn nút thật (không div[click]) để bàn phím
-           và screen reader đọc được; aria-current báo mục đang mở -->
-      <nav class="sessions" [attr.aria-label]="lang.t('CHAT_SESSIONS')">
-        <h3 class="sessions-heading">{{ lang.t('CHAT_SESSIONS') }}</h3>
-
-        @if (listFailed()) {
-          <p class="sessions-status">{{ lang.t('CHAT_SESSIONS_FAILED') }}</p>
-          <button matButton="outlined" type="button" class="panel-action" (click)="loadSessions()">
-            <mat-icon aria-hidden="true">refresh</mat-icon>
-            {{ lang.t('COMMON_RETRY') }}
-          </button>
-        }
-
-        @if (!listFailed() && !listLoading() && conversations().length === 0) {
-          <p class="sessions-status">{{ lang.t('CHAT_SESSIONS_EMPTY') }}</p>
-        }
-
-        @if (conversations().length > 0) {
-          <ul class="session-list">
-            @for (conversation of conversations(); track conversation.id) {
-              <li
-                class="session"
-                [class.is-active]="isSessionActive(conversation)"
-                [attr.aria-current]="isSessionActive(conversation) ? 'true' : null"
-              >
-                @if (renamingId() === conversation.id) {
-                  <input
-                    class="session-rename"
-                    type="text"
-                    maxlength="120"
-                    [value]="renameDraft()"
-                    (input)="onRenameInput($event)"
-                    (keydown)="onRenameKeydown($event)"
-                    [attr.aria-label]="lang.t('CHAT_RENAME')"
-                  />
-                } @else {
-                  <button
-                    type="button"
-                    class="session-main"
-                    [disabled]="sending()"
-                    (click)="openSession(conversation)"
-                  >
-                    <span class="session-title">
-                      {{ conversation.title || lang.t('CHAT_UNTITLED') }}
-                    </span>
-                    <span class="session-meta">
-                      {{ sessionTime(conversation) }} ·
-                      {{ turnCountLabel(conversation.messageCount) }}
-                    </span>
-                  </button>
-                  <span class="session-actions">
-                    <button
-                      mat-icon-button
-                      type="button"
-                      [attr.aria-label]="lang.t('CHAT_RENAME')"
-                      [matTooltip]="lang.t('CHAT_RENAME')"
-                      [disabled]="sending()"
-                      (click)="beginRename(conversation)"
-                    >
-                      <mat-icon aria-hidden="true">edit</mat-icon>
-                    </button>
-                    <button
-                      mat-icon-button
-                      type="button"
-                      class="session-remove"
-                      [attr.aria-label]="lang.t('CHAT_DELETE')"
-                      [matTooltip]="lang.t('CHAT_DELETE')"
-                      [disabled]="sending()"
-                      (click)="confirmDelete(conversation)"
-                    >
-                      <mat-icon aria-hidden="true">delete</mat-icon>
-                    </button>
-                  </span>
-                }
-              </li>
-            }
-          </ul>
-        }
-
-        @if (listLoading()) {
-          <p class="sessions-status" role="status">{{ lang.t('COMMON_LOADING') }}</p>
-        } @else if (listHasMore() && !listFailed()) {
-          <button
-            matButton="outlined"
-            type="button"
-            class="panel-action"
-            (click)="loadMoreSessions()"
-          >
-            <mat-icon aria-hidden="true">expand_more</mat-icon>
-            {{ lang.t('CHAT_LOAD_MORE') }}
-          </button>
-        }
-      </nav>
+      <!-- Danh sách phiên nằm ở component riêng: list nhóm theo ngày, menu ⋯
+           (đổi tên/xoá), empty state. Mọi thay đổi thật vẫn do trang này gọi
+           service — component con chỉ phát output. -->
+      <app-chat-sessions
+        [conversations]="conversations()"
+        [activeId]="activeId()"
+        [answering]="sending()"
+        [loading]="listLoading()"
+        [failed]="listFailed()"
+        [hasMore]="listHasMore()"
+        [suggestions]="suggestions"
+        (openSession)="openSession($event)"
+        (rename)="onRename($event)"
+        (remove)="confirmDelete($event)"
+        (loadMore)="loadMoreSessions()"
+        (retry)="loadSessions()"
+        (askExample)="askSuggestion($event)"
+      />
     </aside>
   }
 </section>

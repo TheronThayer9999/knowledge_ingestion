@@ -1,0 +1,228 @@
+// Sidebar phiên (Đợt 27) — chỉ token, không mã hoá màu/hệ số rời rạc.
+// Host là flex cột có min-height 0 để nav bên trong nhận được chiều cao hữu hạn
+// và tự cuộn; panel cha chỉ lo khung, không có scrollbar thứ hai.
+:host {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+// Nav là vùng cuộn DỌC duy nhất của danh sách (nhóm 3): cuộn ở từng <ul> sẽ
+// cắt rời các nhóm thời gian, còn cuộn ngang thì thẻ dài đẩy sidebar vẹt ra.
+.sessions {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.sessions-heading {
+  margin: 0;
+  font: var(--text-style-xs-strong);
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.group-heading {
+  margin: var(--space-2) 0 0;
+  font: var(--text-style-xs-strong);
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sessions-status {
+  margin: 0;
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+}
+
+.panel-action {
+  width: 100%;
+  --mat-button-outlined-label-text-color: var(--color-on-surface);
+  --mat-button-outlined-disabled-outline-color: var(--color-border);
+  --mat-button-outlined-disabled-label-text-color: var(--color-muted);
+}
+
+.session-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  list-style: none;
+}
+
+// Thẻ chiếm đủ ngang sidebar (width 100% + min-width 0 để con được phép co),
+// viền trái 3px là dấu hiệu "đang mở" ngoài màu nền — đổi màu alone không đủ
+// cho người dùng màu/reader (nhóm 3 + AA).
+.session {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+  padding-left: var(--space-1);
+  border-left: var(--border-width-strong) solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.session:hover,
+.session:focus-within {
+  background: var(--color-surface-container);
+}
+
+.session.is-active {
+  border-left-color: var(--color-primary);
+  background: var(--color-accent-soft);
+}
+
+.session.is-active .session-title {
+  font: var(--text-style-sm-strong);
+}
+
+.session-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-2);
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-title {
+  overflow: hidden;
+  font: var(--text-style-sm);
+  color: var(--color-on-surface);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.session-meta {
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+}
+
+// Nút ⋯ (nhóm 4): MỜ chứ không ẩn khỏi cây — display/visibility sẽ cắt luôn
+// khỏi thứ tự Tab, thành ra bàn phím không mở được menu "Xoá" nữa.
+.session-menu {
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--easing-standard);
+}
+
+.session:hover .session-menu,
+.session:focus-within .session-menu,
+.session.is-active .session-menu {
+  opacity: 1;
+}
+
+// "Xoá phiên" đỏ CHỈ trong menu — ngoài danh sách không nút nào bị tô đỏ, nên
+// hàng phiên trông trung tính cho tới khi người dùng thật sự mở menu.
+.menu-danger {
+  color: var(--color-danger);
+}
+
+.menu-danger mat-icon {
+  color: var(--color-danger);
+}
+
+// Chấm trạng thái của phiên đang chờ đáp án (nhóm 8)
+.status-dot {
+  flex: 0 0 auto;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  animation: session-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes session-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.85);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+// Ô đổi tên inline chiếm đúng chỗ nút mở để layout không giật
+.session-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-field);
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+  font: var(--text-style-input);
+}
+
+.sessions-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.session-example {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-on-surface);
+  font: var(--text-style-xs);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--easing-standard);
+}
+
+.session-example:hover,
+.session-example:focus-visible {
+  background: var(--color-surface-container);
+}
+
+.session-example mat-icon {
+  font-size: var(--icon-size-sm);
+  color: var(--color-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot {
+    animation: none;
+    opacity: 0.7;
+  }
+
+  .session-menu {
+    transition: none;
+  }
+}

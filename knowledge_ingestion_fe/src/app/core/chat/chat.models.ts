@@ -35,6 +35,12 @@ export interface ChatAnswer {
   charts: ChatChart[];
   /** Đoạn model tự suy nghĩ trước khi đáp — rỗng khi backend không trả reasoning */
   reasoning: string;
+  /**
+   * Provider/model THỰC đã chạy (backend đã resolve default) — FE gắn badge
+   * dưới câu trả lời. Rỗng khi backend cũ không trả field này.
+   */
+  provider: string;
+  model: string;
 }
 
 export interface ChatTurn {
@@ -79,6 +85,9 @@ export interface CreateConversationPayload {
   title?: string;
   categoryIds?: number[];
   thinking?: boolean;
+  /** Provider/model chốt của phiên; rỗng = theo cấu hình mặc định */
+  provider?: string;
+  model?: string;
 }
 
 // ---- DTO khớp JSON backend (snake_case) ----
@@ -104,6 +113,9 @@ export interface ChatResponseDto {
   cites?: ChatCiteDto[];
   charts?: ChatChartDto[];
   reasoning?: string;
+  /** provider/model đã resolve — backend cũ không có thì coi như rỗng */
+  provider?: string;
+  model?: string;
 }
 
 export interface ConversationDto {
@@ -158,6 +170,8 @@ export function toChatAnswer(dto: ChatResponseDto): ChatAnswer {
     reasoning: dto.reasoning ?? '',
     cites: (dto.cites ?? []).map(toCite),
     charts: (dto.charts ?? []).map(toChatChart),
+    provider: dto.provider ?? '',
+    model: dto.model ?? '',
   };
 }
 
@@ -209,5 +223,38 @@ export function toCreateConversationBody(
   if (payload.thinking) {
     body['thinking'] = true;
   }
+  // Provider/model: rỗng = theo cấu hình, nên KHÔNG gửi key rỗng (backend đọc
+  // "trống" là lấy mặc định — gửi chuỗi rỗng sẽ ghi đè lựa chọn của phiên).
+  if (payload.provider) {
+    body['provider'] = payload.provider;
+  }
+  if (payload.model) {
+    body['model'] = payload.model;
+  }
   return body;
+}
+
+/** Trần độ dài tiêu đề phiên — sidebar hẹp, dài hơn nữa thì chỉ tổ ellipsis */
+const SESSION_TITLE_MAX_RUNES = 40;
+
+/**
+ * Tiêu đề tự sinh từ câu hỏi đầu (Đợt 27 nhóm 1): ~40 ký tự, cắt ở RANH GIỚI
+ * TỪ chứ không xé giữa chữ, đếm theo rune để tiếng Việt có dấu không bị cắt ở
+ * nửa âm tiết. Backend cũng có ClipTitle (cắt cứng) nhưng SetTitleIfEmpty chỉ
+ * điền khi title còn rỗng — FE gửi title trước thì câu chữ trên sidebar là FE
+ * quyết, thấy ngay lúc bấm gửi thay vì chờ nạp lại sidebar.
+ */
+export function clipSessionTitle(question: string): string {
+  const text = question.trim().replace(/\s+/g, ' ');
+  const characters = Array.from(text);
+  if (characters.length <= SESSION_TITLE_MAX_RUNES) {
+    return text;
+  }
+  // +1 rune để nhìn thấy khoảng trắng kế tiếp: có dấu cách trong vùng thì cắt ở đó
+  const head = characters.slice(0, SESSION_TITLE_MAX_RUNES + 1).join('');
+  const boundary = head.lastIndexOf(' ');
+  const taken =
+    boundary > 0 ? characters.slice(0, boundary) : characters.slice(0, SESSION_TITLE_MAX_RUNES);
+  // Dấu câu treo cuối ("Quy định về phụ cấp,") nhìn như câu bị cắt đôi
+  return `${taken.join('').replace(/[\s,;:.\-!?]+$/, '')}…`;
 }

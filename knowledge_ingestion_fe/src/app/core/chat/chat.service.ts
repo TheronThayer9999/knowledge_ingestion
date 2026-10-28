@@ -13,6 +13,12 @@ export interface ChatSendRequest {
   /** Phạm vi của lượt; rỗng = backend lấy theo phạm vi đã chốt của phiên */
   categoryId?: number | null;
   thinking?: boolean;
+  /**
+   * Provider/model của lượt (Đợt 28). Rỗng = backend dùng mặc định cấu hình,
+   * nên KHÔNG gửi chuỗi rỗng — gửi "" sẽ ghi đè lựa chọn đã lưu của phiên.
+   */
+  provider?: string;
+  model?: string;
 }
 
 /**
@@ -43,6 +49,14 @@ export class ChatService {
     // có công tắc đó thì cờ tự vô tác dụng, chat vẫn chạy.
     if (request.thinking) {
       body['thinking'] = true;
+    }
+    // Provider/model chỉ gửi khi có: để trống thì backend lấy mặc định cấu hình
+    // (hoặc lựa chọn đã lưu của phiên).
+    if (request.provider) {
+      body['provider'] = request.provider;
+    }
+    if (request.model) {
+      body['model'] = request.model;
     }
     return this.api.post<ChatResponseDto>('/chat', body).pipe(map(toChatAnswer));
   }
