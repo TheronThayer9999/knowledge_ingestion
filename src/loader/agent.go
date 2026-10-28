@@ -49,19 +49,16 @@ func newProviderAgents(
 		return nil, err
 	}
 	llms := cfg.GetLLMs()
-	// Dựng provider từ map llms.providers — thêm backend mới (Groq, DeepSeek,
-	// ...) chỉ cần khai báo config, dòng dưới không đổi. Map thì thứ tự không
-	// xác định nhưng BuildProviderAgents lưu theo slug nên kết quả ổn định.
-	//
-	// Key/model admin nhập trong popup (Đợt 28 nấc 2) nằm ở bảng
-	// llm_provider_settings và THẮNG config — cùng hàm merge với lần rebuild
-	// sau khi lưu, nên khởi động lại app không làm mất hiệu lực của key DB.
+	// Dựng provider từ config ∪ bảng cài đặt (usecase.ProviderConfigs) — thêm
+	// backend mới (Groq, DeepSeek, ...) chỉ cần khai báo config, còn từ Đợt 28
+	// nấc 3 admin bấm "Thêm provider" trong popup là có luôn không sửa file.
+	// Provider thiếu cấu hình (vd thiếu key) thì boot vẫn lên, request nào chọn
+	// nó mới 400; provider admin tắt không được dựng agent.
 	overrides := providerSettingOverrides(settings)
-	secret := cfg.GetJWT().Secret
-	providers := make([]eino.LLMProvider, 0, len(llms.Providers))
-	for slug, pcfg := range llms.Providers {
-		merged := usecase.MergeProviderSetting(pcfg, overrides[eino.NormalizeSlug(slug)], secret)
-		providers = append(providers, eino.NewConfigProvider(slug, merged))
+	resolved := usecase.ProviderConfigs(llms, overrides, cfg.GetJWT().Secret)
+	providers := make([]eino.LLMProvider, 0, len(resolved))
+	for _, item := range resolved {
+		providers = append(providers, eino.NewConfigProvider(item.Slug, item.Config))
 	}
 	return eino.BuildProviderAgents(
 		eino.InstructionSet{Base: prompts.System, Sheets: prompts.Sheets},

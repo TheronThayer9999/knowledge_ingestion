@@ -140,6 +140,11 @@ func registerConversationRoutes(authed *gin.RouterGroup, chatAPI *apis.ChatAPI,
 	llmAdmin := authed.Group("")
 	llmAdmin.Use(middlewares.RequireRole(domain.RoleAdmin))
 	{
+		// Định nghĩa provider (nấc 3) — PUT/DELETE trên đúng /llm/providers/:slug,
+		// gin phân biệt với /llm/providers/:slug/key theo độ sâu path nên không
+		// cần route phụ.
+		llmAdmin.PUT("/llm/providers/:slug", llmAPI.SaveProvider)
+		llmAdmin.DELETE("/llm/providers/:slug", llmAPI.DeleteProvider)
 		llmAdmin.PUT("/llm/providers/:slug/key", llmAPI.SaveKey)
 		llmAdmin.DELETE("/llm/providers/:slug/key", llmAPI.ClearKey)
 		llmAdmin.POST("/llm/providers/:slug/models", llmAPI.LoadModels)

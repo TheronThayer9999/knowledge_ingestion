@@ -166,37 +166,36 @@ func LoadWorkerInfra() []fx.Option {
 	}
 }
 
-// compileProviderConfig chọn entry llms.providers của default_provider cho
-// compile phase 2 và phủ key/model admin đã lưu trong DB (Đợt 28 nấc 2) — cùng
-// hàm merge với chat nên key nhập trong popup có hiệu lực cho cả tóm tắt mục,
-// không chỉ chat. Tách khỏi LoadWorkerInfra (hàm đó đang đúng ngân sách).
+// compileProviderConfig chọn provider cho compile phase 2 theo `llms.default_provider`
+// trong tập provider HIỆU LỰC (config ∪ bảng cài đặt) và đã phủ key/model admin lưu
+// trong DB — cùng hàm gộp với chat (Đợt 28 nấc 2/3) nên key nhập trong popup có
+// hiệu lực cho cả tóm tắt mục, và một provider admin tạo từ UI vẫn compile được
+// nếu file config trỏ default_provider vào nó. Tách khỏi LoadWorkerInfra (hàm đó
+// đang đúng ngân sách).
 func compileProviderConfig(cfg config.IConfig, db *gorm.DB) (string, config.LLMProviderConfig, error) {
 	llms := cfg.GetLLMs()
-	slug := strings.ToLower(strings.TrimSpace(llms.DefaultProvider))
-	var pcfg config.LLMProviderConfig
-	var found string
-	for name, p := range llms.Providers {
-		if strings.ToLower(strings.TrimSpace(name)) == slug {
-			found, pcfg = strings.ToLower(strings.TrimSpace(name)), p
-			break
+	slug := eino.NormalizeSlug(llms.DefaultProvider)
+	for _, item := range usecase.ProviderConfigs(llms, workerProviderSettings(db), cfg.GetJWT().Secret) {
+		if item.Slug == slug {
+			return item.Slug, item.Config, nil
 		}
 	}
-	if found == "" {
-		return "", config.LLMProviderConfig{}, fmt.Errorf(
-			"worker compile: không thấy llms.providers[%q] cho default_provider", slug)
-	}
-	return found, usecase.MergeProviderSetting(pcfg, workerProviderSetting(db, found), cfg.GetJWT().Secret), nil
+	return "", config.LLMProviderConfig{}, fmt.Errorf(
+		"worker compile: không thấy provider %q cho default_provider (khai trong config hoặc tạo trong popup)", slug)
 }
 
-// workerProviderSetting đọc cài đặt đã lưu của provider; thiếu dòng hoặc lỗi
-// đọc đều coi như "không có" để compile chạy tiếp bằng config — key DB là lớp
+// workerProviderSettings đọc toàn bộ cài đặt provider một lần lúc boot, khoá theo
+// slug đã chuẩn hoá. Lỗi đọc thì WARN rồi chạy đúng bằng config — key DB là lớp
 // phủ, không được làm worker chết lúc boot.
-func workerProviderSetting(db *gorm.DB, slug string) *domain.LLMProviderSetting {
-	row, err := repository.NewLLMProviderSettingRepository(db).Get(context.Background(), slug)
+func workerProviderSettings(db *gorm.DB) map[string]*domain.LLMProviderSetting {
+	rows, err := repository.NewLLMProviderSettingRepository(db).List(context.Background())
 	if err != nil {
-		logs.Warnw("worker compile: không đọc được cài đặt provider, dùng config",
-			"provider", slug, "error", err)
+		logs.Warnw("worker compile: không đọc được cài đặt provider, dùng config", "error", err)
 		return nil
 	}
-	return row
+	out := make(map[string]*domain.LLMProviderSetting, len(rows))
+	for _, row := range rows {
+		out[eino.NormalizeSlug(row.Slug)] = row
+	}
+	return out
 }

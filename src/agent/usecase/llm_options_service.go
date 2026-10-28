@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	"knowledge_ingestion/src/agent/eino"
@@ -13,11 +12,12 @@ import (
 	"knowledge_ingestion/src/domain"
 )
 
-// llmOptionsService phản chiếu cấu hình llms.providers ra UI (Đợt 28) — nguồn
-// duy nhất cho menu chọn model của chat và danh sách kết nối ở Settings. Config
-// là nơi khai báo provider; bảng llm_provider_settings chỉ ghi đè key/model mà
-// admin nhập trong popup. Key KHÔNG BAO GIỜ rời khỏi process: DTO chỉ có tên
-// provider, model và trạng thái key (admin), không có api_key.
+// llmOptionsService phản chiếu provider LLM ra UI (Đợt 28) — nguồn duy nhất cho
+// menu chọn model của chat và danh sách kết nối ở Settings. Provider đến từ
+// configs/config.json VÀ từ bảng llm_provider_settings (admin tạo/sửa trong
+// popup, nấc 3); DB thắng config khi cả hai có giá trị. Key KHÔNG BAO GIỜ rời
+// khỏi process: DTO chỉ có tên provider, model và trạng thái key (admin),
+// không có api_key.
 type llmOptionsService struct {
 	llms   config.LLMsConfig
 	agents *eino.ProviderAgents
@@ -51,24 +51,30 @@ func (s *llmOptionsService) settings(ctx context.Context) map[string]*domain.LLM
 }
 
 // buildLLMOptions tách khỏi Options để test được thuần (không cần fake
-// config.IConfig/repo): sắp provider theo slug vì config là map (thứ tự không
-// xác định), chốt default model đúng provider mặc định.
+// config.IConfig/repo): liệt kê config ∪ DB vì từ Đợt 28 nấc 3 provider có thể
+// chỉ tồn tại trong bảng cài đặt (admin tạo từ UI, không sửa file config).
+// Sắp theo slug vì config là map (thứ tự không xác định), chốt default model
+// đúng provider mặc định.
+//
+// Provider bị tắt chỉ hiện với admin — menu chat của user thường không được thấy
+// cái mà chat sẽ từ chối.
 func buildLLMOptions(llms config.LLMsConfig, agents *eino.ProviderAgents,
 	settings map[string]*domain.LLMProviderSetting, role int) *dtos.LLMOptionsResponse {
 	defaultSlug := effectiveProviderSlug(llms.DefaultProvider, agents)
 	admin := role >= domain.RoleAdmin
-	slugs := make([]string, 0, len(llms.Providers))
-	for slug := range llms.Providers {
-		slugs = append(slugs, slug)
-	}
-	sort.Strings(slugs)
+	slugs := providerSlugs(llms, settings)
 	res := &dtos.LLMOptionsResponse{
 		DefaultProvider: defaultSlug,
 		Providers:       make([]*dtos.LLMProviderOption, 0, len(slugs)),
 	}
-	for _, rawSlug := range slugs {
-		slug := slugKey(rawSlug)
-		opt := buildProviderOption(slug, llms.Providers[rawSlug], settings[slug], agents, defaultSlug, admin)
+	for _, slug := range slugs {
+		setting := settings[slug]
+		if setting != nil && setting.Disabled && !admin {
+			continue
+		}
+		base, fromConfig := providerBase(llms, slug)
+		opt := buildProviderOption(slug, base, setting, agents, defaultSlug, admin)
+		opt.FromConfig = fromConfig
 		if opt.IsDefault {
 			res.DefaultModel = opt.DefaultModel
 		}
@@ -90,15 +96,16 @@ func effectiveProviderSlug(configured string, agents *eino.ProviderAgents) strin
 }
 
 // buildProviderOption dựng 1 dòng cho UI/API từ cấu hình config + cài đặt DB
-// của cùng provider (model DB thắng config). base_url/has_key/key_source/
-// config_model chỉ dành cho admin.
+// của cùng provider: định nghĩa (label/type/base_url), model và danh sách model
+// trong DB đều thắng config. base_url/has_key/key_source/config_model/
+// from_config/disabled chỉ dành cho admin.
 func buildProviderOption(slug string, pcfg config.LLMProviderConfig, setting *domain.LLMProviderSetting,
 	agents *eino.ProviderAgents, defaultSlug string, admin bool) *dtos.LLMProviderOption {
-	effective := withSettingModel(pcfg, setting)
+	effective := withSettingDef(withSettingModel(pcfg, setting), setting)
 	opt := &dtos.LLMProviderOption{
 		Slug:         slug,
-		Label:        providerLabel(slug, pcfg),
-		Type:         pcfg.Type,
+		Label:        providerLabel(slug, effective),
+		Type:         effective.Type,
 		DefaultModel: strings.TrimSpace(effective.Model),
 		Models:       providerModels(effective),
 		Available:    providerAvailable(agents, slug),
@@ -106,12 +113,13 @@ func buildProviderOption(slug string, pcfg config.LLMProviderConfig, setting *do
 		IsDefault:    slug == defaultSlug,
 	}
 	if admin {
-		opt.BaseURL = strings.TrimRight(strings.TrimSpace(pcfg.BaseURL), "/")
+		opt.BaseURL = strings.TrimRight(strings.TrimSpace(effective.BaseURL), "/")
 		source := providerKeySource(pcfg, setting)
 		hasKey := source != ""
 		opt.HasKey = &hasKey
 		opt.KeySource = source
 		opt.ConfigModel = strings.TrimSpace(pcfg.Model)
+		opt.Disabled = setting != nil && setting.Disabled
 	}
 	return opt
 }

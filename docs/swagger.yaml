@@ -292,6 +292,38 @@ definitions:
     required:
     - api_key
     type: object
+  dtos.SaveLLMProviderRequest:
+    properties:
+      api_key:
+        maxLength: 512
+        type: string
+      base_url:
+        example: https://api.groq.com/openai/v1
+        maxLength: 512
+        type: string
+      disabled:
+        example: false
+        type: boolean
+      label:
+        example: Groq
+        maxLength: 64
+        type: string
+      model:
+        example: llama-3.3-70b-versatile
+        maxLength: 128
+        type: string
+      models:
+        example:
+        - '["llama-3.3-70b-versatile"]'
+        items:
+          type: string
+        maxItems: 300
+        type: array
+      type:
+        example: openai-compatible
+        maxLength: 32
+        type: string
+    type: object
   dtos.SearchRequest:
     properties:
       category_ids:
@@ -1408,12 +1440,86 @@ paths:
       summary: Danh sách provider/model cho UI
       tags:
       - llm
+  /api/v1/llm/providers/{slug}:
+    delete:
+      description: 'Xoá dòng của provider khỏi DB: provider khai trong configs/config.json
+        quay về đúng file config, provider do UI tạo biến mất hẳn. Không xoá được
+        provider mặc định.'
+      parameters:
+      - description: Slug provider
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Xoá cài đặt provider (admin)
+      tags:
+      - llm
+    put:
+      consumes:
+      - application/json
+      description: 'Tạo provider mới hoặc sửa từng field của provider đang có: loại
+        (ollama/openai-compatible), base_url, nhãn, model mặc định, danh sách model,
+        công tắc tắt và API key (mã hoá khi lưu). Field bỏ trống giữ nguyên giá trị
+        cũ; provider chỉ có ở DB sống ngay, không cần restart. Không bao giờ trả api_key.'
+      parameters:
+      - description: Slug provider (chữ thường, số, - _ .)
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Định nghĩa provider
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.SaveLLMProviderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Thêm hoặc sửa định nghĩa provider (admin)
+      tags:
+      - llm
   /api/v1/llm/providers/{slug}/key:
     delete:
       description: Xoá key trong DB để provider quay về key trong config. Model đã
         chọn và danh sách model đã tải vẫn giữ.
       parameters:
-      - description: Slug provider trong config
+      - description: Slug provider
         in: path
         name: slug
         required: true
@@ -1444,7 +1550,7 @@ paths:
       description: Mã hoá key rồi lưu DB; key trong DB thắng key config. Không có
         endpoint nào đọc ngược key ra client.
       parameters:
-      - description: Slug provider trong config
+      - description: Slug provider
         in: path
         name: slug
         required: true
@@ -1486,7 +1592,7 @@ paths:
       description: Model chọn lưu DB và thắng model config cho các lượt chat không
         ép model.
       parameters:
-      - description: Slug provider trong config
+      - description: Slug provider
         in: path
         name: slug
         required: true
@@ -1526,7 +1632,7 @@ paths:
       description: 'Gọi chính provider (OpenAI-compatible: GET /models, Ollama: GET
         /api/tags) bằng key đang có hiệu lực, lưu lại rồi trả danh sách đã sắp A→Z.'
       parameters:
-      - description: Slug provider trong config
+      - description: Slug provider
         in: path
         name: slug
         required: true

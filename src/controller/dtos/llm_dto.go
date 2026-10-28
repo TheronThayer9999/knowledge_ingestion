@@ -1,8 +1,9 @@
 package dtos
 
-// LLMProviderOption là một backend LLM đã khai báo trong config, phản chiếu ra
-// UI để người dùng chọn provider/model khi chat. KHÔNG có api_key trong struct
-// này — key chỉ nằm ở config phía server, không bao giờ xuống trình duyệt.
+// LLMProviderOption là một backend LLM — khai trong configs/config.json hoặc do
+// admin tạo/sửa từ UI (Đợt 28 nấc 3), phản chiếu ra menu chat và danh sách kết
+// nối ở Settings. KHÔNG có api_key trong struct này — key chỉ nằm ở config hoặc
+// cột cipher trong DB, không bao giờ xuống trình duyệt.
 type LLMProviderOption struct {
 	Slug string `json:"slug" example:"9router"`
 	// Label là tên hiển thị; backend đã fallback về slug khi config để trống.
@@ -33,6 +34,13 @@ type LLMProviderOption struct {
 	// ConfigModel (admin) là model mặc định trong configs/config.json, để popup
 	// phân biệt "mặc định của config" với model admin đã chọn trong DB.
 	ConfigModel string `json:"config_model,omitempty" example:"llama3.1:8b"`
+	// FromConfig (admin) cho biết provider có khai báo trong configs/config.json
+	// hay do UI tạo — popup đổi nhãn nút xoá: provider của file thì "xoá cài
+	// đặt là quay về file", provider UI tạo thì "xoá là mất hẳn".
+	FromConfig bool `json:"from_config,omitempty" example:"true"`
+	// Disabled (admin) = provider bị tắt trong UI: vẫn hiện trong popup để bật
+	// lại, nhưng không hiện ở menu chat và không dựng agent.
+	Disabled bool `json:"disabled,omitempty" example:"false"`
 }
 
 // LLMOptionsResponse là toàn bộ lựa chọn model cho UI chat + Settings: mặc
@@ -64,4 +72,23 @@ type SelectLLMModelRequest struct {
 type LLMModelsResponse struct {
 	Slug   string   `json:"slug" example:"9router"`
 	Models []string `json:"models"`
+}
+
+// SaveLLMProviderRequest là ĐỊNH NGHĨA provider admin nhập trong popup (Đợt 28
+// nấc 3): tạo mới hoàn toàn hoặc sửa một provider đang có. Mọi field để trống
+// nghĩa là "giữ như cũ / theo config" — riêng provider chưa có ở đâu thì service
+// bắt buộc type + base_url (không có hai cái đó thì không dựng được client).
+//
+// Slug nằm ở path, không có trong body. APIKey là field duy nhất đi một chiều
+// vào server: non-empty thì mã hoá lưu DB, empty thì giữ key đang có (muốn xoá
+// key dùng endpoint DELETE .../key). Validation base_url làm trong service chứ
+// không binding:"url" vì `http://localhost:11434` là địa chỉ hợp lệ ở đây.
+type SaveLLMProviderRequest struct {
+	Label    string   `json:"label" binding:"omitempty,max=64" example:"Groq"`
+	Type     string   `json:"type" binding:"omitempty,max=32" example:"openai-compatible"`
+	BaseURL  string   `json:"base_url" binding:"omitempty,max=512" example:"https://api.groq.com/openai/v1"`
+	Model    string   `json:"model" binding:"omitempty,max=128" example:"llama-3.3-70b-versatile"`
+	Models   []string `json:"models" binding:"omitempty,max=300" example:"[\"llama-3.3-70b-versatile\"]"`
+	Disabled *bool    `json:"disabled" example:"false"`
+	APIKey   string   `json:"api_key" binding:"omitempty,max=512"`
 }

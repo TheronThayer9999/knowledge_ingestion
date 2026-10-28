@@ -1564,6 +1564,114 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/llm/providers/{slug}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Tạo provider mới hoặc sửa từng field của provider đang có: loại (ollama/openai-compatible), base_url, nhãn, model mặc định, danh sách model, công tắc tắt và API key (mã hoá khi lưu). Field bỏ trống giữ nguyên giá trị cũ; provider chỉ có ở DB sống ngay, không cần restart. Không bao giờ trả api_key.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "Thêm hoặc sửa định nghĩa provider (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Slug provider (chữ thường, số, - _ .)",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Định nghĩa provider",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.SaveLLMProviderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Xoá dòng của provider khỏi DB: provider khai trong configs/config.json quay về đúng file config, provider do UI tạo biến mất hẳn. Không xoá được provider mặc định.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "Xoá cài đặt provider (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Slug provider",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/llm/providers/{slug}/key": {
             "put": {
                 "security": [
@@ -1585,7 +1693,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Slug provider trong config",
+                        "description": "Slug provider",
                         "name": "slug",
                         "in": "path",
                         "required": true
@@ -1644,7 +1752,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Slug provider trong config",
+                        "description": "Slug provider",
                         "name": "slug",
                         "in": "path",
                         "required": true
@@ -1693,7 +1801,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Slug provider trong config",
+                        "description": "Slug provider",
                         "name": "slug",
                         "in": "path",
                         "required": true
@@ -1754,7 +1862,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Slug provider trong config",
+                        "description": "Slug provider",
                         "name": "slug",
                         "in": "path",
                         "required": true
@@ -2500,6 +2608,49 @@ const docTemplate = `{
                     "maxLength": 512,
                     "minLength": 1,
                     "example": "sk-..."
+                }
+            }
+        },
+        "dtos.SaveLLMProviderRequest": {
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "base_url": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "example": "https://api.groq.com/openai/v1"
+                },
+                "disabled": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "label": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "example": "Groq"
+                },
+                "model": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "example": "llama-3.3-70b-versatile"
+                },
+                "models": {
+                    "type": "array",
+                    "maxItems": 300,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[\"llama-3.3-70b-versatile\"]"
+                    ]
+                },
+                "type": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "example": "openai-compatible"
                 }
             }
         },

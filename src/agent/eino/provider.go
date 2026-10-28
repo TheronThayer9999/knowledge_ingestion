@@ -196,3 +196,30 @@ func (p *ProviderAgents) Rebuild(slug string, pcfg config.LLMProviderConfig) err
 	p.DefaultModel[name] = provider.DefaultModel()
 	return nil
 }
+
+// Remove bỏ một provider khỏi registry đang chạy — admin tắt hoặc xoá provider
+// trong popup (Đợt 28 nấc 3). Lượt chat đang chạy giữ agent cũ trong stack của
+// nó nên không giữa chừng mất model; chỉ request mới không tra thấy provider
+// nữa và Resolve trả lỗi "chưa cấu hình" (API map 400).
+//
+// Không đụng DefaultProvider: service gọi trước một bước chặn "đang là provider
+// mặc định" để không tự biến app thành mù LLM.
+func (p *ProviderAgents) Remove(slug string) {
+	if p == nil {
+		return
+	}
+	name := NormalizeSlug(slug)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.Agents, name)
+	delete(p.ThinkingAgents, name)
+	delete(p.Models, name)
+	delete(p.DefaultModel, name)
+}
+
+// Has cho biết registry đang có agent của provider này — UI dùng để báo
+// "provider chưa sẵn sàng" sau khi lưu mà không cần đoán qua lỗi Resolve.
+func (p *ProviderAgents) Has(slug string) bool {
+	_, ok := p.Agent(slug)
+	return ok
+}

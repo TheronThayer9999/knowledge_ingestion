@@ -31,15 +31,22 @@ type ILLMOptions interface {
 	Options(ctx context.Context, role int) dtos.Result[*dtos.LLMOptionsResponse]
 }
 
-// ILLMSettings là phần GHI của cùng màn hình đó (Đợt 28 nấc 2): admin lưu/xoá
-// key, tải danh sách model từ provider, chọn model mặc định. Key lưu DB đã mã
-// hoá và KHÔNG BAO GIỜ trả lại client; config vẫn là mặc định khi DB trống.
-// Chặn quyền ở route (RequireRole) — service không nhận role từ client.
+// ILLMSettings là phần GHI của cùng màn hình đó (Đợt 28 nấc 2 + 3): admin lưu/xoá
+// key, tải danh sách model từ provider, chọn model mặc định, và từ nấc 3 là tạo/
+// sửa/xoá luôn ĐỊNH NGHĨA provider (loại, base_url, nhãn) để không phải sửa file
+// config. Key lưu DB đã mã hoá và KHÔNG BAO GIỜ trả lại client; config vẫn là mặc
+// định khi DB trống. Chặn quyền ở route (RequireRole) — service không nhận role
+// từ client.
+//
+// SaveProvider/DeleteProvider trả cả danh sách provider vì chúng thêm/bớt một
+// dòng khỏi danh sách; ba thao tác còn lại chỉ đổi tiêu chí nên trả đúng dòng đó.
 type ILLMSettings interface {
 	SaveKey(ctx context.Context, slug, apiKey string) dtos.Result[*dtos.LLMProviderOption]
 	ClearKey(ctx context.Context, slug string) dtos.Result[*dtos.LLMProviderOption]
 	LoadModels(ctx context.Context, slug string) dtos.Result[*dtos.LLMModelsResponse]
 	SelectModel(ctx context.Context, slug, model string) dtos.Result[*dtos.LLMProviderOption]
+	SaveProvider(ctx context.Context, slug string, req *dtos.SaveLLMProviderRequest) dtos.Result[*dtos.LLMOptionsResponse]
+	DeleteProvider(ctx context.Context, slug string) dtos.Result[*dtos.LLMOptionsResponse]
 }
 
 // ChatSession là những gì một phiên chat cần biết trước khi chạy một lượt:
