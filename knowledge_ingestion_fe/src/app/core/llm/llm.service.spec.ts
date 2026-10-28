@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { environment } from '../../../environments/environment';
-import { toLlmOptions } from './llm.models';
+import { toLlmOptions, toProviderKind } from './llm.models';
 import { LlmService } from './llm.service';
 
 const api = (path: string): string => `${environment.apiBaseUrl}${path}`;
@@ -114,6 +114,40 @@ describe('LlmService', () => {
     req.flush({ ...ENVELOPE_OK, data: { slug: 'a/b' } });
     http.verify();
   });
+
+  // ---- nấc 3: CRUD định nghĩa provider ----
+
+  it('saveProvider: PUT /llm/providers/{slug}, trả về cả danh sách đã map', async () => {
+    const result = service
+      .saveProvider('minimax', { label: 'MiniMax', type: 'openai-compatible' })
+      .toPromise();
+    const req = http.expectOne({ method: 'PUT', url: api('/llm/providers/minimax') });
+    expect(req.request.body).toEqual({ label: 'MiniMax', type: 'openai-compatible' });
+    req.flush({
+      ...ENVELOPE_OK,
+      data: {
+        ...OPTIONS_DTO,
+        providers: [...OPTIONS_DTO.providers, { slug: 'minimax', base_url: 'https://x/v1' }],
+      },
+    });
+
+    const options = await result;
+    expect(options!.providers).toHaveLength(3);
+    expect(options!.providers[2].fromConfig).toBe(false);
+    expect(options!.providers[2].baseUrl).toBe('https://x/v1');
+    http.verify();
+  });
+
+  it('deleteProvider: DELETE không body, map danh sách còn lại', async () => {
+    const result = service.deleteProvider('minimax').toPromise();
+    const req = http.expectOne({ method: 'DELETE', url: api('/llm/providers/minimax') });
+    expect(req.request.body).toBeNull();
+    req.flush({ ...ENVELOPE_OK, data: OPTIONS_DTO });
+
+    const options = await result;
+    expect(options!.providers.map((item) => item.slug)).toEqual(['9router', 'groq']);
+    http.verify();
+  });
 });
 
 describe('toLlmOptions — mapper chịu được DTO cũ/thiếu field', () => {
@@ -146,5 +180,27 @@ describe('toLlmOptions — mapper chịu được DTO cũ/thiếu field', () => 
     });
     expect(options.providers[0].keySource).toBeUndefined();
     expect(options.providers[0].configModel).toBe('m');
+  });
+
+  it('from_config/disabled: chỉ true khi backend trả true', () => {
+    const options = toLlmOptions({
+      providers: [
+        { slug: 'a', from_config: true, disabled: true },
+        { slug: 'b' },
+        { slug: 'c', from_config: false, disabled: false },
+      ],
+    });
+    expect(options.providers[0].fromConfig).toBe(true);
+    expect(options.providers[0].disabled).toBe(true);
+    // user thường không nhận hai field này → false, form vẫn hiện hàng
+    expect(options.providers[1].fromConfig).toBe(false);
+    expect(options.providers[1].disabled).toBe(false);
+    expect(options.providers[2].fromConfig).toBe(false);
+  });
+
+  it('toProviderKind đảo lại chuẩn hoá của server cho ô select', () => {
+    expect(toProviderKind('ollama')).toBe('ollama');
+    expect(toProviderKind('openai')).toBe('openai-compatible');
+    expect(toProviderKind('')).toBe('openai-compatible');
   });
 });

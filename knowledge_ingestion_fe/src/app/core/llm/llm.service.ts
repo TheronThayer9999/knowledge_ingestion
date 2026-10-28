@@ -7,6 +7,7 @@ import {
   type LlmModelsDto,
   type LlmOptions,
   type LlmOptionsDto,
+  type LlmProviderForm,
   type LlmProviderOption,
   type LlmProviderOptionDto,
 } from './llm.models';
@@ -55,5 +56,26 @@ export class LlmService {
     return this.api
       .put<LlmProviderOptionDto>(`/llm/providers/${encodeURIComponent(slug)}/model`, { model })
       .pipe(map(toLlmProviderOption));
+  }
+
+  /**
+   * Thêm mới hoặc sửa ĐỊNH NGHĨA provider (Đợt 28 nấc 3) — loại, base_url,
+   * nhãn, tắt/bật, và API key nếu gửi kèm. Field bỏ trống backend giữ nguyên
+   * giá trị cũ. Backend trả lại cả danh sách vì thêm provider làm đổi danh sách.
+   */
+  saveProvider(slug: string, form: LlmProviderForm): Observable<LlmOptions> {
+    return this.api
+      .put<LlmOptionsDto>(`/llm/providers/${encodeURIComponent(slug)}`, form)
+      .pipe(map(toLlmOptions));
+  }
+
+  /**
+   * Xoá cài đặt của provider: provider khai trong config quay về đúng file,
+   * provider tạo từ UI biến mất hẳn. Backend chặn xoá provider mặc định.
+   */
+  deleteProvider(slug: string): Observable<LlmOptions> {
+    return this.api
+      .delete<LlmOptionsDto>(`/llm/providers/${encodeURIComponent(slug)}`)
+      .pipe(map(toLlmOptions));
   }
 }

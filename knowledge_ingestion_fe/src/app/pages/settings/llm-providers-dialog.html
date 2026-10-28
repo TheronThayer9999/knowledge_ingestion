@@ -10,6 +10,79 @@
     <p class="banner" role="alert">{{ error() }}</p>
   }
 
+  <div class="create-bar">
+    <button matButton="filled" type="button" (click)="toggleCreate()">
+      <mat-icon aria-hidden="true">{{ showCreate() ? 'close' : 'add' }}</mat-icon>
+      {{ lang.t(showCreate() ? 'COMMON_CANCEL' : 'SETTINGS_LLM_ADD') }}
+    </button>
+  </div>
+
+  @if (showCreate()) {
+    <div class="create-form">
+      <p class="hint">{{ lang.t('SETTINGS_LLM_ADD_HINT') }}</p>
+      <div class="def-row">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
+          <mat-label>{{ lang.t('SETTINGS_LLM_SLUG') }}</mat-label>
+          <input
+            matInput
+            autocomplete="off"
+            spellcheck="false"
+            [value]="create().slug"
+            (input)="onCreateInput('slug', $event)"
+          />
+          <mat-hint>{{ lang.t('SETTINGS_LLM_SLUG_HINT') }}</mat-hint>
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
+          <mat-label>{{ lang.t('SETTINGS_LLM_LABEL') }}</mat-label>
+          <input
+            matInput
+            autocomplete="off"
+            [value]="create().label"
+            (input)="onCreateInput('label', $event)"
+          />
+        </mat-form-field>
+      </div>
+      <div class="def-row">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>{{ lang.t('SETTINGS_LLM_TYPE') }}</mat-label>
+          <mat-select [value]="create().type" (selectionChange)="setCreateType($event.value)">
+            @for (kind of kinds; track kind) {
+              <mat-option [value]="kind">{{ lang.t(kindLabel(kind)) }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
+          <mat-label>{{ lang.t('SETTINGS_LLM_BASE_URL') }}</mat-label>
+          <input
+            matInput
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://api.example.com/v1"
+            [value]="create().base_url"
+            (input)="onCreateInput('base_url', $event)"
+          />
+        </mat-form-field>
+      </div>
+      <div class="def-row">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
+          <mat-label>{{ lang.t('SETTINGS_LLM_KEY') }}</mat-label>
+          <input
+            matInput
+            type="password"
+            autocomplete="new-password"
+            spellcheck="false"
+            [value]="create().api_key"
+            (input)="onCreateInput('api_key', $event)"
+          />
+          <mat-hint>{{ lang.t('SETTINGS_LLM_KEY_OPTIONAL_HINT') }}</mat-hint>
+        </mat-form-field>
+        <button matButton="filled" type="button" [disabled]="!canCreate" (click)="createProvider()">
+          {{ lang.t(creating() ? 'SETTINGS_LLM_CREATING' : 'SETTINGS_LLM_CREATE') }}
+        </button>
+      </div>
+    </div>
+  }
+
   @if (loading()) {
     <p class="state">{{ lang.t('SETTINGS_LLM_LOADING') }}</p>
   } @else if (failed()) {
@@ -22,6 +95,7 @@
         <li
           class="provider"
           [class.is-off]="!item.available"
+          [class.is-disabled]="item.disabled"
           [class.is-open]="expanded() === item.slug"
         >
           <button
@@ -36,6 +110,9 @@
             @if (item.isDefault) {
               <span class="badge">{{ lang.t('SETTINGS_LLM_DEFAULT') }}</span>
             }
+            @if (item.disabled) {
+              <span class="badge is-off">{{ lang.t('SETTINGS_LLM_DISABLED_BADGE') }}</span>
+            }
             <span class="head-state">
               {{ lang.t(item.available ? 'SETTINGS_LLM_READY' : 'SETTINGS_LLM_NOT_READY') }}
             </span>
@@ -48,15 +125,9 @@
             <div class="provider-body">
               <dl class="meta">
                 <div class="meta-item">
-                  <dt>{{ lang.t('SETTINGS_LLM_TYPE') }}</dt>
-                  <dd>{{ item.type || '—' }}</dd>
+                  <dt>{{ lang.t('SETTINGS_LLM_SOURCE') }}</dt>
+                  <dd>{{ lang.t(sourceKey(item)) }}</dd>
                 </div>
-                @if (item.baseUrl) {
-                  <div class="meta-item">
-                    <dt>{{ lang.t('SETTINGS_LLM_BASE_URL') }}</dt>
-                    <dd>{{ item.baseUrl }}</dd>
-                  </div>
-                }
                 <div class="meta-item">
                   <dt>{{ lang.t('SETTINGS_LLM_MODEL') }}</dt>
                   <dd>{{ item.defaultModel || '—' }}</dd>
@@ -66,6 +137,78 @@
                   <dd>{{ lang.t(keyStateKey(item)) }}</dd>
                 </div>
               </dl>
+
+              <div class="def-row">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
+                  <mat-label>{{ lang.t('SETTINGS_LLM_LABEL') }}</mat-label>
+                  <input
+                    matInput
+                    autocomplete="off"
+                    [value]="defValue(item, 'label')"
+                    [disabled]="savingDef() === item.slug"
+                    (input)="onDefInput(item.slug, 'label', $event)"
+                  />
+                </mat-form-field>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>{{ lang.t('SETTINGS_LLM_TYPE') }}</mat-label>
+                  <mat-select
+                    [value]="defValue(item, 'type')"
+                    [disabled]="savingDef() === item.slug"
+                    (selectionChange)="setDefType(item.slug, $event.value)"
+                  >
+                    @for (kind of kinds; track kind) {
+                      <mat-option [value]="kind">{{ lang.t(kindLabel(kind)) }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              </div>
+
+              <div class="def-row">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
+                  <mat-label>{{ lang.t('SETTINGS_LLM_BASE_URL') }}</mat-label>
+                  <input
+                    matInput
+                    autocomplete="off"
+                    spellcheck="false"
+                    [value]="defValue(item, 'base_url')"
+                    [disabled]="savingDef() === item.slug"
+                    (input)="onDefInput(item.slug, 'base_url', $event)"
+                  />
+                  @if (item.fromConfig) {
+                    <mat-hint>{{ lang.t('SETTINGS_LLM_DEF_FROM_CONFIG_HINT') }}</mat-hint>
+                  }
+                </mat-form-field>
+                <button
+                  matButton="filled"
+                  type="button"
+                  [disabled]="!hasDefChanges(item) || savingDef() === item.slug || busy()"
+                  (click)="saveDef(item)"
+                >
+                  {{ lang.t('SETTINGS_LLM_DEF_SAVE') }}
+                </button>
+              </div>
+
+              <div class="row-actions">
+                <button
+                  matButton="outlined"
+                  type="button"
+                  [disabled]="savingDef() === item.slug || busy()"
+                  (click)="toggleDisabled(item)"
+                >
+                  {{ lang.t(item.disabled ? 'SETTINGS_LLM_ENABLE' : 'SETTINGS_LLM_DISABLE') }}
+                </button>
+                <span class="hint">{{ lang.t(deleteHintKey(item)) }}</span>
+                <button
+                  matButton
+                  type="button"
+                  class="danger"
+                  [disabled]="savingDef() === item.slug || busy()"
+                  (click)="removeProvider(item)"
+                >
+                  <mat-icon aria-hidden="true">delete</mat-icon>
+                  {{ lang.t('SETTINGS_LLM_DELETE') }}
+                </button>
+              </div>
 
               <div class="key-row">
                 <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">

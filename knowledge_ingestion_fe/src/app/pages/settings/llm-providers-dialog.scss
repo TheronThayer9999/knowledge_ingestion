@@ -1,5 +1,5 @@
-// Popup quản trị kết nối AI (Đợt 28 nấc 2) — chỉ dùng token, mỗi provider
-// một hàng thu gọn/mở rộng.
+// Popup quản trị kết nối AI (Đợt 28 nấc 2 + 3) — chỉ dùng token, mỗi provider
+// một hàng thu gọn/mở rộng; nấc 3 thêm form tạo/sửa định nghĩa ngay trong popup.
 .dialog-title {
   display: flex;
   align-items: center;
@@ -44,6 +44,28 @@
   color: var(--color-danger);
 }
 
+// ---- Tạo provider mới (Đợt 28 nấc 3) ----
+.create-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.create-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: var(--border-width) dashed var(--color-outline-variant);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+}
+
+.hint {
+  margin: 0;
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+}
+
 // ---- Danh sách provider ----
 .provider-list {
   display: flex;
@@ -67,6 +89,11 @@
 
 .provider.is-off {
   background: var(--color-surface-container);
+}
+
+// Hàng admin tắt: chữ mờ đi để phân biệt với provider thiếu key (is-off).
+.provider.is-disabled .provider-head {
+  opacity: var(--state-disabled-opacity);
 }
 
 .provider-head {
@@ -129,6 +156,11 @@
   padding: 0 var(--space-2);
 }
 
+.badge.is-off {
+  color: var(--color-on-surface);
+  background: var(--color-surface-container-high);
+}
+
 .head-state {
   margin-left: auto;
   font: var(--text-style-xs);
@@ -176,8 +208,28 @@
   overflow-wrap: anywhere;
 }
 
+// hàng tắt/bật + xoá: sep khỏi phần định nghĩa bằng đường kẻ
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding-top: var(--space-2);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.row-actions .hint {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.danger {
+  color: var(--color-danger);
+}
+
 .key-row,
-.model-row {
+.model-row,
+.def-row {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);

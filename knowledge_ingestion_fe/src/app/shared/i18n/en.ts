@@ -332,9 +332,9 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   // ---- AI providers (Dot 28, admin only) ----
   SETTINGS_LLM: 'AI providers',
   SETTINGS_LLM_DESC:
-    'Providers are declared in configs/config.json. Manage keys and models in a separate window.',
+    'Create, edit or disable providers in this window. configs/config.json is only the default.',
   SETTINGS_LLM_NOTE:
-    'Keys entered here are encrypted on the server and stored in the database, overriding configs/config.json. Keys are never sent back to the browser.',
+    'Keys entered here are encrypted on the server and stored in the database, overriding the key in configs/config.json; every change takes effect immediately, no restart needed. Keys are never sent back to the browser.',
   SETTINGS_LLM_LOADING: 'Loading AI providers…',
   SETTINGS_LLM_FAILED: 'Could not load the AI provider list.',
   SETTINGS_LLM_EMPTY: 'No AI provider configured.',
@@ -347,7 +347,7 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   SETTINGS_LLM_BASE_URL: 'Base URL',
   SETTINGS_LLM_MANAGE: 'Manage connections',
   SETTINGS_LLM_DIALOG_DESC:
-    'Providers are declared in the config file. Keys entered here are encrypted and stored in the database, overriding the config key; click "Load models" to fetch the provider model list.',
+    'Add or edit AI connections here — no config file edit and no restart. Click "Load models" to fetch a model list from the provider, then pick the default model.',
   SETTINGS_LLM_KEY: 'API key',
   SETTINGS_LLM_KEY_SOURCE: 'Key source',
   SETTINGS_LLM_KEY_FROM_CONFIG: 'configs/config.json',
@@ -365,6 +365,34 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   SETTINGS_LLM_MODEL_LOADED: 'Model list updated',
   SETTINGS_LLM_MODEL_USE: 'Use this model',
   SETTINGS_LLM_MODEL_SAVED: 'Default model updated',
+  // ---- Provider definitions edited from the UI (Dot 28, step 3) ----
+  SETTINGS_LLM_ADD: 'Add provider',
+  SETTINGS_LLM_ADD_HINT:
+    'Providers created here live only in the database and show up in the chat model picker right away. To pause a connection, disable it instead of deleting it.',
+  SETTINGS_LLM_SLUG: 'Provider code (slug)',
+  SETTINGS_LLM_SLUG_HINT: 'Lowercase, no accents: a-z, 0-9, ".", "_", "-". Example: minimax',
+  SETTINGS_LLM_LABEL: 'Display name',
+  SETTINGS_LLM_CREATE: 'Create connection',
+  SETTINGS_LLM_CREATING: 'Creating…',
+  SETTINGS_LLM_KIND_OLLAMA: 'Ollama (local / cloud)',
+  SETTINGS_LLM_KIND_OPENAI: 'OpenAI-compatible (Groq, OpenRouter…)',
+  SETTINGS_LLM_KEY_OPTIONAL_HINT:
+    'Leave empty for local Ollama; other providers need a key before they can be used',
+  SETTINGS_LLM_SOURCE: 'Definition source',
+  SETTINGS_LLM_SOURCE_CONFIG: 'configs/config.json',
+  SETTINGS_LLM_SOURCE_DB: 'Created from the UI (database)',
+  SETTINGS_LLM_DEF_SAVE: 'Save definition',
+  SETTINGS_LLM_DEF_FROM_CONFIG_HINT:
+    'Editing on top of the config file value; removing the setting falls back to the file',
+  SETTINGS_LLM_DISABLE: 'Disable connection',
+  SETTINGS_LLM_ENABLE: 'Enable again',
+  SETTINGS_LLM_DISABLED_BADGE: 'Disabled',
+  SETTINGS_LLM_DELETE: 'Delete',
+  SETTINGS_LLM_DELETE_HINT_CONFIG: 'Deleting falls back to the config file definition',
+  SETTINGS_LLM_DELETE_HINT_DB: 'Deleting removes this connection for good',
+  SETTINGS_LLM_PROVIDER_SAVED: 'Connection updated',
+  SETTINGS_LLM_PROVIDER_CREATED: 'New connection created',
+  SETTINGS_LLM_PROVIDER_DELETED: 'Connection deleted',
   PROFILE_TITLE: 'Profile',
   PROFILE_SUBTITLE: 'Account information and security.',
   PROFILE_ACCOUNT_INFO: 'Account information',

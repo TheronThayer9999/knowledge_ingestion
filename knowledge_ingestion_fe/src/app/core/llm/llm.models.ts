@@ -1,7 +1,8 @@
 /**
  * Lựa chọn provider/model cho UI (Đợt 28): backend phản chiếu cấu hình
- * `llms.providers` ra API đọc. API key KHÔNG bao giờ xuống trình duyệt —
- * admin chỉ thấy cờ "đã có key", không thấy giá trị key.
+ * `llms.providers` + các provider admin tạo trong popup ra API đọc. API key
+ * KHÔNG bao giờ xuống trình duyệt — admin chỉ thấy cờ "đã có key", không thấy
+ * giá trị key.
  */
 
 export interface LlmProviderOption {
@@ -26,10 +27,39 @@ export interface LlmProviderOption {
   keySource?: LlmKeySource;
   /** chỉ admin — model mặc định khai trong configs/config.json */
   configModel?: string;
+  /**
+   * chỉ admin — provider có khai báo trong configs/config.json không.
+   * true: "xoá" chỉ gỡ phần ghi đè, provider quay về file.
+   * false: provider do UI tạo, xoá là mất hẳn.
+   */
+  fromConfig?: boolean;
+  /** chỉ admin — admin tắt provider (vẫn hiện trong popup để bật lại) */
+  disabled?: boolean;
 }
 
 /** Nguồn của api key đang có hiệu lực (backend trả, không phải giá trị key) */
 export type LlmKeySource = 'config' | 'database';
+
+/**
+ * Loại provider chọn trong form. Backend chỉ có 2 khuôn client nhưng admin đọc
+ * tài liệu Groq/OpenRouter/NVIDIA dưới tên "openai-compatible" — gửi nguyên văn
+ * tên đó, server chuẩn hoá về "openai" (NormalizeProviderType).
+ */
+export type LlmProviderKind = 'ollama' | 'openai-compatible';
+
+/** Đảo ngược chuẩn hoá của server để form hiện lại đúng tên admin đã chọn. */
+export function toProviderKind(type: string): LlmProviderKind {
+  return type === 'ollama' ? 'ollama' : 'openai-compatible';
+}
+
+/** Body PUT /llm/providers/{slug} — field bỏ trống nghĩa là "giữ như cũ". */
+export interface LlmProviderForm {
+  label?: string;
+  type?: LlmProviderKind;
+  base_url?: string;
+  api_key?: string;
+  disabled?: boolean;
+}
 
 export interface LlmOptions {
   defaultProvider: string;
@@ -52,6 +82,8 @@ export interface LlmProviderOptionDto {
   has_key?: boolean;
   key_source?: string;
   config_model?: string;
+  from_config?: boolean;
+  disabled?: boolean;
 }
 
 export interface LlmOptionsDto {
@@ -76,6 +108,8 @@ export function toLlmProviderOption(dto: LlmProviderOptionDto): LlmProviderOptio
     keySource:
       dto.key_source === 'config' || dto.key_source === 'database' ? dto.key_source : undefined,
     configModel: dto.config_model,
+    fromConfig: dto.from_config === true,
+    disabled: dto.disabled === true,
   };
 }
 
