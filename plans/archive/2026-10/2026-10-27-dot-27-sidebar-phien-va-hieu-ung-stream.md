@@ -1,6 +1,6 @@
 # Đợt 27 — Sidebar quản lý phiên chat + hiệu ứng stream đáp án
 
-Ngày: 2026-10-27 · Trạng thái: kế hoạch (chưa code) · Nối: Đợt 25 (phiên chat DB + sidebar), Đợt 26 (biểu đồ trong đáp án — đã code xong FE `49b6322`)
+Ngày: 2026-10-27 · Trạng thái: xong · Nối: Đợt 25 (phiên chat DB + sidebar), Đợt 26 (biểu đồ trong đáp án — đã code xong FE `49b6322`)
 
 ## 1. Yêu cầu đã nhận
 
@@ -87,3 +87,36 @@ Sửa: `pages/chat/chat.ts|html|scss`, `core/chat/chat.models.ts`, `shared/i18n/
 - Không SSE/streaming từ backend (API giữ nguyên, đã ghi ở mục 2).
 - Không lưu title tự sinh vào localStorage — DB là nguồn.
 - Không thêm kéo-thả/rename hàng loạt, không search trong sidebar.
+
+## Kết quả
+
+### Việc đã làm — FE thuần, không sửa BE
+
+**Logic thuần (test riêng, không cần DOM)**
+- `core/chat/chat.models.ts`: `clipSessionTitle` thêm 1 rune lookahead để chỉ cắt ở ranh giới từ thật/dấu câu (không xé đôi âm tiết, không để dấu phẩy treo).
+- `pages/chat/session-time.ts`: `timeAgo` (<1 phút → phút → **hôm qua theo ngày lịch** → giờ → ngày → `dd/MM/yyyy`) + `groupSessions` chia bucket today/yesterday/week/older trên bản sao đã sắp `lastMessageAt` giảm dần.
+- `shared/markdown/stream-reveal.ts`: `splitRevealChunks` giữ marker `[^n]` nguyên khối, dấu cách sau marker gắn vào từ kế tiếp (không sinh mảnh chỉ có khoảng trắng); `perTickFor` + `StreamReveal` như mục 10.
+
+**Component mới**
+- `chat-sessions` (`ts|html|scss`): danh sách nhóm, tiêu đề ellipsis, meta "N tin nhắn · thời gian", `aria-current`, menu `⋯` (Đổi tên / Xoá — `.menu-danger` đỏ chỉ trong menu), hover/focus-within reveal (vẫn tab được), rename autofocus + Enter/Esc, empty state + 3 câu hỏi mẫu, load-more/retry, chấm `status-dot` pulse khi phiên đang trả lời.
+- `chat-context-chips` (`ts|html|scss`): chip phạm vi (MatMenu, danh mục), chip suy luận sâu (`aria-pressed`), nút Phiên mới; **khoá = `locked() || busy()`** — chặn phát sự kiện ngay trong component (không chỉ ẩn UI), tooltip `CHAT_CHIP_LOCKED_HINT`.
+- `_color.scss` thêm `--color-scrim` (dẫn xuất `--mat-sys-scrim`), `theme.model.ts` thêm key `'scrim'` vào `THEME_COLOR_KEYS`.
+
+**Chat page**
+- `.card-bar` thật trong luồng flex: nút toggle + chips (chips `flex: 1 1 auto; min-width: 0`), hết cảnh icon nổi đè bong bóng.
+- Sidebar trái giữ `order: -1`; drawer <768px (`position: fixed`, `min(88vw, --utility-panel-width)`, `drawer-in`), `.scrim` là `<button>` thật, Esc đóng qua host listener cấp document (bỏ `(keydown)` trên aside vì lint `interactive-supports-focus`) — chỉ chạy khi đang mở + viewport hẹp, bỏ qua khi focus trong `.cdk-overlay-container`.
+- Composer: bỏ `[disabled]` textarea, hint "Chờ trả lời xong…" đặt **sau** `.composer-actions` (đặt trước làm `flex-wrap` đẩy nút Gửi xuống dòng), viền đổi nhẹ qua `.composer.is-busy`.
+- Hoạt cảnh stream: `startReveal` chạy interval 33ms, `displayText`/`isRevealingTurn` chặn cites + chart tới khi khớp chuỗi cuối; timer dọn ở complete/stop/đổi phiên/destroy; `prefers-reduced-motion` bỏ qua hoạt cảnh.
+- i18n: thêm key mới (sidebar show/hide/close, phiên mới, tin nhắn, nhóm thời gian, khoá chip, chờ trả lời, `CHAT_TIME_YESTERDAY`…), xoá key chết `CHAT_PANEL_TOGGLE`, `CHAT_SESSIONS_EMPTY`.
+
+### Kiểm chứng
+
+- `npm run lint` — pass (ESLint 9 flat + template a11y + Prettier).
+- `npm test -- --watch=false` — **28 file, 188 test pass** (thêm 12 test `chat-sessions`, 6 test `chat-context-chips`, spec `session-time`, `stream-reveal`, `chat.models`).
+- `npm run build` — pass; initial **572,51 kB** (dưới ngưỡng cảnh báo 600 kB), không cảnh báo `anyComponentStyle`.
+- Test bắt được và đã sửa: `timeAgo` trả "N giờ trước" cho 23:50 hôm qua (đảo thứ tự check ngày lịch trước nhánh 24h); `splitRevealChunks` sinh mảnh chỉ có dấu cách sau marker (gộp khoảng trắng vào từ kế); `token-usage.spec` bắt border-radius viết cứng (đổi sang longhand `border-top-right-radius`/`border-bottom-right-radius`); `theme.model.spec` bắt key `scrim` chưa khai báo.
+- Không dùng được `[matMenuDisabled]` (Material 21 không có input này trên `MatMenuTrigger`) → `[matMenuTriggerFor]="isLocked() ? null : scopeMenu"`.
+
+### Còn lại cho người dùng test tay
+
+Đúng checklist mục 12: F5 giữ title/count (đọc lại DB), cuộn dọc danh sách dài không cuộn ngang, drawer/scrim/Esc <768px, cảm giác hover reveal `⋯`, focus ring/tab order, trình đọc màn hình, tương phản AA trên cả hai theme, và độ "như đang gõ" của hiệu ứng stream.
