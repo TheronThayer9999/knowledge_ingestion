@@ -179,7 +179,7 @@ func TestToolArgTagsHaveNoCommaInDescription(t *testing.T) {
 }
 
 // TestDefaultToolsExposeAllNames khoá danh sách tool mà MỌI provider agent nhận
-// từ NewDefaultTools → BuildProviderAgents. Thêm tool mới quên đăng ký, hoặc
+// từ NewDefaultTools → NewProviderAgents. Thêm tool mới quên đăng ký, hoặc
 // lỡ tay trả slice rỗng, thì test này gãy thay vì để model "không biết" tool tồn
 // tại một cách âm thầm.
 func TestDefaultToolsExposeAllNames(t *testing.T) {

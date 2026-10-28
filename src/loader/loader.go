@@ -121,7 +121,15 @@ func loadService() []fx.Option {
 		fx.Provide(newQuestionClassifier),
 		fx.Provide(usecase.NewSearchService),
 		fx.Provide(newChatPrompts),
+		// Nguồn cấu hình provider (config ∪ bảng cài đặt) dựng MỘT lần, mọi nơi
+		// cần biết "provider nào, key nào, model nào" đều nhận cùng instance:
+		// registry agent lúc boot, /llm/options, popup Nhà cung cấp AI.
+		fx.Provide(usecase.NewProviderCatalog),
 		fx.Provide(newProviderAgents),
+		// Registry có hai vai — đọc cho UI/chat, ghi cho admin — nên service đọc
+		// không cầm được quyền gỡ agent của người đang chat.
+		fx.Provide(asProviderRegistry),
+		fx.Provide(asProviderRegistryAdmin),
 		fx.Provide(usecase.NewChatService),
 		// CRUD phiên cho API + cổng lưu hội thoại cho agent — CÙNG nghiệp vụ,
 		// hai vai hẹp (khuôn NewArticlePageRepository/NewArticlePageIssues).
@@ -129,8 +137,10 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewChatSessionStore),
 		// Bảng chọn provider/model cho UI (Đợt 28) — đọc config + registry
 		// agent đã dựng, không gọi LLM. Bản ghi (nấc 2) là phần admin lưu key /
-		// tải model / chọn model; cả hai dùng chung repo llm_provider_settings.
+		// tải model / chọn model; cả hai dùng chung catalog. fetcher là cổng HTTP
+		// riêng của "Tải model" (timeout 20s chặn provider treo).
 		fx.Provide(usecase.NewLLMOptionsService),
+		fx.Provide(usecase.NewLLMModelFetcher),
 		fx.Provide(usecase.NewLLMSettingsService),
 	}
 }

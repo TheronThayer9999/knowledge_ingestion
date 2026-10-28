@@ -6,7 +6,6 @@ import (
 
 	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/agent/port"
-	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/dtos"
 	"knowledge_ingestion/src/domain"
@@ -15,54 +14,38 @@ import (
 // llmOptionsService phản chiếu provider LLM ra UI (Đợt 28) — nguồn duy nhất cho
 // menu chọn model của chat và danh sách kết nối ở Settings. Provider đến từ
 // configs/config.json VÀ từ bảng llm_provider_settings (admin tạo/sửa trong
-// popup, nấc 3); DB thắng config khi cả hai có giá trị. Key KHÔNG BAO GIỜ rời
+// popup, nấc 3) — cả hai đường đều qua providerCatalog. Key KHÔNG BAO GIỜ rời
 // khỏi process: DTO chỉ có tên provider, model và trạng thái key (admin),
 // không có api_key.
 type llmOptionsService struct {
-	llms   config.LLMsConfig
-	agents *eino.ProviderAgents
-	repo   domain.ILLMProviderSettingRepository
+	catalog *ProviderCatalog
+	agents  IProviderRegistry
 }
 
-func NewLLMOptionsService(cfg config.IConfig, agents *eino.ProviderAgents,
-	repo domain.ILLMProviderSettingRepository) port.ILLMOptions {
-	return &llmOptionsService{llms: cfg.GetLLMs(), agents: agents, repo: repo}
+// NewLLMOptionsService là constructor fx gọi — catalog lo cấu hình, registry lo
+// provider nào thật sự đang chạy được.
+func NewLLMOptionsService(catalog *ProviderCatalog, agents IProviderRegistry) port.ILLMOptions {
+	return &llmOptionsService{catalog: catalog, agents: agents}
 }
 
 // Options dựng danh sách lựa chọn; role do API đọc từ token rồi truyền vào
 // (user thường không nhận base_url/has_key). Không gọi LLM.
 func (s *llmOptionsService) Options(ctx context.Context, role int) dtos.Result[*dtos.LLMOptionsResponse] {
-	return dtos.Ok(buildLLMOptions(s.llms, s.agents, s.settings(ctx), role))
+	return dtos.Ok(buildLLMOptions(s.catalog, s.agents, s.catalog.Settings(ctx), role))
 }
 
-// settings đọc bảng cài đặt provider. Lỗi đọc thì WARN rồi coi như rỗng — menu
-// model và chat vẫn chạy theo config, không vì một bảng phụ mà đứt cả trang.
-func (s *llmOptionsService) settings(ctx context.Context) map[string]*domain.LLMProviderSetting {
-	rows, err := s.repo.List(ctx)
-	if err != nil {
-		logs.Warnw("llm: không đọc được cài đặt provider, dùng config", "error", err)
-		return nil
-	}
-	out := make(map[string]*domain.LLMProviderSetting, len(rows))
-	for _, row := range rows {
-		out[slugKey(row.Slug)] = row
-	}
-	return out
-}
-
-// buildLLMOptions tách khỏi Options để test được thuần (không cần fake
-// config.IConfig/repo): liệt kê config ∪ DB vì từ Đợt 28 nấc 3 provider có thể
-// chỉ tồn tại trong bảng cài đặt (admin tạo từ UI, không sửa file config).
-// Sắp theo slug vì config là map (thứ tự không xác định), chốt default model
-// đúng provider mặc định.
+// buildLLMOptions tách khỏi Options để test được thuần: liệt kê config ∪ DB vì
+// từ Đợt 28 nấc 3 provider có thể chỉ tồn tại trong bảng cài đặt (admin tạo từ
+// UI, không sửa file config). Sắp theo slug vì config là map (thứ tự không xác
+// định), chốt default model đúng provider mặc định.
 //
 // Provider bị tắt chỉ hiện với admin — menu chat của user thường không được thấy
 // cái mà chat sẽ từ chối.
-func buildLLMOptions(llms config.LLMsConfig, agents *eino.ProviderAgents,
+func buildLLMOptions(catalog *ProviderCatalog, agents IProviderRegistry,
 	settings map[string]*domain.LLMProviderSetting, role int) *dtos.LLMOptionsResponse {
-	defaultSlug := effectiveProviderSlug(llms.DefaultProvider, agents)
+	defaultSlug := effectiveProviderSlug(catalog.ConfiguredDefault(), agents)
 	admin := role >= domain.RoleAdmin
-	slugs := providerSlugs(llms, settings)
+	slugs := catalog.Slugs(settings)
 	res := &dtos.LLMOptionsResponse{
 		DefaultProvider: defaultSlug,
 		Providers:       make([]*dtos.LLMProviderOption, 0, len(slugs)),
@@ -72,7 +55,7 @@ func buildLLMOptions(llms config.LLMsConfig, agents *eino.ProviderAgents,
 		if setting != nil && setting.Disabled && !admin {
 			continue
 		}
-		base, fromConfig := providerBase(llms, slug)
+		base, fromConfig := catalog.Base(slug)
 		opt := buildProviderOption(slug, base, setting, agents, defaultSlug, admin)
 		opt.FromConfig = fromConfig
 		if opt.IsDefault {
@@ -85,12 +68,12 @@ func buildLLMOptions(llms config.LLMsConfig, agents *eino.ProviderAgents,
 
 // effectiveProviderSlug chuẩn hoá default_provider giống Resolve: rỗng thì rơi
 // về slug ollama mặc định để UI và chat nói cùng một provider.
-func effectiveProviderSlug(configured string, agents *eino.ProviderAgents) string {
+func effectiveProviderSlug(configured string, agents IProviderRegistry) string {
 	if slug := slugKey(configured); slug != "" {
 		return slug
 	}
-	if agents != nil && agents.DefaultProvider != "" {
-		return agents.DefaultProvider
+	if agents != nil && agents.DefaultProvider() != "" {
+		return agents.DefaultProvider()
 	}
 	return eino.ProviderOllama
 }
@@ -100,7 +83,7 @@ func effectiveProviderSlug(configured string, agents *eino.ProviderAgents) strin
 // trong DB đều thắng config. base_url/has_key/key_source/config_model/
 // from_config/disabled chỉ dành cho admin.
 func buildProviderOption(slug string, pcfg config.LLMProviderConfig, setting *domain.LLMProviderSetting,
-	agents *eino.ProviderAgents, defaultSlug string, admin bool) *dtos.LLMProviderOption {
+	agents IProviderRegistry, defaultSlug string, admin bool) *dtos.LLMProviderOption {
 	effective := withSettingDef(withSettingModel(pcfg, setting), setting)
 	opt := &dtos.LLMProviderOption{
 		Slug:         slug,
@@ -108,8 +91,8 @@ func buildProviderOption(slug string, pcfg config.LLMProviderConfig, setting *do
 		Type:         effective.Type,
 		DefaultModel: strings.TrimSpace(effective.Model),
 		Models:       providerModels(effective),
-		Available:    providerAvailable(agents, slug),
-		Thinking:     providerThinking(agents, slug),
+		Available:    agents.Has(slug),
+		Thinking:     agents.ThinkingDistinct(slug),
 		IsDefault:    slug == defaultSlug,
 	}
 	if admin {
@@ -151,19 +134,4 @@ func providerModels(pcfg config.LLMProviderConfig) []string {
 		models = append([]string{model}, models...)
 	}
 	return models
-}
-
-// providerAvailable: loader đã dựng được agent nghĩa là key/cấu hình hợp lệ.
-// Provider thiếu key vẫn nằm trong config nên vẫn hiện cho admin, nhưng FE
-// không đưa vào menu chat.
-func providerAvailable(agents *eino.ProviderAgents, slug string) bool {
-	_, ok := agents.Agent(slug)
-	return ok
-}
-
-// providerThinking chỉ true khi có client suy nghĩ RIÊNG (xem
-// ProviderAgents.ThinkingDistinct) — nhóm OpenAI-compatible dùng lại agent
-// thường nên không được báo "hỗ trợ" sai.
-func providerThinking(agents *eino.ProviderAgents, slug string) bool {
-	return agents.ThinkingDistinct(slug)
 }

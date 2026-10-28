@@ -8,7 +8,6 @@ import (
 	"knowledge_ingestion/src/agent/retrieval"
 	"knowledge_ingestion/src/agent/synthesis"
 	"knowledge_ingestion/src/agent/usecase"
-	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/domain"
 )
@@ -22,19 +21,20 @@ import (
 // prompt file không phải sửa.
 type ProviderAgents = eino.ProviderAgents
 
-// newProviderAgents dựng agent cho từng provider trong llms.providers (map
-// slug → cấu hình) qua eino.BuildProviderAgents — thêm backend mới (Groq,
-// DeepSeek, ...) chỉ cần config, không sửa usecase/prompt. Provider nào thiếu
-// cấu hình (vd thiếu key) thì boot vẫn lên, request nào chọn nó mới 400.
+// newProviderAgents dựng agent cho từng provider HIỆU LỰC — config ∪ bảng cài
+// đặt, luật gộp nằm trong usecase.ProviderCatalog — qua eino.NewProviderAgents:
+// thêm backend mới (Groq, DeepSeek, ...) chỉ cần khai báo config, còn admin bấm
+// "Thêm provider" trong popup là có luôn không sửa file. Provider thiếu cấu hình
+// (vd thiếu key) thì boot vẫn lên, request nào chọn nó mới 400; provider admin
+// tắt không được dựng agent.
 func newProviderAgents(
-	cfg config.IConfig, prompts synthesis.Prompts,
+	cfg config.IConfig, catalog *usecase.ProviderCatalog, prompts synthesis.Prompts,
 	hybrid *retrieval.HybridSearcher,
 	categoryRepo domain.ICategoryRepositoryImpl,
 	vectors domain.IVectorStore,
 	articleRepo domain.IArticleRepository,
 	pageIssues domain.ArticlePageIssues,
-	pageText domain.ArticlePageText,
-	settings domain.ILLMProviderSettingRepository) (*ProviderAgents, error) {
+	pageText domain.ArticlePageText) (*ProviderAgents, error) {
 
 	tools, err := eino.NewDefaultTools(eino.ToolDeps{
 		Hybrid:       hybrid,
@@ -48,38 +48,24 @@ func newProviderAgents(
 	if err != nil {
 		return nil, err
 	}
-	llms := cfg.GetLLMs()
-	// Dựng provider từ config ∪ bảng cài đặt (usecase.ProviderConfigs) — thêm
-	// backend mới (Groq, DeepSeek, ...) chỉ cần khai báo config, còn từ Đợt 28
-	// nấc 3 admin bấm "Thêm provider" trong popup là có luôn không sửa file.
-	// Provider thiếu cấu hình (vd thiếu key) thì boot vẫn lên, request nào chọn
-	// nó mới 400; provider admin tắt không được dựng agent.
-	overrides := providerSettingOverrides(settings)
-	resolved := usecase.ProviderConfigs(llms, overrides, cfg.GetJWT().Secret)
+	resolved := catalog.Resolved(context.Background())
 	providers := make([]eino.LLMProvider, 0, len(resolved))
 	for _, item := range resolved {
 		providers = append(providers, eino.NewConfigProvider(item.Slug, item.Config))
 	}
-	return eino.BuildProviderAgents(
+	return eino.NewProviderAgents(
 		eino.InstructionSet{Base: prompts.System, Sheets: prompts.Sheets},
-		llms.DefaultProvider, tools, providers...)
+		catalog.ConfiguredDefault(), tools, providers...)
 }
 
-// providerSettingOverrides đọc cài đặt provider một lần lúc boot, khoá theo
-// slug đã chuẩn hoá. Lỗi đọc thì WARN rồi chạy đúng bằng config — key DB là
-// lớp phủ, không phải điều kiện sống của app.
-func providerSettingOverrides(repo domain.ILLMProviderSettingRepository) map[string]*domain.LLMProviderSetting {
-	rows, err := repo.List(context.Background())
-	if err != nil {
-		logs.Warnw("llm: không đọc được cài đặt provider lúc boot, dùng config", "error", err)
-		return nil
-	}
-	out := make(map[string]*domain.LLMProviderSetting, len(rows))
-	for _, row := range rows {
-		out[eino.NormalizeSlug(row.Slug)] = row
-	}
-	return out
-}
+// asProviderRegistry expose registry cho service CHỈ ĐỌC (bảng chọn model của
+// UI). Cùng một instance với asProviderRegistryAdmin — fx dựng registry đúng một
+// lần, hai key chỉ là hai vai (xem usecase/provider_registry.go).
+func asProviderRegistry(agents *ProviderAgents) usecase.IProviderRegistry { return agents }
+
+// asProviderRegistryAdmin expose phần GHI cho popup Nhà cung cấp AI: rebuild /
+// tháo agent / đổi model mặc định khi admin lưu cấu hình lúc app đang chạy.
+func asProviderRegistryAdmin(agents *ProviderAgents) usecase.IProviderRegistryAdmin { return agents }
 
 // newHybridSearcher dựng pipeline hybrid dùng chung cho cả 2 đường /search
 // (gọi trực tiếp) và /chat (bọc thành tool Eino) — cùng 1 pipeline, limit
@@ -91,8 +77,9 @@ func newHybridSearcher(embedder domain.Embedder, vectors domain.IVectorStore, ar
 // newQuestionClassifier dựng bộ dán nhãn dùng chung cho /search (chọn route)
 // và /chat (nhãn response sau run) — dùng client của provider mặc định (việc
 // dán nhãn rẻ, không cần theo provider của request), 1 prompt file, 1 điểm sửa.
-func newQuestionClassifier(agents *ProviderAgents, classify question.Prompts) *question.LLMClassifier {
-	model, ok := agents.Models[agents.DefaultProvider]
+// Trả interface hẹp của usecase: service không biết tới kiểu cụ thể của question.
+func newQuestionClassifier(agents *ProviderAgents, classify question.Prompts) usecase.IClassifier {
+	model, ok := agents.RawModel(agents.DefaultProvider())
 	if !ok {
 		return question.NewLLMClassifier(nil, classify)
 	}

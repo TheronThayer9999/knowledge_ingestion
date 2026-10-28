@@ -19,8 +19,11 @@ import (
 )
 
 type chatService struct {
-	providers   *eino.ProviderAgents
-	classifier  *question.LLMClassifier
+	// providers là registry agent (phần ĐỌC) — service không biết nó là map dựng
+	// lúc boot hay fake dựng trong test.
+	providers  IProviderRegistry
+	classifier IClassifier
+	// currentUser là cổng lấy user_id của người gọi từ ctx.
 	currentUser port.IUserResolver
 	// sessions là cổng lưu hội thoại (S1) — nil là TẮT tính lưu, để test/fake
 	// dựng chatService không phải kéo theo DB.
@@ -32,7 +35,8 @@ type chatService struct {
 // tổng hợp đều do agent trong loop, Go chỉ còn validate, chọn provider theo
 // request, phạm vi tin cậy, dán nhãn question_type và dựng cites. Không
 // Route/switch trong Go.
-func NewChatService(providers *eino.ProviderAgents, classifier *question.LLMClassifier, currentUser port.IUserResolver, sessions port.IChatSessions) port.IChatter {
+func NewChatService(providers IProviderRegistry, classifier IClassifier,
+	currentUser port.IUserResolver, sessions port.IChatSessions) port.IChatter {
 	return &chatService{providers: providers, classifier: classifier, currentUser: currentUser, sessions: sessions}
 }
 

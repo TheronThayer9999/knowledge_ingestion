@@ -199,13 +199,6 @@ func providerBase(llms config.LLMsConfig, slug string) (config.LLMProviderConfig
 	return base, ok
 }
 
-// hasConfigProvider là dạng bool trần cho UI (cột from_config) — đọc được hơn
-// khi gọi ở những chỗ chỉ cần biết "provider này có ở file hay không".
-func hasConfigProvider(llms config.LLMsConfig, slug string) bool {
-	_, ok := providerBase(llms, slug)
-	return ok
-}
-
 // providerSlug chuẩn hoá + chặn slug không dùng được làm khoá. Dấu "/" bị loại
 // có chủ đích: slug đi vào URL path của /llm/providers/<slug>/... nên mọi ký tự
 // phân cách đều làm hỏng route.

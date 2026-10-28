@@ -12,11 +12,11 @@ import (
 // litellm sẽ cắt sai.
 const nineRouterModel = "cl/nvidia/nemotron-3.5-super-vl:free"
 
-// TestBuildProviderAgentsKeepsNineRouterModel khoá đường chạy local: 9router là
+// TestNewProviderAgentsKeepsNineRouterModel khoá đường chạy local: 9router là
 // provider mặc định của config.local.json, cả registry lẫn Resolve phải trả
 // đúng model nguyên vẹn. Dựng client OpenAI-compatible chỉ validate key/base_url
 // nên test không cần 9router đang bật.
-func TestBuildProviderAgentsKeepsNineRouterModel(t *testing.T) {
+func TestNewProviderAgentsKeepsNineRouterModel(t *testing.T) {
 	vectors := &bareVectors{}
 	tools, err := NewDefaultTools(ToolDeps{
 		Hybrid:     retrieval.NewHybridSearcher(nil, vectors, &fakeIssueArticles{}),
@@ -30,7 +30,7 @@ func TestBuildProviderAgentsKeepsNineRouterModel(t *testing.T) {
 		t.Fatalf("NewDefaultTools: %v", err)
 	}
 
-	agents, err := BuildProviderAgents(
+	agents, err := NewProviderAgents(
 		InstructionSet{Base: "luật chung", Sheets: "luật bảng tính"},
 		"9router", tools,
 		NewConfigProvider("9router", config.LLMProviderConfig{
@@ -41,15 +41,15 @@ func TestBuildProviderAgentsKeepsNineRouterModel(t *testing.T) {
 		}),
 	)
 	if err != nil {
-		t.Fatalf("BuildProviderAgents: %v", err)
+		t.Fatalf("NewProviderAgents: %v", err)
 	}
-	if agents.DefaultProvider != "9router" {
-		t.Fatalf("default provider = %q", agents.DefaultProvider)
+	if agents.DefaultProvider() != "9router" {
+		t.Fatalf("default provider = %q", agents.DefaultProvider())
 	}
-	if got := agents.DefaultModel["9router"]; got != nineRouterModel {
+	if got := agents.DefaultModelFor("9router"); got != nineRouterModel {
 		t.Fatalf("default model = %q, muốn %q", got, nineRouterModel)
 	}
-	if _, ok := agents.Models["9router"]; !ok {
+	if _, ok := agents.RawModel("9router"); !ok {
 		t.Fatal("thiếu client thô cho classifier của provider mặc định")
 	}
 
@@ -88,10 +88,10 @@ func TestBuildProviderAgentsKeepsNineRouterModel(t *testing.T) {
 	}
 }
 
-// TestBuildProviderAgentsSkipsProviderWithoutKey: provider thiếu key bị bỏ qua
+// TestNewProviderAgentsSkipsProviderWithoutKey: provider thiếu key bị bỏ qua
 // lúc boot (chỉ warn), request chọn nó mới 400 kèm danh sách provider đang có —
 // đúng hành vi cũ, giữ lại để đổi wiring không âm thầm làm sập app.
-func TestBuildProviderAgentsSkipsProviderWithoutKey(t *testing.T) {
+func TestNewProviderAgentsSkipsProviderWithoutKey(t *testing.T) {
 	vectors := &bareVectors{}
 	tools, err := NewDefaultTools(ToolDeps{
 		Hybrid:     retrieval.NewHybridSearcher(nil, vectors, &fakeIssueArticles{}),
@@ -104,7 +104,7 @@ func TestBuildProviderAgentsSkipsProviderWithoutKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDefaultTools: %v", err)
 	}
-	agents, err := BuildProviderAgents(
+	agents, err := NewProviderAgents(
 		InstructionSet{Base: "luật chung"},
 		"9router", tools,
 		NewConfigProvider("9router", config.LLMProviderConfig{
@@ -117,9 +117,9 @@ func TestBuildProviderAgentsSkipsProviderWithoutKey(t *testing.T) {
 		}),
 	)
 	if err != nil {
-		t.Fatalf("BuildProviderAgents: %v", err)
+		t.Fatalf("NewProviderAgents: %v", err)
 	}
-	if _, ok := agents.Agents["openrouter"]; ok {
+	if agents.Has("openrouter") {
 		t.Fatal("provider thiếu key không được dựng agent")
 	}
 	if _, _, err := agents.Resolve("openrouter", "", false); err == nil {

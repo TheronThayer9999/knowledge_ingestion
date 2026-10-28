@@ -43,7 +43,7 @@ const (
 // thinking bật công tắc `think` của Ollama (model suy nghĩ trước khi đáp). Flag
 // này lib chỉ nhận LÚC DỰNG client — không có call option per-request — nên
 // request bật thinking phải dùng một client riêng dựng sẵn lúc startup (xem
-// ProviderAgents.ThinkingAgents). false thì payload y hệt trước (không gửi
+// ProviderAgents.thinkingAgents). false thì payload y hệt trước (không gửi
 // field, server giữ hành vi mặc định của model).
 func NewChatModel(cfg config.LLMProviderConfig, thinking bool) (einomodel.ToolCallingChatModel, error) {
 	if strings.TrimSpace(cfg.BaseURL) == "" {
@@ -83,31 +83,44 @@ func NewChatModel(cfg config.LLMProviderConfig, thinking bool) (einomodel.ToolCa
 // ProviderAgents là registry agent chat theo backend LLM — request chọn qua
 // field `provider` (mặc định theo cấu hình). Mỗi provider 1 ChatAgent riêng
 // (cùng bộ tool, client khác nhau) dựng 1 lần lúc startup qua
-// BuildProviderAgents; thêm backend mới không đụng tới struct này.
+// NewProviderAgents; thêm backend mới không đụng tới struct này.
+//
+// Toàn bộ trạng thái để NGOÀI: map chỉ đổi qua Rebuild/Remove/SetDefaultModel
+// (có khoá), nên không ai ghi thẳng được nữa — đó cũng là lý do không còn
+// composite literal ngoài package.
 type ProviderAgents struct {
-	Agents map[string]*ChatAgent
-	// ThinkingAgents là bản agent cùng provider nhưng client đã bật công tắc
+	agents map[string]*ChatAgent
+	// thinkingAgents là bản agent cùng provider nhưng client đã bật công tắc
 	// suy nghĩ của model — request có `thinking: true` đi đường này. Provider
-	// không có công tắc riêng thì trỏ đúng vào agent ở Agents (cờ thành "không
+	// không có công tắc riêng thì trỏ đúng vào agent ở agents (cờ thành "không
 	// có tác dụng", không phải lỗi).
-	ThinkingAgents map[string]*ChatAgent
-	// Models là client thô theo provider — classifier vòng 1 dùng chung client
-	// mặc định, khỏi tốn thêm lượt dựng.
-	Models map[string]einomodel.ToolCallingChatModel
-	// DefaultProvider là provider khi request không ép (lấy từ llm.provider).
-	DefaultProvider string
-	// DefaultModel là model mặc định theo provider khi request không ép model.
-	DefaultModel map[string]string
+	thinkingAgents map[string]*ChatAgent
+	// models là client thô theo provider — classifier vòng 1 dùng chung client
+	// mặc định, khỏi tốn thêm lượt dựng (đọc qua RawModel).
+	models map[string]einomodel.ToolCallingChatModel
+	// defaultProvider là provider khi request không ép (lấy từ llm.provider);
+	// mặc định cũ Ollama khi thiếu. Ghi 1 lần trong constructor nên đọc không cần khoá.
+	defaultProvider string
+	// defaultModel là model mặc định theo provider khi request không ép model.
+	defaultModel map[string]string
 
 	// mu bảo vệ 4 map ở trên khi admin lưu key / đổi model mặc định lúc app
-	// đang chạy (Đợt 28 nấc 2). Mọi đường đọc phải đi qua method có RLock —
-	// đọc thẳng map từ ngoài package là data race với lần rebuild.
+	// đang chạy (Đợt 28 nấc 2). Mọi đường đọc phải đi qua method có RLock.
 	mu sync.RWMutex
 	// system/tools giữ lại để rebuild MỘT provider khi có key mới mà không
-	// phải dựng lại cả registry. Ghi đúng 1 lần trong BuildProviderAgents
+	// phải dựng lại cả registry. Ghi đúng 1 lần trong NewProviderAgents
 	// trước khi registry được chia sẻ nên chỉ đọc, không cần khoá.
 	system InstructionSet
 	tools  []einotool.BaseTool
+}
+
+// DefaultProvider trả slug dùng khi request không ép provider — để UI và service
+// báo "đang là mặc định" mà không phải chạm map.
+func (p *ProviderAgents) DefaultProvider() string {
+	if p == nil {
+		return ""
+	}
+	return p.defaultProvider
 }
 
 // EffectiveProvider chuẩn hoá slug provider cho 1 request: lowercase/trim,
@@ -116,7 +129,7 @@ type ProviderAgents struct {
 func (p *ProviderAgents) EffectiveProvider(provider string) string {
 	name := strings.ToLower(strings.TrimSpace(provider))
 	if name == "" && p != nil {
-		name = p.DefaultProvider
+		name = p.defaultProvider
 	}
 	return name
 }
@@ -134,17 +147,17 @@ func (p *ProviderAgents) Resolve(provider, model string, thinking bool) (*ChatAg
 	// provider này (lưu key), đọc nửa chừng sẽ thấy map vừa đổi giữa 2 lần tra.
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	agent, ok := p.Agents[name]
+	agent, ok := p.agents[name]
 	if !ok {
-		return nil, "", fmt.Errorf("eino agent: provider %q chưa cấu hình (mới có: %s)", name, availableProviders(p.Agents))
+		return nil, "", fmt.Errorf("eino agent: provider %q chưa cấu hình (mới có: %s)", name, availableProviders(p.agents))
 	}
 	if thinking {
-		if deep, has := p.ThinkingAgents[name]; has {
+		if deep, has := p.thinkingAgents[name]; has {
 			agent = deep
 		}
 	}
 	if strings.TrimSpace(model) == "" {
-		model = p.DefaultModel[name]
+		model = p.defaultModel[name]
 	}
 	if strings.TrimSpace(model) == "" {
 		return nil, "", fmt.Errorf("eino agent: provider %q chưa có model mặc định, request phải ép model", name)
@@ -166,11 +179,11 @@ func (p *ProviderAgents) Agent(slug string) (*ChatAgent, bool) {
 	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	agent, ok := p.Agents[NormalizeSlug(slug)]
+	agent, ok := p.agents[NormalizeSlug(slug)]
 	return agent, ok
 }
 
-// ThinkingDistinct: provider có client suy nghĩ RIÊNG hay không. ThinkingAgents
+// ThinkingDistinct: provider có client suy nghĩ RIÊNG hay không. thinkingAgents
 // của provider không có công tắc được gán đúng agent thường, nên so con trỏ
 // thay vì chỉ kiểm tra sự tồn tại.
 func (p *ProviderAgents) ThinkingDistinct(slug string) bool {
@@ -180,8 +193,8 @@ func (p *ProviderAgents) ThinkingDistinct(slug string) bool {
 	name := NormalizeSlug(slug)
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	regular, ok := p.Agents[name]
-	deep, has := p.ThinkingAgents[name]
+	regular, ok := p.agents[name]
+	deep, has := p.thinkingAgents[name]
 	return ok && has && deep != nil && deep != regular
 }
 
@@ -192,8 +205,19 @@ func (p *ProviderAgents) RawModel(slug string) (einomodel.ToolCallingChatModel, 
 	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	model, ok := p.Models[NormalizeSlug(slug)]
+	model, ok := p.models[NormalizeSlug(slug)]
 	return model, ok
+}
+
+// DefaultModelFor trả model mặc định đang có hiệu lực của provider — test và
+// UI đối chiếu với model sẽ chạy khi request bỏ trống model.
+func (p *ProviderAgents) DefaultModelFor(slug string) string {
+	if p == nil {
+		return ""
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.defaultModel[NormalizeSlug(slug)]
 }
 
 // SetDefaultModel đổi model mặc định của provider khi admin chọn trong popup —
@@ -204,7 +228,7 @@ func (p *ProviderAgents) SetDefaultModel(slug, model string) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.DefaultModel[NormalizeSlug(slug)] = strings.TrimSpace(model)
+	p.defaultModel[NormalizeSlug(slug)] = strings.TrimSpace(model)
 }
 
 // loggingTransport ghi 1 dòng log cho MỖI request HTTPS thật ra khỏi process

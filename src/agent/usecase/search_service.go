@@ -16,14 +16,18 @@ import (
 )
 
 type searchService struct {
-	hybrid      *retrieval.HybridSearcher
-	classifier  *question.LLMClassifier
+	hybrid     *retrieval.HybridSearcher
+	classifier IClassifier
+	// currentUser là cổng lấy user_id của người gọi — service không import
+	// middleware auth.
 	currentUser port.IUserResolver
 }
 
+// NewSearchService là constructor fx gọi; classifier nhận interface để test dựng
+// được fake không cần LLM.
 func NewSearchService(
 	hybrid *retrieval.HybridSearcher,
-	classifier *question.LLMClassifier,
+	classifier IClassifier,
 	currentUser port.IUserResolver,
 ) port.ISearcher {
 	return &searchService{

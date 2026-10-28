@@ -77,53 +77,94 @@ func (p configProvider) NewThinkingModel() (einomodel.ToolCallingChatModel, erro
 
 func (p configProvider) DefaultModel() string { return p.cfg.Model }
 
-// BuildProviderAgents dựng agent cho từng provider đã đăng ký — provider nào
+// NewProviderAgents dựng agent cho từng provider đã đăng ký — provider nào
 // NewModel lỗi (thiếu key/cấu hình) thì warn + bỏ qua, boot vẫn lên; request
 // nào chọn nó mới 400. Tools dùng chung instance cho mọi agent (stateless theo
 // request qua Scope trong ctx). Không còn agent nào thì fail-fast vì app mù LLM.
-func BuildProviderAgents(system InstructionSet, defaultProvider string, tools []einotool.BaseTool, providers ...LLMProvider) (*ProviderAgents, error) {
-	out := &ProviderAgents{
-		Agents:          make(map[string]*ChatAgent),
-		ThinkingAgents:  make(map[string]*ChatAgent),
-		Models:          make(map[string]einomodel.ToolCallingChatModel),
-		DefaultProvider: strings.ToLower(strings.TrimSpace(defaultProvider)),
-		DefaultModel:    make(map[string]string),
-		system:          system,
-		tools:           tools,
-	}
-	if out.DefaultProvider == "" {
-		out.DefaultProvider = ProviderOllama
-	}
+func NewProviderAgents(system InstructionSet, defaultProvider string, tools []einotool.BaseTool, providers ...LLMProvider) (*ProviderAgents, error) {
+	out := newProviderRegistry(system, defaultProvider, tools)
 	for _, p := range providers {
 		if p == nil {
 			continue
 		}
-		name := strings.ToLower(strings.TrimSpace(p.Name()))
+		name := NormalizeSlug(p.Name())
 		if name == "" {
 			continue
 		}
-		model, err := p.NewModel()
+		entry, err := newProviderEntry(name, p, system, tools)
 		if err != nil {
 			logs.Warnw("agent: bỏ qua provider (thiếu cấu hình)", "provider", name, "error", err)
 			continue
 		}
-		agent, err := NewChatAgent(model, system, tools...)
-		if err != nil {
-			return nil, err
-		}
-		out.Agents[name] = agent
-		out.Models[name] = model
-		out.DefaultModel[name] = p.DefaultModel()
-		out.ThinkingAgents[name] = buildThinkingAgent(name, p, system, tools, agent)
+		out.put(name, entry)
 	}
-	if len(out.Agents) == 0 {
+	if len(out.agents) == 0 {
 		return nil, fmt.Errorf("eino agent: không dựng được provider nào")
 	}
-	if _, ok := out.Agents[out.DefaultProvider]; !ok {
+	if !out.Has(out.defaultProvider) {
 		logs.Warnw("agent: provider mặc định chưa cấu hình, request không ép provider sẽ 400",
-			"default", out.DefaultProvider, "available", availableProviders(out.Agents))
+			"default", out.defaultProvider, "available", out.AvailableProviders())
 	}
 	return out, nil
+}
+
+// newProviderRegistry dựng shell registry với 4 map rỗng — constructor duy nhất
+// được phép tạo ProviderAgents (bên ngoài không còn composite literal).
+func newProviderRegistry(system InstructionSet, defaultProvider string, tools []einotool.BaseTool) *ProviderAgents {
+	name := NormalizeSlug(defaultProvider)
+	if name == "" {
+		name = ProviderOllama
+	}
+	return &ProviderAgents{
+		agents:          make(map[string]*ChatAgent),
+		thinkingAgents:  make(map[string]*ChatAgent),
+		models:          make(map[string]einomodel.ToolCallingChatModel),
+		defaultModel:    make(map[string]string),
+		defaultProvider: name,
+		system:          system,
+		tools:           tools,
+	}
+}
+
+// providerEntry là một bộ đã dựng xong của MỘT provider: agent thường, bản suy
+// nghĩ (có thể trùng agent thường) kèm client thô và model mặc định. Cả 2 đường
+// dựng — boot (NewProviderAgents) và rebuild sau khi admin lưu key (Rebuild) —
+// đi qua nó nên không bao giờ lệch nhau.
+type providerEntry struct {
+	agent        *ChatAgent
+	thinking     *ChatAgent
+	model        einomodel.ToolCallingChatModel
+	defaultModel string
+}
+
+// newProviderEntry dựng client + agent cho 1 provider. Trả lỗi khi thiếu
+// key/cấu hình để caller bỏ qua (boot) hoặc báo 400 (lưu từ popup).
+func newProviderEntry(name string, p LLMProvider, system InstructionSet, tools []einotool.BaseTool) (*providerEntry, error) {
+	model, err := p.NewModel()
+	if err != nil {
+		return nil, err
+	}
+	agent, err := NewChatAgent(model, system, tools...)
+	if err != nil {
+		return nil, err
+	}
+	return &providerEntry{
+		agent:        agent,
+		thinking:     buildThinkingAgent(name, p, system, tools, agent),
+		model:        model,
+		defaultModel: p.DefaultModel(),
+	}, nil
+}
+
+// put ghi một bộ provider vào registry dưới khoá ghi — đường ghi DUY NHẤT của
+// 4 map, nên không ai mutate registry lúc đang chạy mà không qua khoá.
+func (p *ProviderAgents) put(name string, entry *providerEntry) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.agents[name] = entry.agent
+	p.thinkingAgents[name] = entry.thinking
+	p.models[name] = entry.model
+	p.defaultModel[name] = entry.defaultModel
 }
 
 // buildThinkingAgent dựng bản agent "suy nghĩ" cho 1 provider — provider không
@@ -168,7 +209,7 @@ func availableProviders(m map[string]*ChatAgent) string {
 // nhúng vào client lúc NewModel nên đổi key là phải dựng client mới, không có
 // call option per-request. pcfg là cấu hình ĐÃ merge (DB thắng config).
 //
-// Không đụng DefaultProvider. Lượt chat đang chạy giữ agent cũ tới khi xong —
+// Không đụng defaultProvider. Lượt chat đang chạy giữ agent cũ tới khi xong —
 // thay map dưới Lock nên không ai đọc thấy trạng thái nửa vời.
 func (p *ProviderAgents) Rebuild(slug string, pcfg config.LLMProviderConfig) error {
 	if p == nil {
@@ -178,22 +219,11 @@ func (p *ProviderAgents) Rebuild(slug string, pcfg config.LLMProviderConfig) err
 	if name == "" {
 		return fmt.Errorf("eino agent: thiếu slug provider")
 	}
-	provider := NewConfigProvider(name, pcfg)
-	model, err := provider.NewModel()
+	entry, err := newProviderEntry(name, NewConfigProvider(name, pcfg), p.system, p.tools)
 	if err != nil {
 		return err
 	}
-	agent, err := NewChatAgent(model, p.system, p.tools...)
-	if err != nil {
-		return err
-	}
-	thinking := buildThinkingAgent(name, provider, p.system, p.tools, agent)
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.Agents[name] = agent
-	p.Models[name] = model
-	p.ThinkingAgents[name] = thinking
-	p.DefaultModel[name] = provider.DefaultModel()
+	p.put(name, entry)
 	return nil
 }
 
@@ -202,7 +232,7 @@ func (p *ProviderAgents) Rebuild(slug string, pcfg config.LLMProviderConfig) err
 // nó nên không giữa chừng mất model; chỉ request mới không tra thấy provider
 // nữa và Resolve trả lỗi "chưa cấu hình" (API map 400).
 //
-// Không đụng DefaultProvider: service gọi trước một bước chặn "đang là provider
+// Không đụng defaultProvider: service gọi trước một bước chặn "đang là provider
 // mặc định" để không tự biến app thành mù LLM.
 func (p *ProviderAgents) Remove(slug string) {
 	if p == nil {
@@ -211,10 +241,10 @@ func (p *ProviderAgents) Remove(slug string) {
 	name := NormalizeSlug(slug)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	delete(p.Agents, name)
-	delete(p.ThinkingAgents, name)
-	delete(p.Models, name)
-	delete(p.DefaultModel, name)
+	delete(p.agents, name)
+	delete(p.thinkingAgents, name)
+	delete(p.models, name)
+	delete(p.defaultModel, name)
 }
 
 // Has cho biết registry đang có agent của provider này — UI dùng để báo
@@ -222,4 +252,15 @@ func (p *ProviderAgents) Remove(slug string) {
 func (p *ProviderAgents) Has(slug string) bool {
 	_, ok := p.Agent(slug)
 	return ok
+}
+
+// AvailableProviders liệt kê slug đang dựng được agent, sắp A→Z — lời lỗi "chưa
+// cấu hình" và dòng warn lúc boot dùng chung một nguồn, không tự đoán từ map.
+func (p *ProviderAgents) AvailableProviders() string {
+	if p == nil {
+		return ""
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return availableProviders(p.agents)
 }

@@ -277,7 +277,7 @@ type AgentConfig struct {
 }
 
 // VLMConfig cấu hình model đọc ẢNH (qwen-vl). CỐ Ý tách khỏi llms.providers:
-// loader dựng 1 chat agent cho MỖI entry providers (BuildProviderAgents), mà
+// loader dựng 1 chat agent cho MỖI entry providers (eino.NewProviderAgents), mà
 // VLM không phải agent — nó chỉ đọc ảnh trả text, không tool-calling, không
 // quyết định gì. Nhét vào providers sẽ đẻ ra một agent chat rác và model ảnh
 // có thể bị chọn nhầm cho câu hỏi chữ.

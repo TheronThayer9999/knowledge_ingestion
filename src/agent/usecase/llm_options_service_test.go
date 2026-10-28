@@ -5,25 +5,24 @@ import (
 	"strings"
 	"testing"
 
-	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/domain"
 )
 
-// optionsFixture dựng registry giả: 2 provider dựng được agent (9router,
-// ollama), groq thiếu key nên loader đã bỏ qua. ollama có client suy nghĩ
-// RIÊNG, 9router không — ThinkingAgents của nó trỏ đúng agent thường như
-// buildThinkingAgent làm.
-func optionsFixture() (config.LLMsConfig, *eino.ProviderAgents) {
-	nine := &eino.ChatAgent{}
-	plain := &eino.ChatAgent{}
-	deep := &eino.ChatAgent{}
-	agents := &eino.ProviderAgents{
-		Agents:          map[string]*eino.ChatAgent{"9router": nine, "ollama": plain},
-		ThinkingAgents:  map[string]*eino.ChatAgent{"9router": nine, "ollama": deep},
-		DefaultProvider: "9router",
-	}
-	llms := config.LLMsConfig{
+// optionsFixture dựng catalog + registry giả: 2 provider dựng được agent
+// (9router, ollama), groq thiếu key nên loader đã bỏ qua. ollama có client suy
+// nghĩ RIÊNG, 9router không — y như buildThinkingAgent ngoài eino. Trả đúng
+// *fakeRegistry để test CRUD có thể đánh dấu thêm provider vừa dựng được agent.
+func optionsFixture() (*ProviderCatalog, *fakeRegistry) {
+	agents := newFakeRegistry("9router", "9router", "ollama").withThinking("ollama")
+	// repo nil: buildLLMOptions không đọc DB, settings truyền vào từng test.
+	return newProviderCatalog(optionsLLMs(), nil, "test-secret"), agents
+}
+
+// optionsLLMs là khối config dùng chung giữa test options và test CRUD cấp
+// service (test cần sửa DefaultProvider rồi dựng catalog/registry lại).
+func optionsLLMs() config.LLMsConfig {
+	return config.LLMsConfig{
 		DefaultProvider: "9Router ",
 		Providers: map[string]config.LLMProviderConfig{
 			"9router": {
@@ -42,15 +41,14 @@ func optionsFixture() (config.LLMsConfig, *eino.ProviderAgents) {
 			},
 		},
 	}
-	return llms, agents
 }
 
 // TestBuildLLMOptionsUserView khoá hình dạng response cho user thường: sắp theo
 // slug, label fallback, models fallback về [model], available/thinking đúng
 // registry, KHÔNG có base_url/has_key.
 func TestBuildLLMOptionsUserView(t *testing.T) {
-	llms, agents := optionsFixture()
-	res := buildLLMOptions(llms, agents, nil, domain.RoleUser)
+	catalog, agents := optionsFixture()
+	res := buildLLMOptions(catalog, agents, nil, domain.RoleUser)
 
 	if res.DefaultProvider != "9router" || res.DefaultModel != "kc/nvidia/nemotron-3.5-super-vl:free" {
 		t.Fatalf("default = %q/%q", res.DefaultProvider, res.DefaultModel)
@@ -92,8 +90,8 @@ func TestBuildLLMOptionsUserView(t *testing.T) {
 // TestBuildLLMOptionsAdminView: admin thấy base_url (chuẩn hoá bỏ "/" cuối) và
 // has_key cho MỌI provider — kể cả provider thiếu key (has_key=false).
 func TestBuildLLMOptionsAdminView(t *testing.T) {
-	llms, agents := optionsFixture()
-	res := buildLLMOptions(llms, agents, nil, domain.RoleAdmin)
+	catalog, agents := optionsFixture()
+	res := buildLLMOptions(catalog, agents, nil, domain.RoleAdmin)
 
 	bySlug := make(map[string]bool, len(res.Providers))
 	for _, p := range res.Providers {
@@ -120,9 +118,9 @@ func TestBuildLLMOptionsAdminView(t *testing.T) {
 // TestLLMOptionsJSONNeverLeaksKey là chốt an toàn của Nấc 1: JSON trả trình
 // duyệt không có api_key, và user thường không có base_url/has_key.
 func TestLLMOptionsJSONNeverLeaksKey(t *testing.T) {
-	llms, agents := optionsFixture()
+	catalog, agents := optionsFixture()
 
-	userRaw, err := json.Marshal(buildLLMOptions(llms, agents, nil, domain.RoleUser))
+	userRaw, err := json.Marshal(buildLLMOptions(catalog, agents, nil, domain.RoleUser))
 	if err != nil {
 		t.Fatalf("marshal user: %v", err)
 	}
@@ -134,7 +132,7 @@ func TestLLMOptionsJSONNeverLeaksKey(t *testing.T) {
 		t.Fatalf("response user lộ field admin: %s", userJSON)
 	}
 
-	adminRaw, err := json.Marshal(buildLLMOptions(llms, agents, nil, domain.RoleAdmin))
+	adminRaw, err := json.Marshal(buildLLMOptions(catalog, agents, nil, domain.RoleAdmin))
 	if err != nil {
 		t.Fatalf("marshal admin: %v", err)
 	}

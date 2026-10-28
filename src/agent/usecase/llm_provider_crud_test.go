@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"knowledge_ingestion/src/agent/eino"
 	apperrors "knowledge_ingestion/src/common/errors"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/config"
@@ -135,8 +134,8 @@ func sealTestKey(t *testing.T, key string) string {
 // menu chat (user thường) ngay khi có agent — không có lý do gì nó chỉ là
 // "của admin". Với user thường không có base_url/has_key.
 func TestBuildLLMOptionsListsDBOnlyProviderForEveryone(t *testing.T) {
-	llms, agents := optionsFixture()
-	agents.Agents["minimax"] = &eino.ChatAgent{}
+	catalog, agents := optionsFixture()
+	agents.markReady("minimax")
 	settings := map[string]*domain.LLMProviderSetting{
 		"minimax": {
 			Slug: "minimax", Label: "MiniMax", Type: config.LLMTypeOpenAI,
@@ -144,7 +143,7 @@ func TestBuildLLMOptionsListsDBOnlyProviderForEveryone(t *testing.T) {
 			APIKeyCipher: sealTestKey(t, "minimax-key"),
 		},
 	}
-	user := buildLLMOptions(llms, agents, settings, domain.RoleUser)
+	user := buildLLMOptions(catalog, agents, settings, domain.RoleUser)
 	if len(user.Providers) != 4 {
 		t.Fatalf("user thấy %d provider, muốn 4 (3 config + 1 DB-only)", len(user.Providers))
 	}
@@ -165,7 +164,7 @@ func TestBuildLLMOptionsListsDBOnlyProviderForEveryone(t *testing.T) {
 		t.Errorf("user thường không được thấy field admin / phải biết provider này không có ở file: %+v", minimax)
 	}
 
-	admin := buildLLMOptions(llms, agents, settings, domain.RoleAdmin)
+	admin := buildLLMOptions(catalog, agents, settings, domain.RoleAdmin)
 	for _, opt := range admin.Providers {
 		if opt.Slug == "minimax" {
 			if opt.BaseURL != "https://api.minimax.example/v1" || opt.HasKey == nil || !*opt.HasKey {
@@ -182,17 +181,17 @@ func TestBuildLLMOptionsListsDBOnlyProviderForEveryone(t *testing.T) {
 // admin (để bật lại) với disabled=true + available=false, và biến mất khỏi menu
 // chat của user thường.
 func TestBuildLLMOptionsDisabledOnlyForAdmin(t *testing.T) {
-	llms, agents := optionsFixture()
+	catalog, agents := optionsFixture()
 	settings := map[string]*domain.LLMProviderSetting{
 		"groq": {Slug: "groq", Disabled: true},
 	}
-	user := buildLLMOptions(llms, agents, settings, domain.RoleUser)
+	user := buildLLMOptions(catalog, agents, settings, domain.RoleUser)
 	for _, slug := range slugsOf(user) {
 		if slug == "groq" {
 			t.Fatalf("provider đang tắt vẫn hiện ở menu chat: %v", slugsOf(user))
 		}
 	}
-	admin := buildLLMOptions(llms, agents, settings, domain.RoleAdmin)
+	admin := buildLLMOptions(catalog, agents, settings, domain.RoleAdmin)
 	var groq *dtos.LLMProviderOption
 	for _, opt := range admin.Providers {
 		if opt.Slug == "groq" {
@@ -205,15 +204,15 @@ func TestBuildLLMOptionsDisabledOnlyForAdmin(t *testing.T) {
 }
 
 // TestApplyProviderFormOnlyTouchesGivenFields: sửa mỗi nhãn không được xoá
-// base_url/key/model đã lưu (form gửi lên thiếu field), type "openai-compatible"
-// phải lưu về "openai", và key gửi kèm phải vào cột cipher chứ không nằm ở đâu
-// khác.
+// base_url/model đã lưu (form gửi lên thiếu field) và type "openai-compatible"
+// phải lưu về "openai". Hàm này là pure form-mapper nên KHÔNG chạm key — secret
+// nằm ở catalog, việc mã hoá do SaveProvider làm (test cấp service bên dưới).
 func TestApplyProviderFormOnlyTouchesGivenFields(t *testing.T) {
 	setting := &domain.LLMProviderSetting{
 		Slug: "groq", Type: config.LLMTypeOpenAI, BaseURL: "https://api.groq.com/openai/v1",
 		Model: "old", APIKeyCipher: sealTestKey(t, "old-key"), Models: `["old","keep"]`,
 	}
-	err := applyProviderForm(setting, &dtos.SaveLLMProviderRequest{Label: "Groq Free"}, "test-secret")
+	err := applyProviderForm(setting, &dtos.SaveLLMProviderRequest{Label: "Groq Free"})
 	if err != nil {
 		t.Fatalf("form hợp lệ: %v", err)
 	}
@@ -225,7 +224,7 @@ func TestApplyProviderFormOnlyTouchesGivenFields(t *testing.T) {
 	err = applyProviderForm(setting, &dtos.SaveLLMProviderRequest{
 		Type: "openai-compatible", BaseURL: "https://api.groq.com/openai/v1/",
 		Model: "llama-3.3-70b-versatile", Models: []string{" m1 ", "m1", "", "m2"}, APIKey: "fresh",
-	}, "test-secret")
+	})
 	if err != nil {
 		t.Fatalf("form đầy đủ: %v", err)
 	}
@@ -235,12 +234,77 @@ func TestApplyProviderFormOnlyTouchesGivenFields(t *testing.T) {
 	if setting.Model != "llama-3.3-70b-versatile" || setting.Models != `["m1","m2"]` {
 		t.Errorf("model/models = %q / %s", setting.Model, setting.Models)
 	}
-	if setting.APIKeyCipher == "" || strings.Contains(toJSON(t, setting), "fresh") {
-		t.Error("key phải nằm ở cột cipher đã mã hoá, không phải field nào khác")
+	if strings.Contains(toJSON(t, setting), "fresh") {
+		t.Error("form mapper không được nhét api key thô vào dòng cài đặt")
 	}
 
-	if err := applyProviderForm(setting, &dtos.SaveLLMProviderRequest{Type: "anthropic"}, "test-secret"); err == nil {
+	if err := applyProviderForm(setting, &dtos.SaveLLMProviderRequest{Type: "anthropic"}); err == nil {
 		t.Error("type lạ phải bị chặn ở form")
+	}
+}
+
+// TestSaveProviderSealsKeyAndRebuilds: khoá phần "key đi một chiều" của nghiệp vụ
+// tạo provider — api key admin nhập phải vào DB dưới dạng cipher (giải mã đúng
+// key, không có chuỗi thô ở đâu), và client dựng lại phải nhận key vừa giải mã
+// được (không thì provider mới lưu xong vẫn 401).
+func TestSaveProviderSealsKeyAndRebuilds(t *testing.T) {
+	svc, agents, repo := settingsFixture(optionsLLMs(), nil)
+
+	res := svc.SaveProvider(context.Background(), "minimax", &dtos.SaveLLMProviderRequest{
+		Label: "MiniMax", Type: "openai-compatible", BaseURL: "https://api.minimax.example/v1",
+		Model: "MiniMax-M2", APIKey: "fresh-key",
+	})
+	if res.Err != nil {
+		t.Fatalf("SaveProvider: %v", res.Err)
+	}
+	saved := repo.rows["minimax"]
+	if saved == nil || saved.APIKeyCipher == "" {
+		t.Fatalf("không có dòng cài đặt đã lưu: %+v", saved)
+	}
+	if strings.Contains(toJSON(t, saved), "fresh-key") {
+		t.Error("key thô không được nằm ở cột nào của dòng cài đặt")
+	}
+	plain, err := utils.OpenString(saved.APIKeyCipher, "test-secret")
+	if err != nil || plain != "fresh-key" {
+		t.Errorf("giải mã cipher = %q/%v, muốn fresh-key", plain, err)
+	}
+
+	rebuilt, ok := agents.rebuilt["minimax"]
+	if !ok {
+		t.Fatalf("lưu provider xong phải dựng client, registry = %v", agents.rebuilt)
+	}
+	if rebuilt.APIKey != "fresh-key" || rebuilt.BaseURL != "https://api.minimax.example/v1" ||
+		rebuilt.Model != "MiniMax-M2" {
+		t.Errorf("client dựng bằng %+v, muốn định nghĩa + key vừa lưu", rebuilt)
+	}
+	if !agents.Has("minimax") {
+		t.Error("provider mới phải hiện ra là available")
+	}
+	// Danh sách trả về là của admin nên FE khỏi gọi lại /llm/options — nhưng
+	// không được nhân cơ hội này mà lộ key.
+	raw := toJSON(t, res.Data)
+	if strings.Contains(raw, "fresh-key") || strings.Contains(raw, saved.APIKeyCipher) {
+		t.Errorf("response lộ key: %s", raw)
+	}
+}
+
+// TestSaveProviderRejectsUnbuildableDefinition: form hợp lệ khuôn nhưng không đời
+// nào dựng được client (openai-compatible thiếu key) phải chết ngay ở validate,
+// trước khi ghi DB — để chat không nhận 401 từ một provider "đã lưu".
+func TestSaveProviderRejectsUnbuildableDefinition(t *testing.T) {
+	svc, _, repo := settingsFixture(optionsLLMs(), nil)
+
+	res := svc.SaveProvider(context.Background(), "khac", &dtos.SaveLLMProviderRequest{
+		Type: "openai-compatible", BaseURL: "https://api.khac.example/v1", Model: "m1",
+	})
+	if res.Err == nil {
+		t.Fatal("thiếu key phải bị chặn")
+	}
+	if apperrors.From(res.Err).HttpCode != 400 {
+		t.Errorf("phải là 400 đọc được, nhận %+v", res.Err)
+	}
+	if repo.rows["khac"] != nil {
+		t.Error("bị chặn thì không được ghi dòng cài đặt")
 	}
 }
 
@@ -312,14 +376,14 @@ func TestCleanModelsCap(t *testing.T) {
 // định nghĩa provider (base_url/from_config/disabled) không được mở đường cho
 // key ra client.
 func TestLLMOptionsJSONStillNeverLeaksKey(t *testing.T) {
-	llms, agents := optionsFixture()
+	catalog, agents := optionsFixture()
 	cipher := sealTestKey(t, "super-secret-db-key")
 	settings := map[string]*domain.LLMProviderSetting{
 		"minimax": {Slug: "minimax", Type: config.LLMTypeOpenAI, BaseURL: "https://api.minimax.example/v1", Model: "M2", APIKeyCipher: cipher},
 		"groq":    {Slug: "groq", Disabled: true},
 	}
 	for _, role := range []int{domain.RoleUser, domain.RoleAdmin} {
-		raw := toJSON(t, buildLLMOptions(llms, agents, settings, role))
+		raw := toJSON(t, buildLLMOptions(catalog, agents, settings, role))
 		if strings.Contains(raw, "api_key") || strings.Contains(raw, "cipher") ||
 			strings.Contains(raw, "super-secret-db-key") || strings.Contains(raw, cipher) {
 			t.Fatalf("role %d lộ key: %s", role, raw)
@@ -335,23 +399,24 @@ func slugsOf(res *dtos.LLMOptionsResponse) []string {
 	return out
 }
 
-// settingsFixture dựng bộ ba (llms, registry, repo giả) cho test cấp service.
-// Registry có đúng provider mà llms khai, mặc định = llms.DefaultProvider —
-// muốn đổi mặc định thì sửa llms trước khi gọi.
+// settingsFixture dựng service cấp test từ đúng 3 collaborators mà
+// NewLLMSettingsService nhận: catalog (config + repo giả), registry fake và
+// fetcher không client (test CRUD không gọi ra ngoài). Registry có sẵn agent cho
+// mọi provider khai trong llms, mặc định = llms.DefaultProvider — muốn đổi mặc
+// định thì sửa llms trước khi gọi.
 func settingsFixture(llms config.LLMsConfig, rows map[string]*domain.LLMProviderSetting) (
-	*eino.ProviderAgents, *memorySettingRepo) {
-	agents := &eino.ProviderAgents{
-		Agents:          map[string]*eino.ChatAgent{},
-		ThinkingAgents:  map[string]*eino.ChatAgent{},
-		DefaultProvider: slugKey(llms.DefaultProvider),
-	}
-	for slug := range llms.Providers {
-		agents.Agents[slugKey(slug)] = &eino.ChatAgent{}
-	}
+	*llmSettingsService, *fakeRegistry, *memorySettingRepo) {
 	if rows == nil {
 		rows = map[string]*domain.LLMProviderSetting{}
 	}
-	return agents, &memorySettingRepo{rows: rows}
+	repo := &memorySettingRepo{rows: rows}
+	available := make([]string, 0, len(llms.Providers))
+	for slug := range llms.Providers {
+		available = append(available, slugKey(slug))
+	}
+	agents := newFakeRegistry(slugKey(llms.DefaultProvider), available...)
+	svc := newLLMSettingsService(newProviderCatalog(llms, repo, "test-secret"), agents, newLLMModelFetcher(nil))
+	return svc, agents, repo
 }
 
 // memorySettingRepo là bản ILLMProviderSettingRepository chạy trên map, giữ lại
@@ -395,9 +460,8 @@ func (r *memorySettingRepo) Delete(_ context.Context, slug string) error {
 // Một luật duy nhất cho cả hai nguồn — đây là cài đặt cuối cùng của mọi lượt
 // chat không chọn provider rõ ràng.
 func TestDeleteProviderRefusesDefaultFromEitherSource(t *testing.T) {
-	llms, _ := optionsFixture()
-	agents, repo := settingsFixture(llms, nil)
-	svc := &llmSettingsService{llms: llms, agents: agents, repo: repo, secret: "test-secret"}
+	llms := optionsLLMs()
+	svc, _, repo := settingsFixture(llms, nil)
 
 	res := svc.DeleteProvider(context.Background(), "9router")
 	if res.Err == nil {
@@ -420,8 +484,7 @@ func TestDeleteProviderRefusesDefaultFromEitherSource(t *testing.T) {
 		BaseURL: "https://api.minimax.example/v1", Model: "M2",
 	}
 	llms.DefaultProvider = "minimax"
-	agents, repo2 := settingsFixture(llms, map[string]*domain.LLMProviderSetting{"minimax": minimax})
-	svc2 := &llmSettingsService{llms: llms, agents: agents, repo: repo2, secret: "test-secret"}
+	svc2, _, repo2 := settingsFixture(llms, map[string]*domain.LLMProviderSetting{"minimax": minimax})
 	if res := svc2.DeleteProvider(context.Background(), "minimax"); res.Err == nil {
 		t.Fatal("provider UI tạo đang mặc định cũng phải bị chặn")
 	}
@@ -434,11 +497,11 @@ func TestDeleteProviderRefusesDefaultFromEitherSource(t *testing.T) {
 // không phải mặc định thì gỡ dòng DB và tháo agent, provider của file thì dựng
 // lại theo file.
 func TestDeleteProviderRemovesDBOnlyRow(t *testing.T) {
-	llms, _ := optionsFixture()
-	agents, repo := settingsFixture(llms, map[string]*domain.LLMProviderSetting{
+	llms := optionsLLMs()
+	svc, agents, repo := settingsFixture(llms, map[string]*domain.LLMProviderSetting{
 		"minimax": {Slug: "minimax", Type: config.LLMTypeOpenAI, BaseURL: "https://api.minimax.example/v1"},
 	})
-	svc := &llmSettingsService{llms: llms, agents: agents, repo: repo, secret: "test-secret"}
+	agents.markReady("minimax")
 
 	res := svc.DeleteProvider(context.Background(), "minimax")
 	if res.Err != nil {
@@ -461,6 +524,31 @@ func TestDeleteProviderRemovesDBOnlyRow(t *testing.T) {
 		t.Error("slug lạ phải 404")
 	} else if apperrors.From(res.Err).HttpCode != 404 {
 		t.Errorf("HttpCode = %d, muốn 404", apperrors.From(res.Err).HttpCode)
+	}
+}
+
+// TestDeleteConfigProviderRestoresFileConfig: xoá cài đặt của provider KHAI TRONG
+// file là "gỡ chỉnh sửa đè lên file" — dòng DB biến mất nhưng agent phải được
+// dựng lại đúng những gì file nói, không phải bị tháo.
+func TestDeleteConfigProviderRestoresFileConfig(t *testing.T) {
+	llms := optionsLLMs()
+	svc, agents, repo := settingsFixture(llms, map[string]*domain.LLMProviderSetting{
+		"groq": {Slug: "groq", Model: "model-cua-admin", APIKeyCipher: sealTestKey(t, "db-key")},
+	})
+
+	res := svc.DeleteProvider(context.Background(), "groq")
+	if res.Err != nil {
+		t.Fatalf("xoá cài đặt provider của file: %v", res.Err)
+	}
+	if repo.rows["groq"] != nil {
+		t.Error("dòng cài đặt phải bị xoá")
+	}
+	restored, ok := agents.rebuilt["groq"]
+	if !ok {
+		t.Fatalf("provider của file phải được dựng lại, nhận removed=%v", agents.removed)
+	}
+	if restored.Model != "qwen/qwen3.8-27b" || restored.APIKey != "" {
+		t.Errorf("dựng lại = %+v, muốn đúng model của file và không còn key đè", restored)
 	}
 }
 
