@@ -76,6 +76,14 @@
               }
 
               @if (turn.role === 'user') {
+                <!-- Tệp chỉ dùng cho lượt này: transcript giữ TÊN, không giữ text
+                     (text là ngữ cảnh chèn phía server, hiện ra chỉ tổ dài dòng) -->
+                @if (turn.attachmentName) {
+                  <p class="user-attachment">
+                    <mat-icon aria-hidden="true">attach_file</mat-icon>
+                    <span>{{ turn.attachmentName }}</span>
+                  </p>
+                }
                 <p class="user-text">{{ turn.content }}</p>
               } @else {
                 @if (turn.reasoning) {
@@ -189,6 +197,29 @@
          sẵn câu kế tiếp, chỉ Enter bị chặn + có dòng nhắc — không disabled vì
          disabled sẽ kéo ô nhập ra khỏi thứ tự Tab và khó đọc chữ đang gõ -->
     <div class="composer" [class.is-busy]="sending()">
+      <!-- Tệp đính kèm (hỏi trực tiếp về tệp, không nạp vào kho): chip chiếm
+           nguyên hàng trên ô nhập để tên tệp dài không bóp nghẹt textarea -->
+      @if (attachment(); as file) {
+        <div class="attachment-chip">
+          <mat-icon aria-hidden="true">description</mat-icon>
+          <span class="attachment-name" [title]="file.name">{{ file.name }}</span>
+          <button
+            mat-icon-button
+            type="button"
+            class="attachment-remove"
+            [attr.aria-label]="lang.t('CHAT_ATTACH_REMOVE')"
+            [matTooltip]="lang.t('CHAT_ATTACH_REMOVE')"
+            (click)="removeAttachment()"
+          >
+            <mat-icon aria-hidden="true">close</mat-icon>
+          </button>
+        </div>
+      } @else if (attaching()) {
+        <p class="attachment-chip is-loading" role="status">
+          <mat-icon aria-hidden="true">hourglass_top</mat-icon>
+          <span>{{ lang.t('CHAT_ATTACHING') }}</span>
+        </p>
+      }
       <textarea
         cdkTextareaAutosize
         cdkAutosizeMinRows="1"
@@ -201,6 +232,26 @@
         [attr.aria-label]="lang.t('CHAT_PLACEHOLDER')"
       ></textarea>
       <div class="composer-actions">
+        <!-- Đính kèm tệp cho lượt kế tiếp: input file ẩn + nút icon. aria-disabled
+             (không disabled) để tooltip vẫn đọc được; chốt chặn nằm ở pickFile() -->
+        <input
+          #filePicker
+          type="file"
+          class="file-picker"
+          accept=".txt,.md,.csv,.json,.docx,.xlsx,.pptx,.pdf"
+          (change)="onFileChosen($event, filePicker)"
+        />
+        <button
+          mat-icon-button
+          type="button"
+          class="attach-toggle"
+          [attr.aria-label]="lang.t('CHAT_ATTACH')"
+          [matTooltip]="lang.t('CHAT_ATTACH_HINT')"
+          [attr.aria-disabled]="sending() || attaching()"
+          (click)="pickFile(filePicker)"
+        >
+          <mat-icon aria-hidden="true">attach_file</mat-icon>
+        </button>
         <button
           mat-icon-button
           type="button"

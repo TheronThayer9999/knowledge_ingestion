@@ -16,7 +16,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { map, Observable, of, Subscription, switchMap, tap } from 'rxjs';
 import { CONVERSATION_PAGE, ConversationService } from '../../core/chat/conversation.service';
-import type { ChatChart, ChatCite, Conversation } from '../../core/chat/chat.models';
+import type {
+  ChatAttachment,
+  ChatChart,
+  ChatCite,
+  Conversation,
+} from '../../core/chat/chat.models';
 import { clipSessionTitle } from '../../core/chat/chat.models';
 import { ChatService } from '../../core/chat/chat.service';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
@@ -57,6 +62,12 @@ interface ChatMessage {
    */
   provider?: string;
   model?: string;
+  /**
+   * Tên tệp người dùng đính kèm cho lượt này (chỉ lượt user). Text của tệp
+   * KHÔNG đi vào transcript — nó là ngữ cảnh chèn phía server, hiện ra chỉ tổ
+   * biến bong bóng thành một trang tài liệu.
+   */
+  attachmentName?: string;
 }
 
 const SUGGESTIONS: TranslationKey[] = ['CHAT_SUGGEST_1', 'CHAT_SUGGEST_2', 'CHAT_SUGGEST_3'];
@@ -131,6 +142,13 @@ export class Chat {
    * options → ẩn chip mô hình, chat vẫn chạy bằng mặc định cấu hình.
    */
   protected readonly providers = signal<LlmProviderOption[]>([]);
+  /**
+   * Tệp đính kèm của lượt KẾ TIẾP. Chỉ sống trong ngữ cảnh một lượt: gửi xong
+   * là xoá, lỗi thì trả lại để người dùng không phải chọn/đợi trích lại tệp.
+   */
+  protected readonly attachment = signal<ChatAttachment | null>(null);
+  /** Đang nhờ backend trích tệp (đồng bộ, vài giây với PDF lớn) */
+  protected readonly attaching = signal(false);
   /**
    * Sidebar tiện ích (danh sách phiên + phạm vi + phiên mới) — ẩn để khung chat
    * rộng hơn. Màn hẹp thì mặc định ĐÓNG: drawer phủ + scrim sẽ che mất khung chat
@@ -277,6 +295,46 @@ export class Chat {
 
   protected onInput(event: Event): void {
     this.draft.set((event.target as HTMLTextAreaElement).value);
+  }
+
+  /**
+   * Mở hộp chọn tệp của input ẩn. Đang chờ đáp án/đang trích thì thôi — nút
+   * chỉ mang aria-disabled (để còn đọc tooltip) nên chốt chặn nằm ở đây.
+   */
+  protected pickFile(input: HTMLInputElement): void {
+    if (this.sending() || this.attaching()) {
+      return;
+    }
+    input.click();
+  }
+
+  /**
+   * Chọn xong một tệp: upload ngay lên `/chat/attachments` để nhận text đã
+   * trích. Xoá `value` trước khi đọc là bắt buộc — chọn LẠI đúng tệp cũ thì
+   * browser không phát `change` nếu value không đổi.
+   */
+  protected onFileChosen(event: Event, input: HTMLInputElement): void {
+    const file = input.files?.[0] ?? null;
+    input.value = '';
+    if (!file || this.attaching()) {
+      return;
+    }
+    this.attaching.set(true);
+    this.chat.attach(file).subscribe({
+      next: (attachment) => {
+        this.attaching.set(false);
+        this.attachment.set(attachment);
+      },
+      error: (error: unknown) => {
+        this.attaching.set(false);
+        // Message của backend nói rõ vì sao (sai định dạng, quá 15 MB, PDF scan)
+        this.messages.errorFromApi(error, 'CHAT_ATTACH_FAILED');
+      },
+    });
+  }
+
+  protected removeAttachment(): void {
+    this.attachment.set(null);
   }
 
   /** Enter gửi, Shift+Enter xuống dòng; bỏ qua khi IME đang ghép chữ */
@@ -580,13 +638,20 @@ export class Chat {
     if (question === '' || this.sending()) {
       return;
     }
+    // Tệp thuộc về ĐÚNG lượt này: giữ biến cục bộ để trả lại khi lỗi, xoá khỏi
+    // composer ngay để lượt kế tiếp không vô tình gửi lại tệp cũ.
+    const attachment = this.attachment();
     this.sending.set(true);
+    this.attachment.set(null);
     this.draft.set('');
     this.stopReveal();
     this.pending = this.resolveSession(question)
       .pipe(
         tap(() => {
-          this.turns.update((list) => [...list, { role: 'user', content: question }]);
+          this.turns.update((list) => [
+            ...list,
+            { role: 'user', content: question, attachmentName: attachment?.name },
+          ]);
           // Nhóm 2: đếm tin nhắn + mốc hoạt động nhảy tại chỗ ngay lúc bấm gửi
           this.bumpSession(this.activeId(), 1);
           this.scrollToBottom();
@@ -600,6 +665,7 @@ export class Chat {
             // Rỗng = theo cấu hình, nên để trống cho backend tự resolve
             provider: this.provider() || undefined,
             model: this.model() || undefined,
+            attachment: attachment ?? undefined,
           }),
         ),
       )
@@ -633,6 +699,9 @@ export class Chat {
           this.sending.set(false);
           this.bumpSession(this.activeId(), -1);
           this.recoverQuestion(question);
+          // Trích tệp tốn của người dùng thời gian chờ — lỗi mạng/lượt hỏng thì
+          // trả tệp về composer để bấm Gửi lại, không bắt chọn lại từ đầu.
+          this.attachment.set(attachment);
           this.messages.errorFromApi(error, 'AUTH_ERROR_GENERIC');
           this.scrollToBottom();
         },

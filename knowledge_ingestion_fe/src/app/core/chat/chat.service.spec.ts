@@ -121,4 +121,57 @@ describe('ChatService', () => {
     expect((await withoutCharts)!.charts).toEqual([]);
     http.verify();
   });
+
+  /**
+   * Tệp đính kèm: upload là multipart field `file` (đúng tên handler đọc), còn
+   * lượt hỏi chỉ mang name + text đã trích — `chars` là số cho UI, backend tự
+   * cắt lại theo trần của nó nên không gửi.
+   */
+  it('attach: gửi multipart field file và map kết quả trích', async () => {
+    const file = new File(['Nội dung báo cáo'], 'bao-cao.txt', { type: 'text/plain' });
+    const result = service.attach(file).toPromise();
+
+    const req = http.expectOne(api('/chat/attachments'));
+    expect(req.request.method).toBe('POST');
+    const body = req.request.body as FormData;
+    expect(body instanceof FormData).toBe(true);
+    expect((body.get('file') as File).name).toBe('bao-cao.txt');
+    req.flush({
+      ...ENVELOPE_OK,
+      data: { name: 'bao-cao.txt', text: 'Nội dung báo cáo', chars: 16 },
+    });
+
+    expect(await result).toEqual({ name: 'bao-cao.txt', text: 'Nội dung báo cáo', chars: 16 });
+    http.verify();
+  });
+
+  it('attach: thiếu chars thì mapper trả 0 chứ không undefined', async () => {
+    const result = service.attach(new File(['x'], 'a.md')).toPromise();
+    http
+      .expectOne(api('/chat/attachments'))
+      .flush({ ...ENVELOPE_OK, data: { name: 'a.md', text: 'x' } });
+
+    expect((await result)!.chars).toBe(0);
+    http.verify();
+  });
+
+  it('send có attachment: body mang name + text, không mang chars', async () => {
+    const result = service
+      .send({
+        message: 'Tóm tắt tệp này',
+        conversationId: 4,
+        attachment: { name: 'bao-cao.txt', text: 'Nội dung báo cáo', chars: 16 },
+      })
+      .toPromise();
+
+    const req = http.expectOne(api('/chat'));
+    expect(req.request.body).toEqual({
+      message: 'Tóm tắt tệp này',
+      conversation_id: 4,
+      attachment: { name: 'bao-cao.txt', text: 'Nội dung báo cáo' },
+    });
+    req.flush({ ...ENVELOPE_OK, data: ANSWER });
+    await result;
+    http.verify();
+  });
 });

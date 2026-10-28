@@ -1,0 +1,204 @@
+// Popup quản trị kết nối AI (Đợt 28 nấc 2) — chỉ dùng token, mỗi provider
+// một hàng thu gọn/mở rộng.
+.dialog-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dialog-title mat-icon {
+  color: var(--color-primary);
+  font-size: var(--icon-size-lg);
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  min-width: min(var(--dialog-width-md), 86vw);
+}
+
+.lead {
+  margin: 0;
+  font: var(--text-style-sm);
+  color: var(--color-muted);
+}
+
+.banner {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+  color: var(--color-danger);
+  font: var(--text-style-sm);
+}
+
+.state {
+  margin: 0;
+  font: var(--text-style-sm);
+  color: var(--color-muted);
+}
+
+.state.is-error {
+  color: var(--color-danger);
+}
+
+// ---- Danh sách provider ----
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.provider {
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.provider.is-open {
+  border-color: var(--color-outline);
+}
+
+.provider.is-off {
+  background: var(--color-surface-container);
+}
+
+.provider-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-on-surface);
+  font: var(--text-style-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.provider-head:hover {
+  background: var(--color-surface-container-high);
+}
+
+.provider-head:focus-visible {
+  outline: var(--border-width-strong) solid var(--color-primary);
+  outline-offset: calc(-1 * var(--border-width-strong));
+}
+
+.dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-danger);
+  flex: 0 0 auto;
+}
+
+.dot.is-ready {
+  background: var(--color-primary);
+}
+
+.name {
+  font: var(--text-style-sm-strong);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slug {
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+  background: var(--color-surface-container-high);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+
+.badge {
+  font: var(--text-style-xs-strong);
+  color: var(--color-on-primary-container);
+  background: var(--color-primary-container);
+  border-radius: var(--radius-full);
+  padding: 0 var(--space-2);
+}
+
+.head-state {
+  margin-left: auto;
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+}
+
+.chevron {
+  color: var(--color-muted);
+  flex: 0 0 auto;
+}
+
+// ---- Phần mở rộng ----
+.provider-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3) var(--space-3);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding-top: var(--space-2);
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.meta-item dt {
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+}
+
+.meta-item dd {
+  margin: 0;
+  font: var(--text-style-xs-strong);
+  color: var(--color-on-surface);
+  overflow-wrap: anywhere;
+}
+
+.key-row,
+.model-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.grow {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+}
+
+.note mat-icon {
+  font-size: var(--icon-size-sm);
+  flex: 0 0 auto;
+}

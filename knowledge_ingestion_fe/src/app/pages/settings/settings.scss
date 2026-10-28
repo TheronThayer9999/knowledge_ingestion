@@ -134,114 +134,13 @@
 }
 
 // ---- Nhà cung cấp AI (Đợt 28, chỉ admin) ----
-// Mỗi provider là một hàng: chấm trạng thái + tên + slug + nhãn mặc định,
-// rồi bảng thông tin giao thức/model/base URL/key.
-.llm-list {
+// Card này chỉ là cửa vào popup quản trị — danh sách provider nằm trong
+// `LlmProvidersDialog` để trang cài đặt không phình khi có nhiều provider.
+.llm-entry {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.llm-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-}
-
-// Provider chưa dựng được agent (thiếu key) — làm mờ để admin thấy ngay
-// cái nào đang hỏng, nhưng KHÔNG ẩn hẳn (đó là thứ cần sửa).
-.llm-item.is-off {
-  background: var(--color-surface-container);
-}
-
-.llm-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.llm-dot {
-  width: var(--space-2);
-  height: var(--space-2);
-  border-radius: var(--radius-full);
-  background: var(--color-danger);
-  flex: 0 0 auto;
-}
-
-.llm-dot.is-ready {
-  background: var(--color-primary);
-}
-
-.llm-name {
-  font: var(--text-style-sm-strong);
-  color: var(--color-on-surface);
-}
-
-.llm-slug {
-  font: var(--text-style-xs);
-  color: var(--color-muted);
-  background: var(--color-surface-container-high);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-}
-
-.llm-badge {
-  font: var(--text-style-xs-strong);
-  color: var(--color-on-primary-container);
-  background: var(--color-primary-container);
-  border-radius: var(--radius-full);
-  padding: 0 var(--space-2);
-}
-
-.llm-state-text {
-  margin-left: auto;
-  font: var(--text-style-xs);
-  color: var(--color-muted);
-}
-
-.llm-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-2) var(--space-4);
-  margin: 0;
-}
-
-.llm-meta-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.llm-meta-item dt {
-  font: var(--text-style-xs);
-  color: var(--color-muted);
-}
-
-.llm-meta-item dd {
-  margin: 0;
-  font: var(--text-style-xs-strong);
-  color: var(--color-on-surface);
-  overflow-wrap: anywhere;
-}
-
-.llm-state {
-  margin: 0;
-  font: var(--text-style-sm);
-  color: var(--color-muted);
-}
-
-.llm-state.is-error {
-  color: var(--color-danger);
 }
 
 .llm-note {

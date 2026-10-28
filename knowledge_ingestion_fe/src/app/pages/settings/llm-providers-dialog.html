@@ -1,0 +1,159 @@
+<h2 mat-dialog-title class="dialog-title">
+  <mat-icon aria-hidden="true">hub</mat-icon>
+  <span>{{ lang.t('SETTINGS_LLM') }}</span>
+</h2>
+
+<mat-dialog-content class="dialog-body">
+  <p class="lead">{{ lang.t('SETTINGS_LLM_DIALOG_DESC') }}</p>
+
+  @if (error()) {
+    <p class="banner" role="alert">{{ error() }}</p>
+  }
+
+  @if (loading()) {
+    <p class="state">{{ lang.t('SETTINGS_LLM_LOADING') }}</p>
+  } @else if (failed()) {
+    <p class="state is-error">{{ lang.t('SETTINGS_LLM_FAILED') }}</p>
+  } @else if (providers().length === 0) {
+    <p class="state">{{ lang.t('SETTINGS_LLM_EMPTY') }}</p>
+  } @else {
+    <ul class="provider-list">
+      @for (item of providers(); track item.slug) {
+        <li
+          class="provider"
+          [class.is-off]="!item.available"
+          [class.is-open]="expanded() === item.slug"
+        >
+          <button
+            type="button"
+            class="provider-head"
+            [attr.aria-expanded]="expanded() === item.slug"
+            (click)="toggle(item)"
+          >
+            <span class="dot" [class.is-ready]="item.available" aria-hidden="true"></span>
+            <span class="name">{{ item.label }}</span>
+            <code class="slug">{{ item.slug }}</code>
+            @if (item.isDefault) {
+              <span class="badge">{{ lang.t('SETTINGS_LLM_DEFAULT') }}</span>
+            }
+            <span class="head-state">
+              {{ lang.t(item.available ? 'SETTINGS_LLM_READY' : 'SETTINGS_LLM_NOT_READY') }}
+            </span>
+            <mat-icon class="chevron" aria-hidden="true">
+              {{ expanded() === item.slug ? 'expand_less' : 'expand_more' }}
+            </mat-icon>
+          </button>
+
+          @if (expanded() === item.slug) {
+            <div class="provider-body">
+              <dl class="meta">
+                <div class="meta-item">
+                  <dt>{{ lang.t('SETTINGS_LLM_TYPE') }}</dt>
+                  <dd>{{ item.type || '—' }}</dd>
+                </div>
+                @if (item.baseUrl) {
+                  <div class="meta-item">
+                    <dt>{{ lang.t('SETTINGS_LLM_BASE_URL') }}</dt>
+                    <dd>{{ item.baseUrl }}</dd>
+                  </div>
+                }
+                <div class="meta-item">
+                  <dt>{{ lang.t('SETTINGS_LLM_MODEL') }}</dt>
+                  <dd>{{ item.defaultModel || '—' }}</dd>
+                </div>
+                <div class="meta-item">
+                  <dt>{{ lang.t('SETTINGS_LLM_KEY_SOURCE') }}</dt>
+                  <dd>{{ lang.t(keyStateKey(item)) }}</dd>
+                </div>
+              </dl>
+
+              <div class="key-row">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
+                  <mat-label>{{ lang.t('SETTINGS_LLM_KEY') }}</mat-label>
+                  <input
+                    matInput
+                    type="password"
+                    autocomplete="new-password"
+                    spellcheck="false"
+                    [disabled]="busy() === item.slug"
+                    [placeholder]="lang.t(keyPlaceholderKey(item))"
+                    [value]="keyDraft(item.slug)"
+                    (input)="onKeyInput(item.slug, $event)"
+                    (keyup.enter)="saveKey(item)"
+                  />
+                </mat-form-field>
+                <button
+                  matButton="filled"
+                  type="button"
+                  [disabled]="busy() === item.slug || !keyDraft(item.slug).trim()"
+                  (click)="saveKey(item)"
+                >
+                  {{ lang.t('SETTINGS_LLM_KEY_SAVE') }}
+                </button>
+                @if (item.keySource === 'database') {
+                  <button
+                    matButton
+                    type="button"
+                    [disabled]="busy() === item.slug"
+                    (click)="clearKey(item)"
+                  >
+                    {{ lang.t('SETTINGS_LLM_KEY_CLEAR') }}
+                  </button>
+                }
+              </div>
+
+              <div class="model-row">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
+                  <mat-label>{{ lang.t('SETTINGS_LLM_MODEL') }}</mat-label>
+                  <mat-select
+                    [value]="modelValue(item)"
+                    [disabled]="modelsBusy() === item.slug || busy() === item.slug"
+                    (selectionChange)="setModelDraft(item.slug, $event.value)"
+                  >
+                    @for (model of item.models; track model) {
+                      <mat-option [value]="model">{{ model }}</mat-option>
+                    }
+                  </mat-select>
+                  @if (item.models.length === 0) {
+                    <mat-hint>{{ lang.t('SETTINGS_LLM_MODELS_EMPTY') }}</mat-hint>
+                  }
+                </mat-form-field>
+                <button
+                  matButton="outlined"
+                  type="button"
+                  [disabled]="modelsBusy() === item.slug || busy() === item.slug"
+                  (click)="loadModels(item)"
+                >
+                  {{
+                    lang.t(
+                      modelsBusy() === item.slug
+                        ? 'SETTINGS_LLM_MODEL_LOADING'
+                        : 'SETTINGS_LLM_MODEL_LOAD'
+                    )
+                  }}
+                </button>
+                <button
+                  matButton="filled"
+                  type="button"
+                  [disabled]="busy() === item.slug || !modelValue(item)"
+                  (click)="useModel(item)"
+                >
+                  {{ lang.t('SETTINGS_LLM_MODEL_USE') }}
+                </button>
+              </div>
+            </div>
+          }
+        </li>
+      }
+    </ul>
+  }
+
+  <p class="note">
+    <mat-icon aria-hidden="true">info</mat-icon>
+    <span>{{ lang.t('SETTINGS_LLM_NOTE') }}</span>
+  </p>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button matButton="filled" type="button" mat-dialog-close>{{ lang.t('COMMON_CLOSE') }}</button>
+</mat-dialog-actions>

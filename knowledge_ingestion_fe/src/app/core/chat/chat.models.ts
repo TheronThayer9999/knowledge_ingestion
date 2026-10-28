@@ -48,6 +48,18 @@ export interface ChatTurn {
   content: string;
 }
 
+/**
+ * Tệp đính kèm của MỘT lượt hỏi: backend trích text ngay lúc upload rồi chèn
+ * vào ngữ cảnh của đúng lượt đó. Tệp KHÔNG nạp vào kho tri thức (không qua
+ * worker/Qdrant) nên câu trả lời về tệp không có trích dẫn `[^n]`.
+ */
+export interface ChatAttachment {
+  name: string;
+  text: string;
+  /** Số ký tự backend giữ lại sau trần cắt — 0 khi tệp không có chữ đọc được */
+  chars: number;
+}
+
 // ---- Phiên chat (Đợt 25): hội thoại lưu DB, là nguồn lịch sử duy nhất ----
 
 /** Một phiên trong sidebar — `messageCount` do backend COUNT theo trang đang trả */
@@ -118,6 +130,12 @@ export interface ChatResponseDto {
   model?: string;
 }
 
+export interface ChatAttachmentDto {
+  name: string;
+  text: string;
+  chars?: number;
+}
+
 export interface ConversationDto {
   id: number;
   title: string;
@@ -160,6 +178,15 @@ export function toChatChart(dto: ChatChartDto): ChatChart {
     // spec thiếu thì để object rỗng: component vẽ chỗ trống chứ không vỡ template
     spec: dto.spec ?? {},
     caption: dto.caption ?? '',
+  };
+}
+
+/** Tệp đã trích: `chars` là số ký tự backend giữ (thiếu ở BE cũ → coi như 0) */
+export function toChatAttachment(dto: ChatAttachmentDto): ChatAttachment {
+  return {
+    name: dto.name,
+    text: dto.text,
+    chars: dto.chars ?? 0,
   };
 }
 

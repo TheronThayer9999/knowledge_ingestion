@@ -61,6 +61,59 @@ describe('LlmService', () => {
     expect(options!.providers[0].models).toEqual(['nemotron', 'gpt-oss']);
     http.verify();
   });
+
+  it('lưu key: PUT đúng body, response chỉ trả cờ nguồn key', async () => {
+    const result = service.saveKey('9router', 'sk-1').toPromise();
+    const req = http.expectOne({ method: 'PUT', url: api('/llm/providers/9router/key') });
+    expect(req.request.body).toEqual({ api_key: 'sk-1' });
+    req.flush({
+      ...ENVELOPE_OK,
+      data: { ...OPTIONS_DTO.providers[0], has_key: true, key_source: 'database' },
+    });
+
+    const option = await result;
+    expect(option!.hasKey).toBe(true);
+    expect(option!.keySource).toBe('database');
+    http.verify();
+  });
+
+  it('xoá key: DELETE không kèm body', async () => {
+    const result = service.clearKey('groq').toPromise();
+    const req = http.expectOne({ method: 'DELETE', url: api('/llm/providers/groq/key') });
+    expect(req.request.body).toBeNull();
+    req.flush({ ...ENVELOPE_OK, data: OPTIONS_DTO.providers[1] });
+
+    const option = await result;
+    expect(option!.slug).toBe('groq');
+    http.verify();
+  });
+
+  it('tải model: POST rồi bóc mảng models', async () => {
+    const result = service.loadModels('groq').toPromise();
+    const req = http.expectOne({ method: 'POST', url: api('/llm/providers/groq/models') });
+    req.flush({ ...ENVELOPE_OK, data: { slug: 'groq', models: ['a', 'b'] } });
+
+    expect(await result).toEqual(['a', 'b']);
+    http.verify();
+  });
+
+  it('chọn model: PUT body {model}', async () => {
+    const result = service.selectModel('groq', 'a').toPromise();
+    const req = http.expectOne({ method: 'PUT', url: api('/llm/providers/groq/model') });
+    expect(req.request.body).toEqual({ model: 'a' });
+    req.flush({ ...ENVELOPE_OK, data: { ...OPTIONS_DTO.providers[1], default_model: 'a' } });
+
+    const option = await result;
+    expect(option!.defaultModel).toBe('a');
+    http.verify();
+  });
+
+  it('slug lạ được encode trước khi ghép vào path', () => {
+    service.saveKey('a/b', 'k').subscribe();
+    const req = http.expectOne({ method: 'PUT', url: api('/llm/providers/a%2Fb/key') });
+    req.flush({ ...ENVELOPE_OK, data: { slug: 'a/b' } });
+    http.verify();
+  });
 });
 
 describe('toLlmOptions — mapper chịu được DTO cũ/thiếu field', () => {
@@ -85,5 +138,13 @@ describe('toLlmOptions — mapper chịu được DTO cũ/thiếu field', () => 
     const options = toLlmOptions({});
     expect(options.defaultProvider).toBe('');
     expect(options.providers).toEqual([]);
+  });
+
+  it('key_source lạ thì bỏ, config_model giữ nguyên cho admin', () => {
+    const options = toLlmOptions({
+      providers: [{ slug: 'x', key_source: 'weird', config_model: 'm' }],
+    });
+    expect(options.providers[0].keySource).toBeUndefined();
+    expect(options.providers[0].configModel).toBe('m');
   });
 });

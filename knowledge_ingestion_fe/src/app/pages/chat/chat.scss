@@ -286,6 +286,26 @@ app-chat-context-chips {
   overflow-wrap: anywhere;
 }
 
+// Tên tệp người dùng đã đính kèm cho lượt này — nằm TRÊN câu hỏi, cỡ nhỏ như
+// nhãn phụ để câu hỏi vẫn là thứ đập vào mắt.
+.user-attachment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-1);
+  font: var(--text-style-xs);
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+
+.user-attachment mat-icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  font-size: var(--icon-size-sm);
+  line-height: var(--icon-size-sm);
+  flex: 0 0 auto;
+}
+
 // ---- Suy nghĩ của model (suy luận sâu) ----
 // Đoạn reasoning chỉ hữu ích khi người đọc muốn kiểm chứng cách model đi tới
 // câu trả lời, nên mặc định gập lại (progressive disclosure) để không cướp
@@ -547,6 +567,57 @@ app-chat-context-chips {
   color: var(--color-muted);
 }
 
+// ---- Tệp đính kèm của lượt kế tiếp ----
+// Chip chiếm nguyên hàng trên ô nhập (flex-basis 100%) nên tên tệp dài chỉ
+// ellipsis trong chip, không đẩy ô nhập/nút Gửi xuống hàng.
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+  font: var(--text-style-xs);
+}
+
+.attachment-chip.is-loading {
+  color: var(--color-muted);
+}
+
+.attachment-chip mat-icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  font-size: var(--icon-size-sm);
+  line-height: var(--icon-size-sm);
+  flex: 0 0 auto;
+}
+
+.attachment-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// 28px là thang nút icon nhỏ hợp với chip 1 dòng — cao bằng --touch-target
+// sẽ phình composer. Bù margin âm để chip không bị nút đội chiều cao.
+.attachment-remove {
+  flex: 0 0 auto;
+  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-1)) calc(-1 * var(--space-1)) 0;
+  --mat-icon-button-state-layer-size: calc(var(--icon-size-md) + var(--space-2));
+  color: var(--color-muted);
+}
+
+// Input file thật ẩn khỏi luồng và khỏi cây a11y — nút icon là control thật,
+// input chỉ là đường mở hộp chọn tệp của trình duyệt.
+.file-picker {
+  display: none;
+}
+
 // CDK autosize đo riêng chiều cao PHẦN CHỮ (nó tạm bỏ padding/border lúc
 // đo) rồi gán thẳng vào style.height — nên textarea phải là content-box.
 // Để border-box (reset toàn cục) thì padding + border bị tính chồng lên
@@ -612,6 +683,12 @@ app-chat-context-chips {
 .thinking-toggle.is-active {
   color: var(--color-primary);
   background: var(--color-accent-soft);
+}
+
+// Nút đính kèm tệp: icon phụ cùng cỡ/nhịp với nút suy luận sâu. Không có
+// trạng thái "bật" — tệp đang chọn hiện thành chip riêng phía trên.
+.attach-toggle {
+  color: var(--color-muted);
 }
 
 // Dòng hướng dẫn cuối: 12px xám trung tính, căn giữa, một dòng — liền mạch

@@ -22,7 +22,14 @@ export interface LlmProviderOption {
   baseUrl?: string;
   /** chỉ admin */
   hasKey?: boolean;
+  /** chỉ admin — key đang lấy từ "config" hay "database" ('' = chưa có key) */
+  keySource?: LlmKeySource;
+  /** chỉ admin — model mặc định khai trong configs/config.json */
+  configModel?: string;
 }
+
+/** Nguồn của api key đang có hiệu lực (backend trả, không phải giá trị key) */
+export type LlmKeySource = 'config' | 'database';
 
 export interface LlmOptions {
   defaultProvider: string;
@@ -43,6 +50,8 @@ export interface LlmProviderOptionDto {
   is_default?: boolean;
   base_url?: string;
   has_key?: boolean;
+  key_source?: string;
+  config_model?: string;
 }
 
 export interface LlmOptionsDto {
@@ -64,6 +73,9 @@ export function toLlmProviderOption(dto: LlmProviderOptionDto): LlmProviderOptio
     // Field admin-only: backend không trả cho user thường nên vẫn undefined
     baseUrl: dto.base_url,
     hasKey: dto.has_key,
+    keySource:
+      dto.key_source === 'config' || dto.key_source === 'database' ? dto.key_source : undefined,
+    configModel: dto.config_model,
   };
 }
 
@@ -73,4 +85,10 @@ export function toLlmOptions(dto: LlmOptionsDto): LlmOptions {
     defaultModel: dto.default_model ?? '',
     providers: (dto.providers ?? []).map(toLlmProviderOption),
   };
+}
+
+/** Kết quả "Tải model" từ provider — danh sách backend đã lưu vào DB */
+export interface LlmModelsDto {
+  slug?: string;
+  models?: string[];
 }

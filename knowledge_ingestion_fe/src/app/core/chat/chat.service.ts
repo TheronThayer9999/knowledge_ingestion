@@ -1,7 +1,15 @@
 import { inject, Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
 import { ApiService } from '../api/api.service';
-import { toChatAnswer, type ChatAnswer, type ChatResponseDto, type ChatTurn } from './chat.models';
+import {
+  toChatAnswer,
+  toChatAttachment,
+  type ChatAnswer,
+  type ChatAttachment,
+  type ChatAttachmentDto,
+  type ChatResponseDto,
+  type ChatTurn,
+} from './chat.models';
 
 /** Một lượt gửi đi — `conversationId` là con trỏ quyết định cách tính lịch sử */
 export interface ChatSendRequest {
@@ -19,6 +27,11 @@ export interface ChatSendRequest {
    */
   provider?: string;
   model?: string;
+  /**
+   * Tệp đính kèm đã trích ở `/chat/attachments` — chỉ dùng cho ĐÚNG lượt này,
+   * backend không lưu tệp vào phiên. Không gửi `chars`: đó là số cho UI.
+   */
+  attachment?: ChatAttachment;
 }
 
 /**
@@ -58,6 +71,24 @@ export class ChatService {
     if (request.model) {
       body['model'] = request.model;
     }
+    // Chỉ name + text: backend tự cắt lại theo trần của nó, `chars` là số cho UI
+    if (request.attachment) {
+      body['attachment'] = {
+        name: request.attachment.name,
+        text: request.attachment.text,
+      };
+    }
     return this.api.post<ChatResponseDto>('/chat', body).pipe(map(toChatAnswer));
+  }
+
+  /**
+   * Trích text từ tệp người dùng chọn (multipart, một tệp mỗi lần). Backend
+   * chạy ĐỒNG BỘ bằng đúng registry reader của pipeline nên trần 15 MB và
+   * danh sách định dạng nằm ở đó — FE chỉ cần hiện lỗi server trả về.
+   */
+  attach(file: File): Observable<ChatAttachment> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return this.api.post<ChatAttachmentDto>('/chat/attachments', form).pipe(map(toChatAttachment));
   }
 }

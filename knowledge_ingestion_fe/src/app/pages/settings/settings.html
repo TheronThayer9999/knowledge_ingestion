@@ -76,9 +76,9 @@
     </mat-button-toggle-group>
   </mat-card>
 
-  <!-- Card "Nhà cung cấp AI" (Đợt 28): CHỈ admin. Chỉ đọc — key nằm trong
-       configs/config.json nên không có ô nhập key. User thường không thấy
-       card này, và API cũng không trả base_url/has_key cho họ. -->
+  <!-- Card "Nhà cung cấp AI" (Đợt 28): CHỈ admin. Provider khai báo trong
+       configs/config.json; popup lo key, tải danh sách model và chọn model
+       mặc định. User thường không thấy card, API cũng chặn quyền ghi. -->
   @if (showLlm()) {
     <mat-card appearance="outlined" class="card">
       <div class="card-head">
@@ -89,62 +89,17 @@
         </div>
       </div>
 
-      @if (llmLoading()) {
-        <p class="llm-state">{{ lang.t('SETTINGS_LLM_LOADING') }}</p>
-      } @else if (llmFailed()) {
-        <p class="llm-state is-error">{{ lang.t('SETTINGS_LLM_FAILED') }}</p>
-      } @else if (providers().length === 0) {
-        <p class="llm-state">{{ lang.t('SETTINGS_LLM_EMPTY') }}</p>
-      } @else {
-        <ul class="llm-list">
-          @for (item of providers(); track item.slug) {
-            <li class="llm-item" [class.is-off]="!item.available">
-              <div class="llm-row">
-                <span
-                  class="llm-dot"
-                  [class.is-ready]="item.available"
-                  aria-hidden="true"
-                ></span>
-                <span class="llm-name">{{ item.label }}</span>
-                <code class="llm-slug">{{ item.slug }}</code>
-                @if (item.isDefault) {
-                  <span class="llm-badge">{{ lang.t('SETTINGS_LLM_DEFAULT') }}</span>
-                }
-                <span class="llm-state-text">
-                  {{ lang.t(item.available ? 'SETTINGS_LLM_READY' : 'SETTINGS_LLM_NOT_READY') }}
-                </span>
-              </div>
-              <dl class="llm-meta">
-                <div class="llm-meta-item">
-                  <dt>{{ lang.t('SETTINGS_LLM_TYPE') }}</dt>
-                  <dd>{{ item.type }}</dd>
-                </div>
-                <div class="llm-meta-item">
-                  <dt>{{ lang.t('SETTINGS_LLM_MODEL') }}</dt>
-                  <dd>{{ item.defaultModel || '—' }}</dd>
-                </div>
-                @if (item.baseUrl) {
-                  <div class="llm-meta-item">
-                    <dt>{{ lang.t('SETTINGS_LLM_BASE_URL') }}</dt>
-                    <dd>{{ item.baseUrl }}</dd>
-                  </div>
-                }
-                <div class="llm-meta-item">
-                  <dt>API key</dt>
-                  <dd>
-                    {{ lang.t(item.hasKey ? 'SETTINGS_LLM_KEY_OK' : 'SETTINGS_LLM_KEY_NONE') }}
-                  </dd>
-                </div>
-              </dl>
-            </li>
-          }
-        </ul>
-      }
+      <div class="llm-entry">
+        <button matButton="filled" type="button" (click)="manageProviders()">
+          <mat-icon aria-hidden="true">tune</mat-icon>
+          {{ lang.t('SETTINGS_LLM_MANAGE') }}
+        </button>
 
-      <p class="llm-note">
-        <mat-icon aria-hidden="true">info</mat-icon>
-        <span>{{ lang.t('SETTINGS_LLM_NOTE') }}</span>
-      </p>
+        <p class="llm-note">
+          <mat-icon aria-hidden="true">info</mat-icon>
+          <span>{{ lang.t('SETTINGS_LLM_NOTE') }}</span>
+        </p>
+      </div>
     </mat-card>
   }
 </section>
