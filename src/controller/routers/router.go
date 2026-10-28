@@ -21,7 +21,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	adminAPI *apis.ArticleAdminAPI, embedCacheAPI *apis.EmbedCacheAdminAPI,
 	consistencyAPI *apis.ConsistencyAPI, healthAPI *apis.HealthAPI,
 	searchAPI *apis.SearchAPI, chatAPI *apis.ChatAPI,
-	conversationAPI *apis.ConversationAPI,
+	conversationAPI *apis.ConversationAPI, llmAPI *apis.LLMAPI,
 	cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
 	trace middlewares.ITraceMiddleware, rl middlewares.IRateLimiter) *Router {
 	if cfg.GetApp().Env == "production" {
@@ -92,7 +92,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		}
 		authed.POST("/search", searchAPI.Query)
 		authed.POST("/chat", chatAPI.Chat)
-		registerConversationRoutes(authed, conversationAPI)
+		registerConversationRoutes(authed, conversationAPI, llmAPI)
 	}
 
 	return &Router{Engine: engine}
@@ -113,15 +113,18 @@ func registerPublicRoutes(v1 *gin.RouterGroup, api *apis.PingPongAPI, userAPI *a
 	v1.POST("/auth/logout", userAPI.Logout)
 }
 
-// registerConversationRoutes ghi nhóm route phiên chat của chính user (S1).
-// Tách khỏi NewRouter vì hàm đó đã chạm ngân sách (guardrail
-// src/quality/function_budget_test.go) — KHÔNG gate admin: ai cũng có phiên
-// riêng, service đã scope theo user_id lấy từ token.
-func registerConversationRoutes(authed *gin.RouterGroup, api *apis.ConversationAPI) {
+// registerConversationRoutes ghi nhóm route phiên chat của chính user (S1) và
+// lựa chọn provider/model cho UI (Đợt 28). Tách khỏi NewRouter vì hàm đó đã
+// chạm ngân sách (guardrail src/quality/function_budget_test.go) — KHÔNG gate
+// admin: ai cũng có phiên riêng và đều được chọn model; service options tự
+// giới hạn field admin-only theo role trong token.
+func registerConversationRoutes(authed *gin.RouterGroup, api *apis.ConversationAPI, llmAPI *apis.LLMAPI) {
 	authed.POST("/conversations", api.Create)
 	authed.GET("/conversations", api.List)
 	authed.GET("/conversations/:id", api.Get)
 	authed.PATCH("/conversations/:id", api.Rename)
 	authed.DELETE("/conversations/:id", api.Delete)
 	authed.GET("/conversations/:id/messages", api.Messages)
+	// Lựa chọn provider/model đọc từ config — menu chat + Settings.
+	authed.GET("/llm/options", llmAPI.Options)
 }

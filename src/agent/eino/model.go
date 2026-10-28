@@ -99,6 +99,17 @@ type ProviderAgents struct {
 	DefaultModel map[string]string
 }
 
+// EffectiveProvider chuẩn hoá slug provider cho 1 request: lowercase/trim,
+// rỗng thì provider mặc định của registry. Chat dùng nó để ghi response/lưu
+// phiên đúng provider THỰC ĐÃ CHẠY, không phải chuỗi client gửi (có thể rỗng).
+func (p *ProviderAgents) EffectiveProvider(provider string) string {
+	name := strings.ToLower(strings.TrimSpace(provider))
+	if name == "" && p != nil {
+		name = p.DefaultProvider
+	}
+	return name
+}
+
 // Resolve chọn agent + model cho 1 request: provider rỗng thì mặc
 // định, model rỗng thì model mặc định của provider đó, thinking bật thì lấy
 // bản agent đã bật suy nghĩ (nếu provider đó có). Provider chưa cấu
@@ -107,10 +118,7 @@ func (p *ProviderAgents) Resolve(provider, model string, thinking bool) (*ChatAg
 	if p == nil {
 		return nil, "", fmt.Errorf("eino agent: chưa được dựng")
 	}
-	name := strings.ToLower(strings.TrimSpace(provider))
-	if name == "" {
-		name = p.DefaultProvider
-	}
+	name := p.EffectiveProvider(provider)
 	agent, ok := p.Agents[name]
 	if !ok {
 		return nil, "", fmt.Errorf("eino agent: provider %q chưa cấu hình (mới có: %s)", name, availableProviders(p.Agents))

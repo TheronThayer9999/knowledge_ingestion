@@ -1477,6 +1477,43 @@
                 }
             }
         },
+        "/api/v1/llm/options": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Trả danh sách provider đã cấu hình (sắp theo slug) kèm model gợi ý, trạng thái khả dụng và nhãn suy luận sâu. Không bao giờ trả api_key. `base_url`/`has_key` chỉ có với admin (role ≥ 1).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "Danh sách provider/model cho UI",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/ping": {
             "get": {
                 "description": "Returns pong with server timestamp",

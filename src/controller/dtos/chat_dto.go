@@ -61,9 +61,13 @@ type ChatChart struct {
 // ChatResponse là câu trả lời hoàn chỉnh — answer là Markdown để ReactJS
 // render bằng react-markdown, cites để map component trích dẫn.
 type ChatResponse struct {
-	Answer       string      `json:"answer" example:"Mức phạt là **0.05%/ngày**[^1]."`
-	QuestionType string      `json:"question_type" example:"lookup"`
-	Cites        []*ChatCite `json:"cites"`
+	Answer       string `json:"answer" example:"Mức phạt là **0.05%/ngày**[^1]."`
+	QuestionType string `json:"question_type" example:"lookup"`
+	// Provider/Model là lựa chọn THỰC đã chạy (đã resolve default) — FE gắn
+	// badge dưới câu trả lời mà không phải đoán lại từ state chọn.
+	Provider string      `json:"provider" example:"9router"`
+	Model    string      `json:"model" example:"kc/nvidia/nemotron-3.5-super-vl:free"`
+	Cites    []*ChatCite `json:"cites"`
 	// Charts là biểu đồ của lượt này — dựng từ collector chứ không từ lời model,
 	// buildCharts luôn trả mảng (kể cả rỗng) nên FE không gặp null.
 	Charts []*ChatChart `json:"charts"`

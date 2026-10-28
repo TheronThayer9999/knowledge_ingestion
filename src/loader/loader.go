@@ -124,6 +124,9 @@ func loadService() []fx.Option {
 		// hai vai hẹp (khuôn NewArticlePageRepository/NewArticlePageIssues).
 		fx.Provide(services.NewConversationService),
 		fx.Provide(services.NewChatSessionStore),
+		// Bảng chọn provider/model cho UI (Đợt 28) — đọc config + registry
+		// agent đã dựng, không gọi LLM/DB.
+		fx.Provide(usecase.NewLLMOptionsService),
 	}
 }
 
@@ -160,6 +163,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewSearchAPI),
 		fx.Provide(apis.NewChatAPI),
 		fx.Provide(apis.NewConversationAPI),
+		fx.Provide(apis.NewLLMAPI),
 		fx.Provide(routers.NewRouter),
 	}
 }

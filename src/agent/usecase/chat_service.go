@@ -117,13 +117,16 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 	// Provider/model theo request, rỗng thì mặc định theo cấu hình — chọn
 	// sai provider (chưa cấu hình key) thì 400 rõ lý do, không 500. thinking
 	// bật thì đi bản agent đã dựng client có `think` (provider không hỗ trợ
-	// thì Resolve tự fallback bản thường).
-	agent, model, err := s.providers.Resolve(in.Provider, in.Model, in.Thinking)
+	// thì Resolve tự fallback bản thường). Chốt slug THỰC đã chạy vào in để
+	// response + lượt lưu ghi đúng provider, không phải chuỗi client gửi.
+	provider := s.providers.EffectiveProvider(in.Provider)
+	agent, model, err := s.providers.Resolve(provider, in.Model, in.Thinking)
 	if err != nil {
 		return dtos.Fail[*dtos.ChatResponse](
 			errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, err.Error()),
 		)
 	}
+	in.Provider = provider
 	in.Model = model
 
 	ctx = eino.WithScope(ctx, eino.Scope{UserID: userID, CategoryIDs: in.CategoryIDs})
@@ -167,6 +170,8 @@ func (s *chatService) compose(ctx context.Context, res eino.RunResult, model, me
 	return &dtos.ChatResponse{
 		Answer:       answer,
 		QuestionType: s.label(ctx, model, message, res.Searched),
+		Provider:     in.Provider,
+		Model:        model,
 		Cites:        cites,
 		Charts:       charts,
 		Reasoning:    clipReasoning(res.Reasoning),

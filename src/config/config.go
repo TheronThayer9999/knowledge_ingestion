@@ -104,11 +104,20 @@ const (
 // chung cho mọi backend OpenAI-compatible. Model rỗng nghĩa là chưa chọn —
 // request phải ép model theo mỗi lượt.
 type LLMProviderConfig struct {
-	Type        string  `json:"type"`
-	Model       string  `json:"model"`
-	BaseURL     string  `json:"base_url"`
-	APIKey      string  `json:"api_key"`
-	Temperature float64 `json:"temperature"`
+	Type string `json:"type"`
+	// Label là tên hiển thị trên UI; rỗng thì UI dùng chính slug. Không ảnh
+	// hưởng cách chọn provider (request vẫn gửi slug).
+	Label string `json:"label"`
+	// Model là model mặc định của provider (rỗng = request phải ép model).
+	Model string `json:"model"`
+	// Models là danh sách model gợi ý cho menu chọn trên UI; rỗng thì lấy
+	// đúng [model] — config cũ không có field này vẫn chạy nguyên. Đây chỉ là
+	// metadata hiển thị: backend không chặn model ngoài danh sách (provider tự
+	// từ chối model sai).
+	Models      []string `json:"models"`
+	BaseURL     string   `json:"base_url"`
+	APIKey      string   `json:"api_key"`
+	Temperature float64  `json:"temperature"`
 	// TopP 0 = không gửi (provider tự quyết) — chỉ set khi muốn ép nucleus
 	// sampling; Generally recommend alter TopP hoặc Temperature, không cả hai.
 	TopP       float64 `json:"top_p"`

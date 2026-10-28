@@ -23,6 +23,14 @@ type IUserResolver interface {
 	UserID(ctx context.Context) (int64, bool)
 }
 
+// ILLMOptions là bảng chọn provider/model mà UI cần (Đợt 28). Agent là nơi
+// biết provider nào đã dựng được agent (available) nên năng lực này nằm ở
+// agent; role do controller đọc từ token và truyền vào để quyết định field
+// admin-only (base_url/has_key) — không nhận role từ client.
+type ILLMOptions interface {
+	Options(ctx context.Context, role int) dtos.Result[*dtos.LLMOptionsResponse]
+}
+
 // ChatSession là những gì một phiên chat cần biết trước khi chạy một lượt:
 // lịch sử (đã cắt cửa sổ) + phạm vi/provider/model đã lưu của phiên.
 type ChatSession struct {
