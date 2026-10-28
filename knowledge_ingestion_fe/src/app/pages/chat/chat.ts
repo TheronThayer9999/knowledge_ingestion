@@ -143,6 +143,21 @@ export class Chat {
    */
   protected readonly providers = signal<LlmProviderOption[]>([]);
   /**
+   * Model đang chọn có client suy luận sâu không (Đợt 28). "Suy luận sâu" là
+   * khả năng của TỪNG provider, không phải công tắc vạn năng: để user bật trong
+   * khi backend âm thầm bỏ qua thì tai hại hơn là tắt nút và nói rõ lý do. Để
+   * trống ("theo cấu hình") thì tra provider mặc định; danh sách options chưa
+   * tải được thì coi như bật được (đừng tự khoá bừa).
+   */
+  protected readonly thinkingSupported = computed(() => {
+    const list = this.providers();
+    const slug = this.provider();
+    const pick = slug
+      ? list.find((item) => item.slug === slug)
+      : list.find((item) => item.isDefault);
+    return pick?.thinking ?? true;
+  });
+  /**
    * Tệp đính kèm của lượt KẾ TIẾP. Chỉ sống trong ngữ cảnh một lượt: gửi xong
    * là xoá, lỗi thì trả lại để người dùng không phải chọn/đợi trích lại tệp.
    */
@@ -223,6 +238,11 @@ export class Chat {
   protected selectModel(choice: ModelChoice): void {
     this.provider.set(choice.provider);
     this.model.set(choice.model);
+    // Chọn sang provider không có client "nghĩ" thì tắt luôn chip — lựa chọn
+    // hiển thị phải đúng cái backend sẽ làm ở lượt kế tiếp.
+    if (!this.thinkingSupported()) {
+      this.thinking.set(false);
+    }
   }
 
   /** Nhãn hiển thị của provider — rơi về slug khi không có trong danh sách options */
@@ -247,6 +267,13 @@ export class Chat {
     }
     if (this.sessionLocked()) {
       this.messages.warning('CHAT_LOCKED_HINT');
+      return;
+    }
+    // Chốt chặn thứ hai: chip đã tự chặn chiều BẬT, nhưng đường phím tắt/lỗi
+    // tương lai không được phép bật suy luận sâu cho model không có nó (đang bật
+    // thì vẫn tắt được — lựa chọn của phiên cũ phải đổi lại được).
+    if (!this.thinkingSupported() && !this.thinking()) {
+      this.messages.warning('CHAT_THINKING_UNSUPPORTED');
       return;
     }
     this.thinking.update((value) => !value);

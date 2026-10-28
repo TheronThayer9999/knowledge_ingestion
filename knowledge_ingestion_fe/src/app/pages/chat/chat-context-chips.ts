@@ -5,7 +5,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import type { LlmProviderOption } from '../../core/llm/llm.models';
 import type { Category } from '../../core/knowledge/knowledge.models';
-import { LangService } from '../../core/i18n/lang.service';
+import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
 
 /** Lựa chọn provider/model — rỗng = theo cấu hình mặc định */
 export interface ModelChoice {
@@ -52,6 +52,12 @@ export class ChatContextChips {
   /** Provider/model đang chọn; rỗng = theo cấu hình */
   readonly provider = input('');
   readonly model = input('');
+  /**
+   * Provider/model đang chọn có client suy luận sâu không. Mặc định true để
+   * màn chưa có options (backend lỗi) không tự khoá bừa; khi false thì chip
+   * hiện khoá kèm lý do — bật được rồi bị âm thầm bỏ còn hại hơn là tắt nút.
+   */
+  readonly thinkingSupported = input(true);
 
   readonly pickScope = output<number>();
   readonly toggleThinking = output<void>();
@@ -80,6 +86,24 @@ export class ChatContextChips {
     return this.locked() || this.busy();
   }
 
+  /**
+   * Chip suy luận sâu: khoá khi phiên khoá/busy, hoặc khi model đang chọn không
+   * có client "nghĩ". Ở trường hợp sau chỉ khoá chiều BẬT — phiên cũ có thể lưu
+   * thinking=true rồi provider đổi sang loại không hỗ trợ, user vẫn phải tắt
+   * được để khớp cái backend sẽ làm.
+   */
+  protected readonly thinkingBlocked = computed(
+    () => this.isLocked() || (!this.thinkingSupported() && !this.thinking()),
+  );
+
+  /** Tooltip nói đúng lý do: model không nghĩ được thì không phải tại phiên */
+  protected thinkingHintKey(): TranslationKey {
+    if (!this.thinkingSupported()) {
+      return 'CHAT_THINKING_UNSUPPORTED';
+    }
+    return this.locked() ? 'CHAT_CHIP_LOCKED_HINT' : 'CHAT_THINKING_HINT';
+  }
+
   protected chooseScope(id: number): void {
     if (this.isLocked()) {
       return;
@@ -88,7 +112,7 @@ export class ChatContextChips {
   }
 
   protected toggleDeepThinking(): void {
-    if (this.isLocked()) {
+    if (this.thinkingBlocked()) {
       return;
     }
     this.toggleThinking.emit();

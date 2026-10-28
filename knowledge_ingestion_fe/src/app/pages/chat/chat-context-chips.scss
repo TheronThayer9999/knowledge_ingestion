@@ -94,9 +94,14 @@
 }
 
 // Dòng nhóm provider trong menu mô hình: nhãn tĩnh, không bấm được
+// Nhãn nhóm provider trong menu model: phần tử TĨNH (không phải mục bấm được),
+// nên tự canh padding theo dòng menu của Material và thụt vào một bậc so với
+// model bên dưới để nhìn ra quan hệ nhóm.
 .menu-heading {
   font: var(--text-style-xs-strong);
   color: var(--color-muted);
+  padding: var(--space-2) var(--space-4);
+  letter-spacing: 0.06em;
 }
 
 // Id model dài ("kc/nvidia/nemotron-3.5-super-vl:free") — xuống dòng được

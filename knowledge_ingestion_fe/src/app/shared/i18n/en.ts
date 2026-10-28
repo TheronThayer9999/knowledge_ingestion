@@ -245,6 +245,7 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   CHAT_THINKING: 'Searching your documents…',
   CHAT_THINKING_TOGGLE: 'Deep thinking',
   CHAT_THINKING_HINT: 'Ask the assistant to reason more carefully before answering',
+  CHAT_THINKING_UNSUPPORTED: 'The selected provider/model does not support deep reasoning',
   CHAT_THINKING_DEEP: 'Thinking it through before answering…',
   CHAT_REASONING: 'How the assistant reasoned',
   CHAT_STOP: 'Stop',

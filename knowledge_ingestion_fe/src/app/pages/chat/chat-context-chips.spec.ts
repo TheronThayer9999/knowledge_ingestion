@@ -50,6 +50,7 @@ function setup(inputs: {
   providers?: LlmProviderOption[];
   provider?: string;
   model?: string;
+  thinkingSupported?: boolean;
 }): Setup {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({ imports: [ChatContextChips] });
@@ -65,6 +66,7 @@ function setup(inputs: {
   fixture.componentRef.setInput('providers', inputs.providers ?? []);
   fixture.componentRef.setInput('provider', inputs.provider ?? '');
   fixture.componentRef.setInput('model', inputs.model ?? '');
+  fixture.componentRef.setInput('thinkingSupported', inputs.thinkingSupported ?? true);
   fixture.detectChanges();
   return { fixture, lang };
 }
@@ -178,6 +180,46 @@ describe('ChatContextChips — khoá mềm (nhóm 5 + 7)', () => {
   });
 });
 
+describe('ChatContextChips — khoá "Suy luận sâu" theo năng lực model (Đợt 28)', () => {
+  it('model không hỗ trợ: chip khoá, tooltip nói đúng lý do, bấm KHÔNG phát toggle', () => {
+    const { fixture, lang } = setup({ thinkingSupported: false });
+    const toggle = vi.fn();
+    fixture.componentInstance.toggleThinking.subscribe(toggle);
+
+    const button = chip(fixture, 1);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.classList.contains('is-locked')).toBe(true);
+    // Lý do phải là "model không hỗ trợ", không phải "tạo phiên mới"
+    expect(tooltipOf(fixture, 1)).toBe(lang.t('CHAT_THINKING_UNSUPPORTED'));
+
+    button.click();
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
+  it('đang BẬT mà model không hỗ trợ (phiên cũ) thì vẫn tắt được', () => {
+    const { fixture } = setup({ thinking: true, thinkingSupported: false });
+    const toggle = vi.fn();
+    fixture.componentInstance.toggleThinking.subscribe(toggle);
+
+    expect(chip(fixture, 1).getAttribute('aria-disabled')).toBe('false');
+    chip(fixture, 1).click();
+
+    expect(toggle).toHaveBeenCalled();
+  });
+
+  it('model có hỗ trợ: chip sáng và bấm được như thường', () => {
+    const { fixture, lang } = setup({ thinkingSupported: true });
+    const toggle = vi.fn();
+    fixture.componentInstance.toggleThinking.subscribe(toggle);
+
+    expect(chip(fixture, 1).getAttribute('aria-disabled')).toBe('false');
+    expect(tooltipOf(fixture, 1)).toBe(lang.t('CHAT_THINKING_HINT'));
+    chip(fixture, 1).click();
+
+    expect(toggle).toHaveBeenCalled();
+  });
+});
+
 describe('ChatContextChips — chip mô hình (Đợt 28)', () => {
   it('không có provider (options lỗi) thì ẩn hẳn chip mô hình', () => {
     const { fixture } = setup({ providers: [] });
@@ -202,11 +244,13 @@ describe('ChatContextChips — chip mô hình (Đợt 28)', () => {
     const { fixture } = setup({ providers: PROVIDERS, provider: '9router', model: 'gpt-oss' });
     const element = fixture.nativeElement as HTMLElement;
 
-    expect(element.querySelectorAll('.chip-value')[2].textContent?.trim()).toBe('9Router · gpt-oss');
+    expect(element.querySelectorAll('.chip-value')[2].textContent?.trim()).toBe(
+      '9Router · gpt-oss',
+    );
     expect(element.querySelectorAll('.chip')[2].classList.contains('is-active')).toBe(true);
   });
 
-  it('menu nhóm theo provider: mục đầu "Theo cấu hình", sau đó heading + model', async () => {
+  it('menu nhóm theo provider: nhãn nhóm là DIV tĩnh, model mới là mục bấm', async () => {
     const { fixture, lang } = setup({ providers: PROVIDERS });
     const component = fixture.componentInstance;
     const picked: { provider: string; model: string }[] = [];
@@ -220,15 +264,19 @@ describe('ChatContextChips — chip mô hình (Đợt 28)', () => {
     await new Promise((resolve) => setTimeout(resolve));
 
     const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.mat-mdc-menu-item'));
-    // 1 mục "Theo cấu hình" + 2 heading + 3 model (9router có 2, groq có 1)
-    expect(items.length).toBe(6);
+    // Chỉ còn các mục CHỌN được: "Theo cấu hình" + 3 model (9router 2, groq 1).
+    // Tên provider trước đây là <button disabled> nên bị đếm nhầm thành mục bị
+    // hỏng — giờ nó là div nhãn nhóm.
+    expect(items.length).toBe(4);
     expect(items[0].textContent).toContain(lang.t('CHAT_MODEL_CONFIG'));
-    expect(items[1].textContent).toContain('9Router');
-    expect(items[1].disabled).toBe(true);
-    expect(items[2].textContent).toContain('nemotron');
-    expect(items[3].textContent).toContain('gpt-oss');
+    expect(items[1].textContent).toContain('nemotron');
+    expect(items[2].textContent).toContain('gpt-oss');
 
-    items[3].click();
+    const headings = Array.from(document.querySelectorAll('.menu-heading'));
+    expect(headings.map((el) => el.textContent?.trim())).toEqual(['9Router', 'Groq']);
+    expect(headings[0].tagName).toBe('DIV');
+
+    items[2].click();
     expect(picked).toEqual([{ provider: '9router', model: 'gpt-oss' }]);
   });
 
@@ -242,7 +290,8 @@ describe('ChatContextChips — chip mô hình (Đợt 28)', () => {
     await new Promise((resolve) => setTimeout(resolve));
 
     const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.mat-mdc-menu-item'));
-    expect(items[5].textContent).toContain('llama-3.3-70b');
+    // groq không khai models → menu vẫn liệt kê đúng model mặc định của nó
+    expect(items[3].textContent).toContain('llama-3.3-70b');
   });
 
   it('bấm "Theo cấu hình" phát provider/model rỗng (không ghi đè lựa chọn)', async () => {
