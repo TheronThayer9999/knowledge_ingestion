@@ -1,6 +1,6 @@
 # Đợt 28 — Lộ provider/model lên UI (Nấc 1) + chọn model trong chat
 
-Ngày: 2026-10-28 · Trạng thái: xong (nấc 1 + nấc 2) · Nối: Đợt 8 (CLI/env chọn provider), Đợt 25 (phiên chat), Đợt 27 (chip phạm vi/suy luận)
+Ngày: 2026-10-28 · Trạng thái: xong (nấc 1 + nấc 2 + nấc 3) · Nối: Đợt 8 (CLI/env chọn provider), Đợt 25 (phiên chat), Đợt 27 (chip phạm vi/suy luận)
 
 ## 1. Yêu cầu
 
@@ -182,4 +182,93 @@ hỏi AI".
   theo rune, gột tên) và `chat_attachment_test.go` (khối prompt, no-op, cắt
   text client, gột tên). FE: 3 test service (multipart, thiếu `chars`, body
   `send` có attachment).
+
+## 10. Kết quả Nấc 3 — định nghĩa provider cũng tạo/sửa/tắt/xoá được từ UI
+
+Yêu cầu: "tiếp tục hoàn thành tính năng option provider llm từ UI thay vì từ
+config như hiện tại". Nghĩa là provider không còn là độc quyền của
+`configs/config.json`: admin thêm mới, đổi nhãn, đổi loại, đổi `base_url`, tắt
+và xoá ngay trong popup; file config lùi về vai trò **mặc định + khai hàng
+loạt** (temperature/timeout/rpm).
+
+### 10.1 Quyết định
+
+- Bảng `llm_provider_settings` nhận thêm cột định nghĩa: `label`, `type`,
+  `base_url`, `disabled` (`models`/`model`/`api_key_cipher` giữ nguyên). Merge
+  vẫn là "DB thắng từng field, bỏ trống = theo config"; `type: ollama` mà quên
+  `base_url` thì fallback `http://localhost:11434` đúng như `config.Load`.
+- Danh sách provider hiệu lực = **config ∪ DB**, gom trong một hàm duy nhất
+  `ProviderConfigs(llms, settings, secret)` mà boot loader, worker compile,
+  `/llm/options` và các endpoint ghi cùng dùng — thêm provider từ UI là có agent
+  ngay, không restart.
+- `PUT /llm/providers/:slug` (create/update) và `DELETE /llm/providers/:slug`
+  trả **toàn bộ** `LLMOptionsResponse` để FE nạp lại một lần, khỏi gọi thêm
+  `/llm/options`. Field form bỏ trống không ghi đè (`applyProviderForm` chỉ chạm
+  field được gửi). Key gửi kèm trong cùng một lần bấm, mã hoá trước khi xuống
+  repo.
+- Chặn từ sớm: `validateConnection` chạy trên cấu hình đã hợp nhất — thiếu
+  type/base_url, `base_url` không phải http(s), openai-compatible thiếu key là
+  400 đọc được tại form; Ollama local được phép không key.
+- Hai chốt an toàn nghiệp vụ: **không tắt/xoá được provider mặc định** (cả
+  provider của file lẫn provider UI tạo — E2E bắt được lỗ này ở đường xoá) và
+  **xoá là phân nhánh theo nguồn**: provider ở file quay về đúng config (gỡ phần
+  ghi đè), provider UI tạo biến mất hẳn. `repo.Delete` HARD (`Unscoped`) để tạo
+  lại cùng slug không đụng `uniqueIndex`.
+- Lỗi dựng client sau khi lưu **không** biến thao tác của admin thành mất trắng
+  (`applyAfterSave`): dòng vẫn nằm DB, agent bị tháo và provider hiện "chưa sẵn
+  sàng"; sửa key/base_url rồi lưu lại là chạy.
+- Lỗi tải model (`POST .../models`) với provider không tới được trước đây là 500
+  "internal server error". Nay `providerTransportError` + `transportReason` phân
+  loại theo **kiểu lỗi của stdlib** (DNS / timeout / `ECONNREFUSED` / không tới
+  được) → 502 kèm lý do tiếng Việt, log vẫn giữ lỗi gốc, ctx bị huỷ để nguyên
+  (499). Message không chứa host/cổng.
+
+### 10.2 FE
+
+Popup thêm "Thêm provider" (form slug + nhãn + loại + base_url + key), mỗi hàng
+có form định nghĩa (nhãn/loại/base_url) chỉ gửi field đã sửa, công tắc Tắt/Bật,
+nút Xoá với hint nói rõ xoá là về file hay mất hẳn, badge "Đã tắt" và nhãn nguồn
+"Khai ở file"/"Tạo từ UI (CSDL)". Bản nháp tạo mới khởi đầu `type:
+openai-compatible` **rỗng** ở các form sửa (để không vô tình ghi đè type provider
+ollama khi admin chỉ sửa nhãn). 23 key i18n mới, có bản en tương ứng.
+
+### 10.3 Kiểm chứng
+
+- BE: `go build`/`go vet`/`golangci-lint` (0 issues)/`go test ./...` xanh. Test
+  mới: `llm_provider_crud_test.go` (union + thứ tự + disabled, `from_config`
+  hai nguồn, form chỉ chạm field gửi lên, `validateConnection`, guard xoá provider
+  mặc định + xoá thật, JSON không lộ key) và `llm_settings_service_test.go`
+  (`providerTransportError` 3 nhánh + không lộ host, 502 mapping, ctx huỷ).
+- FE: `npm run lint` sạch, `npm test -- --watch=false` 31 file/236 test xanh,
+  `npm run build` xanh.
+- E2E thật port 9001 (`%TEMP%\ki_e2e\dot28_provider_crud_e2e.py`, 13 nhóm,
+  **0 thất bại**): tạo provider DB-only → user thường cũng thấy (không có
+  field admin); tắt → biến mất khỏi menu chat, bật lại → `available`; sửa mỗi
+  nhãn giữ nguyên base_url+key; slug/loại/base_url sai → 400 tiếng Việt; tắt và
+  xoá provider mặc định → 400; mọi đường ghi của user → 403; `POST models` với
+  URL giả → 502 "tên miền trong base_url không tồn tại"; xoá provider DB-only →
+  mất, xoá lần hai → 404; sửa đè provider file rồi xoá → label quay về đúng
+  file; không response nào (2 role) chứa `api_key`/`cipher`/plaintext.
+- Dọn sau E2E: `llm_provider_settings` rỗng, xoá user tạm 117/118.
+
+## 11. Chốt hai lỗ còn lại của yêu cầu gốc (menu model + "Suy luận sâu")
+
+Yêu cầu gốc chê dropdown model "phẳng, tên provider hiện như tiêu đề nhóm trông
+như mục bị hỏng" và "bật được Suy luận sâu dù model không hỗ trợ".
+
+- **Nhóm provider trong menu**: heading đổi từ `<button mat-menu-item disabled>`
+  sang `<div class="menu-heading">` — nhãn nhóm tĩnh, padding + thụt một bậc
+  theo model bên dưới, không còn giả dạng một mục bấm không được. CDK menu vốn
+  chỉ quản lý phần tử mang `mat-menu-item` nên điều hướng phím không đổi.
+- **Công tắc suy luận sâu theo năng lực model**: `/llm/options` đã trả `thinking`
+  từng provider, chat page suy ra `thinkingSupported` (provider đang chọn; để
+  trống "theo cấu hình" thì tra provider mặc định; options chưa tải được thì coi
+  như bật được để không tự khoá bừa). Chip khoá khi không hỗ trợ với tooltip
+  riêng `CHAT_THINKING_UNSUPPORTED` (khác hẳn "tạo phiên mới để đổi"), `selectModel`
+  tự tắt `thinking` khi đổi sang provider không có client "nghĩ", và
+  `toggleThinking` chốt lại lần nữa ở trang. **Chỉ khoá chiều BẬT**: phiên cũ có
+  thể lưu `thinking=true` rồi provider đổi loại, user vẫn phải tắt được.
+- Kiểm chứng: 3 test chip mới (khoá + tooltip đúng lý do + không phát output;
+  đang bật thì vẫn tắt được; hỗ trợ thì như cũ), test menu đổi sang đếm 4 mục
+  bấm được + 2 `div` nhãn nhóm. FE lint sạch, 31 file/239 test xanh, build xanh.
 
