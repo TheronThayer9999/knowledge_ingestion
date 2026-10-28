@@ -1,10 +1,14 @@
 package loader
 
 import (
+	"context"
+
 	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/agent/retrieval"
 	"knowledge_ingestion/src/agent/synthesis"
+	"knowledge_ingestion/src/agent/usecase"
+	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/domain"
 )
@@ -29,7 +33,8 @@ func newProviderAgents(
 	vectors domain.IVectorStore,
 	articleRepo domain.IArticleRepository,
 	pageIssues domain.ArticlePageIssues,
-	pageText domain.ArticlePageText) (*ProviderAgents, error) {
+	pageText domain.ArticlePageText,
+	settings domain.ILLMProviderSettingRepository) (*ProviderAgents, error) {
 
 	tools, err := eino.NewDefaultTools(eino.ToolDeps{
 		Hybrid:       hybrid,
@@ -47,13 +52,36 @@ func newProviderAgents(
 	// Dựng provider từ map llms.providers — thêm backend mới (Groq, DeepSeek,
 	// ...) chỉ cần khai báo config, dòng dưới không đổi. Map thì thứ tự không
 	// xác định nhưng BuildProviderAgents lưu theo slug nên kết quả ổn định.
+	//
+	// Key/model admin nhập trong popup (Đợt 28 nấc 2) nằm ở bảng
+	// llm_provider_settings và THẮNG config — cùng hàm merge với lần rebuild
+	// sau khi lưu, nên khởi động lại app không làm mất hiệu lực của key DB.
+	overrides := providerSettingOverrides(settings)
+	secret := cfg.GetJWT().Secret
 	providers := make([]eino.LLMProvider, 0, len(llms.Providers))
 	for slug, pcfg := range llms.Providers {
-		providers = append(providers, eino.NewConfigProvider(slug, pcfg))
+		merged := usecase.MergeProviderSetting(pcfg, overrides[eino.NormalizeSlug(slug)], secret)
+		providers = append(providers, eino.NewConfigProvider(slug, merged))
 	}
 	return eino.BuildProviderAgents(
 		eino.InstructionSet{Base: prompts.System, Sheets: prompts.Sheets},
 		llms.DefaultProvider, tools, providers...)
+}
+
+// providerSettingOverrides đọc cài đặt provider một lần lúc boot, khoá theo
+// slug đã chuẩn hoá. Lỗi đọc thì WARN rồi chạy đúng bằng config — key DB là
+// lớp phủ, không phải điều kiện sống của app.
+func providerSettingOverrides(repo domain.ILLMProviderSettingRepository) map[string]*domain.LLMProviderSetting {
+	rows, err := repo.List(context.Background())
+	if err != nil {
+		logs.Warnw("llm: không đọc được cài đặt provider lúc boot, dùng config", "error", err)
+		return nil
+	}
+	out := make(map[string]*domain.LLMProviderSetting, len(rows))
+	for _, row := range rows {
+		out[eino.NormalizeSlug(row.Slug)] = row
+	}
+	return out
 }
 
 // newHybridSearcher dựng pipeline hybrid dùng chung cho cả 2 đường /search

@@ -36,6 +36,16 @@ const MAX_FILE_SIZE = 500 << 20
 // treo connection. 20 file + dư địa cho field phụ.
 const MAX_STREAM_PARTS = 64
 
+// CHAT_ATTACHMENT_MAX_BYTES chốt dung lượng tệp đính kèm chat — 15MB. Khác
+// 500MB của kho tri thức: tệp chat được trích ĐỒNG BỘ ngay trong request nên
+// phải giữ thời gian/RAM trong một nhịp HTTP, không xếp hàng worker.
+const CHAT_ATTACHMENT_MAX_BYTES = 15 << 20
+
+// CHAT_ATTACHMENT_MAX_CHARS trần ký tự của tệp đính kèm đưa vào prompt. Cắt
+// theo rune để không xé ký tự Việt; phần dư bị bỏ chứ không làm hỏng lượt hỏi
+// (context model có hạn, tệp 500 trang không nhét vừa).
+const CHAT_ATTACHMENT_MAX_CHARS = 60000
+
 // EXTRACTED_PREFIX là "thư mục ảo" trong bucket cho artifact text đã trích
 // (phase extract) — tách khỏi UPLOAD_PREFIX để dọn/lifecycle nhìn 2 nhóm
 // riêng. Key artifact suy ra TẤT ĐỊNH từ storage key gốc nên chạy lại ghi

@@ -50,7 +50,7 @@ func optionsFixture() (config.LLMsConfig, *eino.ProviderAgents) {
 // registry, KHÔNG có base_url/has_key.
 func TestBuildLLMOptionsUserView(t *testing.T) {
 	llms, agents := optionsFixture()
-	res := buildLLMOptions(llms, agents, domain.RoleUser)
+	res := buildLLMOptions(llms, agents, nil, domain.RoleUser)
 
 	if res.DefaultProvider != "9router" || res.DefaultModel != "kc/nvidia/nemotron-3.5-super-vl:free" {
 		t.Fatalf("default = %q/%q", res.DefaultProvider, res.DefaultModel)
@@ -77,8 +77,11 @@ func TestBuildLLMOptionsUserView(t *testing.T) {
 	if groq.Available || groq.Label != "groq" {
 		t.Errorf("groq = %+v (label phải fallback về slug)", groq)
 	}
-	if len(groq.Models) != 2 || groq.Models[0] != "m1" || groq.Models[1] != "m2" {
-		t.Errorf("models groq = %v, muốn trim/dedup [m1 m2]", groq.Models)
+	// Model mặc định chưa có trong danh sách nên được chèn lên đầu — menu chat
+	// không được thiếu đúng model sẽ chạy khi request bỏ trống.
+	if len(groq.Models) != 3 || groq.Models[0] != "qwen/qwen3.8-27b" ||
+		groq.Models[1] != "m1" || groq.Models[2] != "m2" {
+		t.Errorf("models groq = %v, muốn [default m1 m2] (trim/dedup)", groq.Models)
 	}
 
 	if !res.Providers[2].Thinking {
@@ -90,7 +93,7 @@ func TestBuildLLMOptionsUserView(t *testing.T) {
 // has_key cho MỌI provider — kể cả provider thiếu key (has_key=false).
 func TestBuildLLMOptionsAdminView(t *testing.T) {
 	llms, agents := optionsFixture()
-	res := buildLLMOptions(llms, agents, domain.RoleAdmin)
+	res := buildLLMOptions(llms, agents, nil, domain.RoleAdmin)
 
 	bySlug := make(map[string]bool, len(res.Providers))
 	for _, p := range res.Providers {
@@ -119,7 +122,7 @@ func TestBuildLLMOptionsAdminView(t *testing.T) {
 func TestLLMOptionsJSONNeverLeaksKey(t *testing.T) {
 	llms, agents := optionsFixture()
 
-	userRaw, err := json.Marshal(buildLLMOptions(llms, agents, domain.RoleUser))
+	userRaw, err := json.Marshal(buildLLMOptions(llms, agents, nil, domain.RoleUser))
 	if err != nil {
 		t.Fatalf("marshal user: %v", err)
 	}
@@ -131,7 +134,7 @@ func TestLLMOptionsJSONNeverLeaksKey(t *testing.T) {
 		t.Fatalf("response user lộ field admin: %s", userJSON)
 	}
 
-	adminRaw, err := json.Marshal(buildLLMOptions(llms, agents, domain.RoleAdmin))
+	adminRaw, err := json.Marshal(buildLLMOptions(llms, agents, nil, domain.RoleAdmin))
 	if err != nil {
 		t.Fatalf("marshal admin: %v", err)
 	}

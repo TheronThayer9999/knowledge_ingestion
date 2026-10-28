@@ -14,7 +14,8 @@ import (
 func migrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(domain.User{}, domain.Category{}, domain.Article{}, domain.ArticlePage{},
 		domain.EmbedCacheEntry{}, domain.OutboxEvent{}, domain.CategoryClosure{}, domain.ArticleSection{},
-		domain.RefreshToken{}, domain.WorkerHeartbeat{}, domain.Conversation{}, domain.ChatMessage{}); err != nil {
+		domain.RefreshToken{}, domain.WorkerHeartbeat{}, domain.Conversation{}, domain.ChatMessage{},
+		domain.LLMProviderSetting{}); err != nil {
 		return err
 	}
 	// Bảng article_chunks đã bị bỏ hoàn toàn (phase chunk + embed gộp làm 1,

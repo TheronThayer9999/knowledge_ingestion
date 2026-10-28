@@ -91,12 +91,14 @@ func loadAdapter() []fx.Option {
 	}
 }
 
-// loadChatRepositories: repo của phiên chat — để riêng khỏi loadAdapter cho
+// loadChatRepositories: repo của phiên chat + cài đặt provider (key/model admin
+// nhập trong popup — cùng nhóm "chat cần đọc"), để riêng khỏi loadAdapter cho
 // hàm đó nằm trong ngân sách (guardrail src/quality/function_budget_test.go).
 func loadChatRepositories() []fx.Option {
 	return []fx.Option{
 		fx.Provide(repository.NewConversationRepository),
 		fx.Provide(repository.NewChatMessageRepository),
+		fx.Provide(repository.NewLLMProviderSettingRepository),
 	}
 }
 
@@ -105,6 +107,7 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewPingPongService),
 		fx.Provide(services.NewUserService),
 		fx.Provide(services.NewFileService),
+		fx.Provide(services.NewChatAttachmentService),
 		fx.Provide(services.NewCategoryService),
 		fx.Provide(services.NewArticleService),
 		fx.Provide(services.NewArticleAdminService),
@@ -125,8 +128,10 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewConversationService),
 		fx.Provide(services.NewChatSessionStore),
 		// Bảng chọn provider/model cho UI (Đợt 28) — đọc config + registry
-		// agent đã dựng, không gọi LLM/DB.
+		// agent đã dựng, không gọi LLM. Bản ghi (nấc 2) là phần admin lưu key /
+		// tải model / chọn model; cả hai dùng chung repo llm_provider_settings.
 		fx.Provide(usecase.NewLLMOptionsService),
+		fx.Provide(usecase.NewLLMSettingsService),
 	}
 }
 

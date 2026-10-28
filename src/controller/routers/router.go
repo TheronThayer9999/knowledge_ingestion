@@ -92,7 +92,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		}
 		authed.POST("/search", searchAPI.Query)
 		authed.POST("/chat", chatAPI.Chat)
-		registerConversationRoutes(authed, conversationAPI, llmAPI)
+		registerConversationRoutes(authed, chatAPI, conversationAPI, llmAPI)
 	}
 
 	return &Router{Engine: engine}
@@ -113,18 +113,36 @@ func registerPublicRoutes(v1 *gin.RouterGroup, api *apis.PingPongAPI, userAPI *a
 	v1.POST("/auth/logout", userAPI.Logout)
 }
 
-// registerConversationRoutes ghi nhóm route phiên chat của chính user (S1) và
-// lựa chọn provider/model cho UI (Đợt 28). Tách khỏi NewRouter vì hàm đó đã
-// chạm ngân sách (guardrail src/quality/function_budget_test.go) — KHÔNG gate
-// admin: ai cũng có phiên riêng và đều được chọn model; service options tự
-// giới hạn field admin-only theo role trong token.
-func registerConversationRoutes(authed *gin.RouterGroup, api *apis.ConversationAPI, llmAPI *apis.LLMAPI) {
+// registerConversationRoutes ghi nhóm route phiên chat của chính user (S1),
+// tệp đính kèm chat, lựa chọn provider/model cho UI (Đợt 28) và nhóm quản trị
+// kết nối LLM (nấc 2). Tách khỏi NewRouter vì hàm đó đã chạm ngân sách
+// (guardrail src/quality/function_budget_test.go).
+//
+// /chat/attachments trích text ĐỒNG BỘ cho một lượt hỏi (không nạp kho) nên
+// mọi user đã đăng nhập đều dùng được; /llm/options KHÔNG gate admin: ai cũng
+// được chọn model, service tự giới hạn field admin-only theo role trong token.
+// Ngược lại /llm/providers/* là ĐƯỜNG GHI (key/model) nên gắn RequireRole ngay
+// trên từng route — sub-group ở đây thay vì nhét thêm dòng vào block admin của
+// NewRouter (đang đúng ngân sách).
+func registerConversationRoutes(authed *gin.RouterGroup, chatAPI *apis.ChatAPI,
+	api *apis.ConversationAPI, llmAPI *apis.LLMAPI) {
 	authed.POST("/conversations", api.Create)
 	authed.GET("/conversations", api.List)
 	authed.GET("/conversations/:id", api.Get)
 	authed.PATCH("/conversations/:id", api.Rename)
 	authed.DELETE("/conversations/:id", api.Delete)
 	authed.GET("/conversations/:id/messages", api.Messages)
+	// Tệp đính kèm của một lượt: trả text đã trích, FE gửi lại trong ChatRequest.
+	authed.POST("/chat/attachments", chatAPI.Attachment)
 	// Lựa chọn provider/model đọc từ config — menu chat + Settings.
 	authed.GET("/llm/options", llmAPI.Options)
+
+	llmAdmin := authed.Group("")
+	llmAdmin.Use(middlewares.RequireRole(domain.RoleAdmin))
+	{
+		llmAdmin.PUT("/llm/providers/:slug/key", llmAPI.SaveKey)
+		llmAdmin.DELETE("/llm/providers/:slug/key", llmAPI.ClearKey)
+		llmAdmin.POST("/llm/providers/:slug/models", llmAPI.LoadModels)
+		llmAdmin.PUT("/llm/providers/:slug/model", llmAPI.SelectModel)
+	}
 }

@@ -7,6 +7,17 @@ type ChatHistoryItem struct {
 	Content string `json:"content" binding:"required,max=4000" example:"Nghị định 123 nói về gì?"`
 }
 
+// ChatAttachment là tệp người dùng đính kèm cho MỘT lượt hỏi. Server trích
+// text ở POST /chat/attachments rồi FE gửi lại kèm câu hỏi — tệp KHÔNG vào kho
+// tri thức (không chunk/embed), nên câu trả lời dựa trên tệp không có trích dẫn
+// [^n] và không sống sang lượt sau. Text bị chặn trần ở service, không tin
+// kích thước client gửi.
+type ChatAttachment struct {
+	Name  string `json:"name" binding:"required,max=255" example:"bao-cao-quy.pdf"`
+	Text  string `json:"text" binding:"required" example:"Nội dung đã trích từ tệp…"`
+	Chars int    `json:"chars,omitempty" example:"15230"`
+}
+
 // ChatRequest hỏi đáp tri thức — message bắt buộc; provider/model tùy chọn:
 // provider rỗng thì dùng mặc định (ollama), model rỗng thì dùng model mặc
 // định của provider đó (openrouter: google/gemma-4-31b-it:free).
@@ -25,6 +36,9 @@ type ChatRequest struct {
 	CategoryIDs []int64           `json:"category_ids,omitempty" binding:"omitempty,max=100,dive,gt=0"`
 	Limit       int               `json:"limit,omitempty" binding:"omitempty,gte=0"`
 	History     []ChatHistoryItem `json:"history,omitempty"`
+	// Attachment là tệp đính kèm của RIÊNG lượt này (rỗng = không có); nội dung
+	// được chèn vào ngữ cảnh của lượt, không lưu vào phiên.
+	Attachment *ChatAttachment `json:"attachment,omitempty"`
 	// ConversationID gắn lượt chat vào một phiên đã lưu (S1): có id thì LỊCH SỬ
 	// NẠP TỪ DB và `history` ở trên bị bỏ qua — hai nguồn cùng lúc là hai sự thật.
 	// 0/không gửi = hành vi cũ: tin history client, không lưu lượt nào.

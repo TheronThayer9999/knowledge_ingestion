@@ -88,6 +88,8 @@ func BuildProviderAgents(system InstructionSet, defaultProvider string, tools []
 		Models:          make(map[string]einomodel.ToolCallingChatModel),
 		DefaultProvider: strings.ToLower(strings.TrimSpace(defaultProvider)),
 		DefaultModel:    make(map[string]string),
+		system:          system,
+		tools:           tools,
 	}
 	if out.DefaultProvider == "" {
 		out.DefaultProvider = ProviderOllama
@@ -159,4 +161,38 @@ func availableProviders(m map[string]*ChatAgent) string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ", ")
+}
+
+// Rebuild dựng lại client + agent của MỘT provider rồi thay vào registry đang
+// chạy — dùng khi admin lưu/xoá API key trong popup (Đợt 28 nấc 2): key được
+// nhúng vào client lúc NewModel nên đổi key là phải dựng client mới, không có
+// call option per-request. pcfg là cấu hình ĐÃ merge (DB thắng config).
+//
+// Không đụng DefaultProvider. Lượt chat đang chạy giữ agent cũ tới khi xong —
+// thay map dưới Lock nên không ai đọc thấy trạng thái nửa vời.
+func (p *ProviderAgents) Rebuild(slug string, pcfg config.LLMProviderConfig) error {
+	if p == nil {
+		return fmt.Errorf("eino agent: chưa được dựng")
+	}
+	name := NormalizeSlug(slug)
+	if name == "" {
+		return fmt.Errorf("eino agent: thiếu slug provider")
+	}
+	provider := NewConfigProvider(name, pcfg)
+	model, err := provider.NewModel()
+	if err != nil {
+		return err
+	}
+	agent, err := NewChatAgent(model, p.system, p.tools...)
+	if err != nil {
+		return err
+	}
+	thinking := buildThinkingAgent(name, provider, p.system, p.tools, agent)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Agents[name] = agent
+	p.Models[name] = model
+	p.ThinkingAgents[name] = thinking
+	p.DefaultModel[name] = provider.DefaultModel()
+	return nil
 }

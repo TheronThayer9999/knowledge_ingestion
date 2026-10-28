@@ -138,7 +138,10 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 	// model nhiều vòng vì tool) — transport in kèm nhãn nên dashboard provider
 	// đối chiếu được request nào là chat, request nào là worker compile.
 	ctx = utils.WithLLMSite(ctx, constants.LLMSiteChat)
-	res, err := s.run(ctx, agent, model, in, dto.Message)
+	// Tệp đính kèm chỉ chèn vào ngữ cảnh của LƯỢT này; bản lưu phiên và nhãn
+	// câu hỏi vẫn dùng câu hỏi gốc (xem withAttachment).
+	message := withAttachment(dto.Message, dto.Attachment)
+	res, err := s.run(ctx, agent, model, in, message)
 	if err != nil {
 		// Lỗi HTTP của provider (model sai, hết quota...) trả mã đọc được, lỗi
 		// không kết nối được dịch vụ AI phía dưới (chưa bật Ollama local cho

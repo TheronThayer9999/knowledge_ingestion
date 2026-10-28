@@ -8,6 +8,7 @@ import (
 
 	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/agent/prompts"
+	"knowledge_ingestion/src/agent/usecase"
 	"knowledge_ingestion/src/common/chunker"
 	"knowledge_ingestion/src/common/enhancement"
 	"knowledge_ingestion/src/common/extractor"
@@ -144,23 +145,14 @@ func LoadWorkerInfra() []fx.Option {
 		// provider mặc định (llms.default_provider) + system prompt load từ
 		// prompts/compile_section.md lúc startup (fail-fast nếu thiếu file).
 		// Tool-calling model thỏa BaseChatModel nên đưa thẳng vào summarizer.
-		fx.Provide(func(cfg config.IConfig) (domain.ISummarizer, error) {
-			llms := cfg.GetLLMs()
-			slug := strings.ToLower(strings.TrimSpace(llms.DefaultProvider))
-			var pcfg config.LLMProviderConfig
-			var found string
-			for name, p := range llms.Providers {
-				if strings.ToLower(strings.TrimSpace(name)) == slug {
-					found, pcfg = name, p
-					break
-				}
-			}
-			if found == "" {
-				return nil, fmt.Errorf("worker compile: không thấy llms.providers[%q] cho default_provider", slug)
+		fx.Provide(func(cfg config.IConfig, db *gorm.DB) (domain.ISummarizer, error) {
+			found, pcfg, err := compileProviderConfig(cfg, db)
+			if err != nil {
+				return nil, err
 			}
 			model, err := eino.NewConfigProvider(found, pcfg).NewModel()
 			if err != nil {
-				return nil, fmt.Errorf("worker compile: dựng model %q lỗi: %w", slug, err)
+				return nil, fmt.Errorf("worker compile: dựng model %q lỗi: %w", found, err)
 			}
 			system, err := prompts.Load(cfg.GetAgent().PromptDir, "compile_section.md")
 			if err != nil {
@@ -172,4 +164,39 @@ func LoadWorkerInfra() []fx.Option {
 		// scan; prompt thiếu thì fail-fast ngay lúc boot.
 		fx.Options(vlmOptions()...),
 	}
+}
+
+// compileProviderConfig chọn entry llms.providers của default_provider cho
+// compile phase 2 và phủ key/model admin đã lưu trong DB (Đợt 28 nấc 2) — cùng
+// hàm merge với chat nên key nhập trong popup có hiệu lực cho cả tóm tắt mục,
+// không chỉ chat. Tách khỏi LoadWorkerInfra (hàm đó đang đúng ngân sách).
+func compileProviderConfig(cfg config.IConfig, db *gorm.DB) (string, config.LLMProviderConfig, error) {
+	llms := cfg.GetLLMs()
+	slug := strings.ToLower(strings.TrimSpace(llms.DefaultProvider))
+	var pcfg config.LLMProviderConfig
+	var found string
+	for name, p := range llms.Providers {
+		if strings.ToLower(strings.TrimSpace(name)) == slug {
+			found, pcfg = strings.ToLower(strings.TrimSpace(name)), p
+			break
+		}
+	}
+	if found == "" {
+		return "", config.LLMProviderConfig{}, fmt.Errorf(
+			"worker compile: không thấy llms.providers[%q] cho default_provider", slug)
+	}
+	return found, usecase.MergeProviderSetting(pcfg, workerProviderSetting(db, found), cfg.GetJWT().Secret), nil
+}
+
+// workerProviderSetting đọc cài đặt đã lưu của provider; thiếu dòng hoặc lỗi
+// đọc đều coi như "không có" để compile chạy tiếp bằng config — key DB là lớp
+// phủ, không được làm worker chết lúc boot.
+func workerProviderSetting(db *gorm.DB, slug string) *domain.LLMProviderSetting {
+	row, err := repository.NewLLMProviderSettingRepository(db).Get(context.Background(), slug)
+	if err != nil {
+		logs.Warnw("worker compile: không đọc được cài đặt provider, dùng config",
+			"provider", slug, "error", err)
+		return nil
+	}
+	return row
 }

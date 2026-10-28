@@ -15,6 +15,7 @@ import (
 	ollamamodel "github.com/cloudwego/eino-ext/components/model/ollama"
 	openaiprovider "github.com/cloudwego/eino-ext/components/model/openai"
 	einomodel "github.com/cloudwego/eino/components/model"
+	einotool "github.com/cloudwego/eino/components/tool"
 
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/utils"
@@ -53,7 +54,7 @@ func NewChatModel(cfg config.LLMProviderConfig, thinking bool) (einomodel.ToolCa
 		timeout = 120
 	}
 	conf := &ollamamodel.ChatModelConfig{
-		BaseURL: trimAPIURL(cfg.BaseURL),
+		BaseURL: TrimAPIURL(cfg.BaseURL),
 		HTTPClient: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
 			// Ollama cloud (gemma4) cũng dính cap ~30 req/phút như Groq —
@@ -97,6 +98,16 @@ type ProviderAgents struct {
 	DefaultProvider string
 	// DefaultModel là model mặc định theo provider khi request không ép model.
 	DefaultModel map[string]string
+
+	// mu bảo vệ 4 map ở trên khi admin lưu key / đổi model mặc định lúc app
+	// đang chạy (Đợt 28 nấc 2). Mọi đường đọc phải đi qua method có RLock —
+	// đọc thẳng map từ ngoài package là data race với lần rebuild.
+	mu sync.RWMutex
+	// system/tools giữ lại để rebuild MỘT provider khi có key mới mà không
+	// phải dựng lại cả registry. Ghi đúng 1 lần trong BuildProviderAgents
+	// trước khi registry được chia sẻ nên chỉ đọc, không cần khoá.
+	system InstructionSet
+	tools  []einotool.BaseTool
 }
 
 // EffectiveProvider chuẩn hoá slug provider cho 1 request: lowercase/trim,
@@ -119,6 +130,10 @@ func (p *ProviderAgents) Resolve(provider, model string, thinking bool) (*ChatAg
 		return nil, "", fmt.Errorf("eino agent: chưa được dựng")
 	}
 	name := p.EffectiveProvider(provider)
+	// Khoá đọc trong suốt lúc chọn agent/model: admin có thể đang rebuild đúng
+	// provider này (lưu key), đọc nửa chừng sẽ thấy map vừa đổi giữa 2 lần tra.
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	agent, ok := p.Agents[name]
 	if !ok {
 		return nil, "", fmt.Errorf("eino agent: provider %q chưa cấu hình (mới có: %s)", name, availableProviders(p.Agents))
@@ -135,6 +150,61 @@ func (p *ProviderAgents) Resolve(provider, model string, thinking bool) (*ChatAg
 		return nil, "", fmt.Errorf("eino agent: provider %q chưa có model mặc định, request phải ép model", name)
 	}
 	return agent, model, nil
+}
+
+// NormalizeSlug dùng chung cho mọi method tra registry: config là map nên slug
+// có thể lẫn hoa/thường và client gửi lên cũng vậy — registry luôn khoá bằng
+// bản lowercase đã trim.
+func NormalizeSlug(slug string) string {
+	return strings.ToLower(strings.TrimSpace(slug))
+}
+
+// Agent trả agent thường của provider (nil,false nếu chưa dựng được).
+func (p *ProviderAgents) Agent(slug string) (*ChatAgent, bool) {
+	if p == nil {
+		return nil, false
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	agent, ok := p.Agents[NormalizeSlug(slug)]
+	return agent, ok
+}
+
+// ThinkingDistinct: provider có client suy nghĩ RIÊNG hay không. ThinkingAgents
+// của provider không có công tắc được gán đúng agent thường, nên so con trỏ
+// thay vì chỉ kiểm tra sự tồn tại.
+func (p *ProviderAgents) ThinkingDistinct(slug string) bool {
+	if p == nil {
+		return false
+	}
+	name := NormalizeSlug(slug)
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	regular, ok := p.Agents[name]
+	deep, has := p.ThinkingAgents[name]
+	return ok && has && deep != nil && deep != regular
+}
+
+// RawModel trả client thô của provider — classifier vòng 1 lấy client mặc định.
+func (p *ProviderAgents) RawModel(slug string) (einomodel.ToolCallingChatModel, bool) {
+	if p == nil {
+		return nil, false
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	model, ok := p.Models[NormalizeSlug(slug)]
+	return model, ok
+}
+
+// SetDefaultModel đổi model mặc định của provider khi admin chọn trong popup —
+// agent không cần dựng lại vì model đi theo từng request (model.WithModel).
+func (p *ProviderAgents) SetDefaultModel(slug, model string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.DefaultModel[NormalizeSlug(slug)] = strings.TrimSpace(model)
 }
 
 // loggingTransport ghi 1 dòng log cho MỖI request HTTPS thật ra khỏi process
@@ -358,9 +428,10 @@ func NewOpenAIChatModel(slug string, cfg config.LLMProviderConfig) (einomodel.To
 	return openaiprovider.NewChatModel(context.Background(), out)
 }
 
-// trimAPIURL cắt hậu tố API khỏi base_url đã cấu hình — lib framework parse
+// TrimAPIURL cắt hậu tố API khỏi base_url đã cấu hình — lib framework parse
 // URL nguyên văn nên phải dọn trước, không thì request thành /api/api/chat.
-func trimAPIURL(raw string) string {
+// Export vì service "tải model" cũng cần dựng URL /api/tags từ cùng base_url.
+func TrimAPIURL(raw string) string {
 	base := strings.TrimRight(strings.TrimSpace(raw), "/")
 	for _, suffix := range []string{"/api/chat", "/api/tags", "/api/embed", "/api"} {
 		base = strings.TrimSuffix(base, suffix)

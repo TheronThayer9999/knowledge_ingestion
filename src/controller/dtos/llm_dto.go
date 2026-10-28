@@ -26,6 +26,13 @@ type LLMProviderOption struct {
 	// user thường không thấy, càng không thấy key thật.
 	BaseURL string `json:"base_url,omitempty" example:"http://localhost:20128/v1"`
 	HasKey  *bool  `json:"has_key,omitempty" example:"true"`
+	// KeySource (admin) cho biết key đang dùng đến từ đâu: "config" hay
+	// "database" — chỉ là nguồn, KHÔNG phải key. Rỗng = chưa có key (provider
+	// kiểu ollama local vẫn chạy được không key).
+	KeySource string `json:"key_source,omitempty" example:"database"`
+	// ConfigModel (admin) là model mặc định trong configs/config.json, để popup
+	// phân biệt "mặc định của config" với model admin đã chọn trong DB.
+	ConfigModel string `json:"config_model,omitempty" example:"llama3.1:8b"`
 }
 
 // LLMOptionsResponse là toàn bộ lựa chọn model cho UI chat + Settings: mặc
@@ -36,4 +43,25 @@ type LLMOptionsResponse struct {
 	DefaultModel    string `json:"default_model" example:"kc/nvidia/nemotron-3.5-super-vl:free"`
 	// Providers luôn là mảng (kể cả rỗng) để FE khỏi phải xử lý null.
 	Providers []*LLMProviderOption `json:"providers"`
+}
+
+// SaveLLMKeyRequest là key admin nhập trong popup provider. Key đi 1 chiều vào
+// server (mã hoá rồi lưu DB) — không có endpoint nào đọc ngược key ra, kể cả
+// cho admin. Slug lấy từ path nên không có trong body.
+type SaveLLMKeyRequest struct {
+	APIKey string `json:"api_key" binding:"required,min=1,max=512" example:"sk-..."`
+}
+
+// SelectLLMModelRequest chọn model mặc định cho provider. Không chặn model
+// ngoài danh sách đã tải: provider mới là nơi từ chối model sai, và admin có
+// thể gõ model chưa kịp "Tải model".
+type SelectLLMModelRequest struct {
+	Model string `json:"model" binding:"required,min=1,max=128" example:"llama3.1:8b"`
+}
+
+// LLMModelsResponse là kết quả "Tải model" từ chính provider — danh sách đã
+// lưu vào DB nên lần mở popup sau vẫn thấy, không cần gọi lại.
+type LLMModelsResponse struct {
+	Slug   string   `json:"slug" example:"9router"`
+	Models []string `json:"models"`
 }

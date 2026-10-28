@@ -1180,6 +1180,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/chat/attachments": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reads the file synchronously with the same extractor registry as the ingestion pipeline and returns its plain text. The text is then sent back inside ChatRequest.attachment for that single turn — it is NOT indexed into the knowledge base, so the answer comes immediately and carries no citations from the file. Admin-free, any signed-in user may attach a file. Objects larger than 15 MB are rejected.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Extract text from an uploaded file for one chat turn",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "file to read for this chat turn (max 15 MB)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/conversations": {
             "get": {
                 "security": [
@@ -1491,7 +1534,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Trả danh sách provider đã cấu hình (sắp theo slug) kèm model gợi ý, trạng thái khả dụng và nhãn suy luận sâu. Không bao giờ trả api_key. ` + "`" + `base_url` + "`" + `/` + "`" + `has_key` + "`" + ` chỉ có với admin (role ≥ 1).",
+                "description": "Trả danh sách provider đã cấu hình (sắp theo slug) kèm model gợi ý, trạng thái khả dụng và nhãn suy luận sâu. Không bao giờ trả api_key. ` + "`" + `base_url` + "`" + `/` + "`" + `has_key` + "`" + `/` + "`" + `key_source` + "`" + `/` + "`" + `config_model` + "`" + ` chỉ có với admin (role ≥ 1).",
                 "produces": [
                     "application/json"
                 ],
@@ -1514,6 +1557,230 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/llm/providers/{slug}/key": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mã hoá key rồi lưu DB; key trong DB thắng key config. Không có endpoint nào đọc ngược key ra client.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "Lưu API key cho provider (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Slug provider trong config",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "API key",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.SaveLLMKeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Xoá key trong DB để provider quay về key trong config. Model đã chọn và danh sách model đã tải vẫn giữ.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "Xoá API key đã lưu của provider (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Slug provider trong config",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/llm/providers/{slug}/model": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Model chọn lưu DB và thắng model config cho các lượt chat không ép model.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "Chọn model mặc định cho provider (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Slug provider trong config",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Model mặc định",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.SelectLLMModelRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/llm/providers/{slug}/models": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Gọi chính provider (OpenAI-compatible: GET /models, Ollama: GET /api/tags) bằng key đang có hiệu lực, lưu lại rồi trả danh sách đã sắp A→Z.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm"
+                ],
+                "summary": "Tải danh sách model từ provider (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Slug provider trong config",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
                         "schema": {
                             "$ref": "#/definitions/dtos.ResponseResource"
                         }
@@ -1868,6 +2135,28 @@ const docTemplate = `{
                 }
             }
         },
+        "dtos.ChatAttachment": {
+            "type": "object",
+            "required": [
+                "name",
+                "text"
+            ],
+            "properties": {
+                "chars": {
+                    "type": "integer",
+                    "example": 15230
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "example": "bao-cao-quy.pdf"
+                },
+                "text": {
+                    "type": "string",
+                    "example": "Nội dung đã trích từ tệp…"
+                }
+            }
+        },
         "dtos.ChatHistoryItem": {
             "type": "object",
             "required": [
@@ -1896,6 +2185,14 @@ const docTemplate = `{
                 "message"
             ],
             "properties": {
+                "attachment": {
+                    "description": "Attachment là tệp đính kèm của RIÊNG lượt này (rỗng = không có); nội dung\nđược chèn vào ngữ cảnh của lượt, không lưu vào phiên.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dtos.ChatAttachment"
+                        }
+                    ]
+                },
                 "category_ids": {
                     "type": "array",
                     "maxItems": 100,
@@ -2192,6 +2489,20 @@ const docTemplate = `{
                 }
             }
         },
+        "dtos.SaveLLMKeyRequest": {
+            "type": "object",
+            "required": [
+                "api_key"
+            ],
+            "properties": {
+                "api_key": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "example": "sk-..."
+                }
+            }
+        },
         "dtos.SearchRequest": {
             "type": "object",
             "required": [
@@ -2226,6 +2537,20 @@ const docTemplate = `{
                 "score_threshold": {
                     "type": "number",
                     "minimum": 0
+                }
+            }
+        },
+        "dtos.SelectLLMModelRequest": {
+            "type": "object",
+            "required": [
+                "model"
+            ],
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "example": "llama3.1:8b"
                 }
             }
         },
