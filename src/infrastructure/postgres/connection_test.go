@@ -50,6 +50,8 @@ func (c *testConfig) GetAgent() config.AgentConfig { return c.inner.GetAgent() }
 
 func (c *testConfig) GetVLM() config.VLMConfig { return c.inner.GetVLM() }
 
+func (c *testConfig) GetChatCrypto() config.ChatCryptoConfig { return c.inner.GetChatCrypto() }
+
 func loadTestConfig(t *testing.T) config.IConfig {
 	t.Helper()
 	path := os.Getenv("APP_CONFIG_PATH")

@@ -204,6 +204,37 @@ definitions:
     - password
     - username
     type: object
+  dtos.CryptoHandshakeRequest:
+    properties:
+      client_public:
+        description: |-
+          44 ký tự là base64 có padding của đúng 32 byte; chặn sớm để không phải
+          gọi crypto ở service với chuỗi rác.
+        example: a1V3...
+        maxLength: 44
+        minLength: 43
+        type: string
+    required:
+    - client_public
+    type: object
+  dtos.CryptoHandshakeResponse:
+    properties:
+      expires_at:
+        description: |-
+          ExpiresAt là RFC3339 của hạn phiên — chuỗi chứ không phải time.Time để
+          omitempty có tác dụng (mode "off" thì cả ba field rỗng, FE đi plaintext).
+        example: "2026-10-28T18:00:00Z"
+        type: string
+      mode:
+        example: optional
+        type: string
+      server_public:
+        example: b2V4…
+        type: string
+      session_id:
+        example: 3f2a…
+        type: string
+    type: object
   dtos.EmbedCachePurgeRequest:
     properties:
       older_than_days:
@@ -1415,6 +1446,44 @@ paths:
       summary: Lịch sử message của một phiên
       tags:
       - conversations
+  /api/v1/crypto/handshake:
+    post:
+      consumes:
+      - application/json
+      description: 'Client sinh cặp khoá X25519, gửi public key lên đây; server trả
+        public key ephemeral + session id, hai phía tự dẫn xuất chung một khoá AES-256-GCM.
+        Từ lượt sau, body của /chat, /chat/attachments, /conversations* đi trong phong
+        bì {v,sid,nonce,ct} kèm header X-KI-Session. Route này LUÔN plaintext (nó
+        là thứ dựng nên khoá) và cần Bearer token: phiên mã hoá gắn với user đã đăng
+        nhập.'
+      parameters:
+      - description: public key của client
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.CryptoHandshakeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/dtos.ResponseResource'
+            - properties:
+                data:
+                  $ref: '#/definitions/dtos.CryptoHandshakeResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Mở phiên mã hoá payload chat
+      tags:
+      - crypto
   /api/v1/llm/options:
     get:
       description: Trả danh sách provider đã cấu hình (sắp theo slug) kèm model gợi

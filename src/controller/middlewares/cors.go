@@ -41,7 +41,13 @@ func (m *corsMiddleware) Handler() gin.HandlerFunc {
 			h.Set("Vary", "Origin")
 			h.Set("Access-Control-Allow-Credentials", "true")
 			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			h.Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
+			// X-KI-Session là header phiên mã hoá (Đợt 29) — thiếu nó ở đây thì
+			// preflight OPTIONS bị chặn và FE không gửi được sid.
+			h.Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-KI-Session")
+			// Expose bắt buộc: response header `X-KI-Session: stale` là tín hiệu
+			// FE đọc để handshake lại. Không expose thì JS cross-origin nhìn
+			// thấy 400 mà không biết lý do, retry mù.
+			h.Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, X-KI-Session")
 			h.Set("Access-Control-Max-Age", "86400")
 		}
 		if c.Request.Method == http.MethodOptions {

@@ -23,25 +23,52 @@ type IConfig interface {
 	GetWorker() WorkerConfig
 	GetAgent() AgentConfig
 	GetVLM() VLMConfig
+	GetChatCrypto() ChatCryptoConfig
 }
 
 // Implementations
 type appConfig struct {
-	App       AppConfig       `json:"app"`
-	Database  DBConfig        `json:"database"`
-	Storage   S3Config        `json:"storage"`
-	Embedding EmbeddingConfig `json:"embedding"`
-	LLMs      LLMsConfig      `json:"llms"`
-	Qdrant    QdrantConfig    `json:"qdrant"`
-	OCR       OCRConfig       `json:"ocr"`
-	RedisCli  RedisConfig     `json:"redis"`
-	Rabbit    RabbitMQConfig  `json:"rabbitmq"`
-	JWTCli    JWTConfig       `json:"jwt"`
-	Cors      CorsConfig      `json:"cors"`
-	Worker    WorkerConfig    `json:"worker"`
-	Agent     AgentConfig     `json:"agent"`
-	VLM       VLMConfig       `json:"vlm"`
+	App        AppConfig        `json:"app"`
+	Database   DBConfig         `json:"database"`
+	Storage    S3Config         `json:"storage"`
+	Embedding  EmbeddingConfig  `json:"embedding"`
+	LLMs       LLMsConfig       `json:"llms"`
+	Qdrant     QdrantConfig     `json:"qdrant"`
+	OCR        OCRConfig        `json:"ocr"`
+	RedisCli   RedisConfig      `json:"redis"`
+	Rabbit     RabbitMQConfig   `json:"rabbitmq"`
+	JWTCli     JWTConfig        `json:"jwt"`
+	Cors       CorsConfig       `json:"cors"`
+	Worker     WorkerConfig     `json:"worker"`
+	Agent      AgentConfig      `json:"agent"`
+	VLM        VLMConfig        `json:"vlm"`
+	ChatCrypto ChatCryptoConfig `json:"chat_crypto"`
 }
+
+// ChatCryptoConfig bật/tắt mã hoá payload đường truyền cho nhóm API "khách hỏi
+// AI" (/chat, /chat/attachments, /conversations*) — Đợt 29.
+//
+// Ba chế độ, theo đúng lộ trình đã chốt (FE và BE không deploy cùng một thời
+// điểm nên phải có cửa đi chung):
+//   - "off": middleware bỏ qua toàn bộ, plaintext như cũ.
+//   - "optional" (mặc định): client có phiên thì gửi phong bì, không có thì gửi
+//     plaintext — cả hai cùng chạy, dùng lúc đang rollout.
+//   - "required": request trong phạm vi BẮT BUỘC có phong bì; plaintext bị 400.
+//     Chỉ bật khi mọi FE đã handshake.
+//
+// SessionTTLMinutes là hạn sống của khoá phiên ở Redis. Mốc phải dài hơn một
+// phiên chattypical (đọc lại lịch sử cả tiếng sau vẫn phải giải mã được response)
+// nhưng ngắn đủ để một khoá bị rò không sống mãi — mặc định 12 giờ.
+type ChatCryptoConfig struct {
+	Mode              string `json:"mode"`
+	SessionTTLMinutes int    `json:"session_ttl_minutes"`
+}
+
+const (
+	ChatCryptoOff      = "off"
+	ChatCryptoOptional = "optional"
+	ChatCryptoRequired = "required"
+)
 
 type AppConfig struct {
 	Name string `json:"name"`
@@ -298,6 +325,106 @@ type VLMConfig struct {
 	MaxImageBytes int `json:"max_image_bytes"`
 }
 
+// normalizeLLMProviders chuẩn hoá từng entry llms.providers: type hợp lệ,
+// base_url mượn từ embedding, api_key từ env, default + kẹp range cho các
+// tham số sinh. Fail-fast khi type lạ để lỗi cấu hình bắt ngay lúc boot.
+//
+// Tách 3 hàm vì thân vòng lặp cũ đã 17 điểm quyết định — vượt ngân sách mà
+// không có lý do chính đáng: mỗi tầng ở đây là một câu hỏi độc lập ("type nào",
+// "địa chỉ nào", "sinh bao nhiêu").
+func normalizeLLMProviders(cfg *appConfig) error {
+	if cfg.LLMs.DefaultProvider == "" {
+		cfg.LLMs.DefaultProvider = "ollama"
+	}
+	cfg.LLMs.DefaultProvider = strings.ToLower(strings.TrimSpace(cfg.LLMs.DefaultProvider))
+	for name, p := range cfg.LLMs.Providers {
+		normalized, err := normalizeLLMProvider(cfg, name, p)
+		if err != nil {
+			return err
+		}
+		cfg.LLMs.Providers[name] = normalized
+	}
+	return nil
+}
+
+// normalizeLLMProvider chốt type + base_url + api_key cho một provider.
+func normalizeLLMProvider(cfg *appConfig, name string, p LLMProviderConfig) (LLMProviderConfig, error) {
+	switch strings.ToLower(strings.TrimSpace(p.Type)) {
+	case LLMTypeOllama, LLMTypeOpenAI:
+		p.Type = strings.ToLower(strings.TrimSpace(p.Type))
+	default:
+		return p, fmt.Errorf("llms.providers.%s.type phải là %q hoặc %q, got %q",
+			name, LLMTypeOllama, LLMTypeOpenAI, p.Type)
+	}
+	// Cùng Ollama server với embedding là setup phổ biến nhất nên mượn
+	// khi base_url bỏ trống (vd local); Ollama Cloud thì khai base_url
+	// riêng trong config.
+	if p.Type == LLMTypeOllama && p.BaseURL == "" {
+		p.BaseURL = cfg.Embedding.BaseURL
+	}
+	if p.Type == LLMTypeOllama && p.BaseURL == "" {
+		p.BaseURL = "http://localhost:11434"
+	}
+	// Key ưu tiên env <TÊN_PROVIDER>_API_KEY (vd GROQ_API_KEY) để không
+	// commit secret vào file.
+	if envKey := os.Getenv(strings.ToUpper(name) + "_API_KEY"); envKey != "" {
+		p.APIKey = envKey
+	}
+	return withLLMSamplingDefaults(p), nil
+}
+
+// withLLMSamplingDefaults đặt default và kẹp range cho các tham số sinh.
+func withLLMSamplingDefaults(p LLMProviderConfig) LLMProviderConfig {
+	// RAG cần câu trả lời bám tài liệu nên mặc định 0 (tham lam, ít
+	// bịa); >2 là ngoài range OpenAI-compatible thì giữ 0.
+	if p.Temperature < 0 || p.Temperature > 2 {
+		p.Temperature = 0
+	}
+	if p.TopP < 0 || p.TopP > 1 {
+		p.TopP = 0 // 0 = không gửi, provider tự quyết
+	}
+	if p.MaxTokens <= 0 {
+		p.MaxTokens = 2048
+	}
+	if p.TimeoutSec <= 0 {
+		p.TimeoutSec = 120
+	}
+	// Kẹp trần 1 giờ — time.Duration(o.TimeoutSec)*time.Second tràn số
+	// với giá trị khổng lồ (thành âm rồi rơi về default một cách tình cờ).
+	if p.TimeoutSec > 3600 {
+		p.TimeoutSec = 3600
+	}
+	if p.RateLimitRPM < 0 {
+		p.RateLimitRPM = 0 // âm là lỗi nhập liệu — coi như không giới hạn
+	}
+	return p
+}
+
+// applyChatCryptoDefaults chốt chế độ mã hoá payload chat. Mặc định là
+// "optional" — an toàn cho rollout vì FE chưa kịp nâng cấp vẫn dùng được,
+// còn client đã handshake thì được mã hoá ngay. Giá trị lạ là lỗi gõ config
+// nên fail-fast, không âm thầm chạy "off" rồi tưởng đang mã hoá.
+func applyChatCryptoDefaults(cfg *appConfig) error {
+	if cfg.ChatCrypto.Mode == "" {
+		cfg.ChatCrypto.Mode = ChatCryptoOptional
+	}
+	cfg.ChatCrypto.Mode = strings.ToLower(strings.TrimSpace(cfg.ChatCrypto.Mode))
+	switch cfg.ChatCrypto.Mode {
+	case ChatCryptoOff, ChatCryptoOptional, ChatCryptoRequired:
+	default:
+		return fmt.Errorf("chat_crypto.mode phải là off/optional/required, got %q", cfg.ChatCrypto.Mode)
+	}
+	if cfg.ChatCrypto.SessionTTLMinutes <= 0 {
+		cfg.ChatCrypto.SessionTTLMinutes = 720 // 12 giờ
+	}
+	// Trần 7 ngày: phiên dài hơn thế nghĩa là client phải handshake lại,
+	// không phải khoá sống vĩnh viễn trong Redis.
+	if cfg.ChatCrypto.SessionTTLMinutes > 7*24*60 {
+		cfg.ChatCrypto.SessionTTLMinutes = 7 * 24 * 60
+	}
+	return nil
+}
+
 // Load đọc file JSON và trả về IConfig. opts áp SAU file và SAU env — dùng
 // cho flag CLI, nên thứ tự ưu tiên là flag > env > file (xem llm_selection.go).
 func Load(path string, opts ...LoadOption) (IConfig, error) {
@@ -327,59 +454,13 @@ func Load(path string, opts ...LoadOption) (IConfig, error) {
 	if cfg.Embedding.Dim <= 0 {
 		return nil, fmt.Errorf("embedding.dim must be > 0")
 	}
-	// llms là map provider thống nhất — thêm backend mới chỉ cần khai báo
-	// trong config (type "openai" cho mọi backend OpenAI-compatible, "ollama"
-	// cho Ollama native). Fail-fast khi type lạ để lỗi cấu hình bắt ngay lúc
-	// boot; thiếu api_key thì chỉ warn + bỏ qua provider đó (boot vẫn lên,
-	// request nào chọn nó mới 400). Key ưu tiên env <TÊN_PROVIDER>_API_KEY
-	// (vd GROQ_API_KEY, OPENROUTER_API_KEY) để không commit secret vào file.
-	if cfg.LLMs.DefaultProvider == "" {
-		cfg.LLMs.DefaultProvider = "ollama"
+	// llms là map provider thống nhất — mọi chuẩn hoá (default, env key, kẹp
+	// range, borrow base_url) nằm ở normalizeLLMProviders để Load còn đọc được.
+	if err := normalizeLLMProviders(&cfg); err != nil {
+		return nil, err
 	}
-	cfg.LLMs.DefaultProvider = strings.ToLower(strings.TrimSpace(cfg.LLMs.DefaultProvider))
-	for name, p := range cfg.LLMs.Providers {
-		switch strings.ToLower(strings.TrimSpace(p.Type)) {
-		case LLMTypeOllama, LLMTypeOpenAI:
-			p.Type = strings.ToLower(strings.TrimSpace(p.Type))
-		default:
-			return nil, fmt.Errorf("llms.providers.%s.type phải là %q hoặc %q, got %q",
-				name, LLMTypeOllama, LLMTypeOpenAI, p.Type)
-		}
-		// Cùng Ollama server với embedding là setup phổ biến nhất nên mượn
-		// khi base_url bỏ trống (vd local); Ollama Cloud thì khai base_url
-		// riêng trong config.
-		if p.Type == LLMTypeOllama && p.BaseURL == "" {
-			p.BaseURL = cfg.Embedding.BaseURL
-		}
-		if p.Type == LLMTypeOllama && p.BaseURL == "" {
-			p.BaseURL = "http://localhost:11434"
-		}
-		if envKey := os.Getenv(strings.ToUpper(name) + "_API_KEY"); envKey != "" {
-			p.APIKey = envKey
-		}
-		// RAG cần câu trả lời bám tài liệu nên mặc định 0 (tham lam, ít
-		// bịa); >2 là ngoài range OpenAI-compatible thì giữ 0.
-		if p.Temperature < 0 || p.Temperature > 2 {
-			p.Temperature = 0
-		}
-		if p.TopP < 0 || p.TopP > 1 {
-			p.TopP = 0 // 0 = không gửi, provider tự quyết
-		}
-		if p.MaxTokens <= 0 {
-			p.MaxTokens = 2048
-		}
-		if p.TimeoutSec <= 0 {
-			p.TimeoutSec = 120
-		}
-		// Kẹp trần 1 giờ — time.Duration(o.TimeoutSec)*time.Second tràn số
-		// với giá trị khổng lồ (thành âm rồi rơi về default một cách tình cờ).
-		if p.TimeoutSec > 3600 {
-			p.TimeoutSec = 3600
-		}
-		if p.RateLimitRPM < 0 {
-			p.RateLimitRPM = 0 // âm là lỗi nhập liệu — coi như không giới hạn
-		}
-		cfg.LLMs.Providers[name] = p
+	if err := applyChatCryptoDefaults(&cfg); err != nil {
+		return nil, err
 	}
 	// Lớp lựa chọn LLM: env trước rồi mới tới flag (LoadOption) — flag thắng
 	// env, env thắng file. Rỗng cả hai lớp thì giữ nguyên config như cũ.
@@ -571,17 +652,18 @@ func Load(path string, opts ...LoadOption) (IConfig, error) {
 }
 
 // Getter methods
-func (c *appConfig) GetApp() AppConfig             { return c.App }
-func (c *appConfig) GetDatabase() DBConfig         { return c.Database }
-func (c *appConfig) GetStorage() S3Config          { return c.Storage }
-func (c *appConfig) GetEmbedding() EmbeddingConfig { return c.Embedding }
-func (c *appConfig) GetLLMs() LLMsConfig           { return c.LLMs }
-func (c *appConfig) GetQdrant() QdrantConfig       { return c.Qdrant }
-func (c *appConfig) GetOCR() OCRConfig             { return c.OCR }
-func (c *appConfig) GetRedis() RedisConfig         { return c.RedisCli }
-func (c *appConfig) GetRabbitMQ() RabbitMQConfig   { return c.Rabbit }
-func (c *appConfig) GetJWT() JWTConfig             { return c.JWTCli }
-func (c *appConfig) GetCORS() CorsConfig           { return c.Cors }
-func (c *appConfig) GetWorker() WorkerConfig       { return c.Worker }
-func (c *appConfig) GetAgent() AgentConfig         { return c.Agent }
-func (c *appConfig) GetVLM() VLMConfig             { return c.VLM }
+func (c *appConfig) GetApp() AppConfig               { return c.App }
+func (c *appConfig) GetDatabase() DBConfig           { return c.Database }
+func (c *appConfig) GetStorage() S3Config            { return c.Storage }
+func (c *appConfig) GetEmbedding() EmbeddingConfig   { return c.Embedding }
+func (c *appConfig) GetLLMs() LLMsConfig             { return c.LLMs }
+func (c *appConfig) GetQdrant() QdrantConfig         { return c.Qdrant }
+func (c *appConfig) GetOCR() OCRConfig               { return c.OCR }
+func (c *appConfig) GetRedis() RedisConfig           { return c.RedisCli }
+func (c *appConfig) GetRabbitMQ() RabbitMQConfig     { return c.Rabbit }
+func (c *appConfig) GetJWT() JWTConfig               { return c.JWTCli }
+func (c *appConfig) GetCORS() CorsConfig             { return c.Cors }
+func (c *appConfig) GetWorker() WorkerConfig         { return c.Worker }
+func (c *appConfig) GetAgent() AgentConfig           { return c.Agent }
+func (c *appConfig) GetVLM() VLMConfig               { return c.VLM }
+func (c *appConfig) GetChatCrypto() ChatCryptoConfig { return c.ChatCrypto }

@@ -65,7 +65,7 @@ var functionBudgetAllowlist = []allowEntry{
 	{"src/common/extractor/pptx.go::pptxParagraphs", 40, 13},
 	{"src/common/extractor/xlsx.go::xlsxRows", 112, 30},
 	{"src/common/extractor/xlsx.go::xlsxSharedStrings", 48, 13},
-	{"src/config/config.go::Load", 269, 82},
+	{"src/config/config.go::Load", 223, 67},
 	// Bảng route thuần (1 điểm quyết định): mỗi endpoint thêm là mỗi dòng dài
 	// ra — nợ này lớn theo API, không phải theo độ phức tạp, nên cho tăng
 	// thay vì cắt hàm ra từng mảnh vô nghĩa.

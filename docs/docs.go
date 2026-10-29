@@ -1527,6 +1527,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/crypto/handshake": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Client sinh cặp khoá X25519, gửi public key lên đây; server trả public key ephemeral + session id, hai phía tự dẫn xuất chung một khoá AES-256-GCM. Từ lượt sau, body của /chat, /chat/attachments, /conversations* đi trong phong bì {v,sid,nonce,ct} kèm header X-KI-Session. Route này LUÔN plaintext (nó là thứ dựng nên khoá) và cần Bearer token: phiên mã hoá gắn với user đã đăng nhập.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "crypto"
+                ],
+                "summary": "Mở phiên mã hoá payload chat",
+                "parameters": [
+                    {
+                        "description": "public key của client",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.CryptoHandshakeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/dtos.ResponseResource"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dtos.CryptoHandshakeResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/llm/options": {
             "get": {
                 "security": [
@@ -2481,6 +2538,43 @@ const docTemplate = `{
                     "maxLength": 50,
                     "minLength": 3,
                     "example": "johndoe"
+                }
+            }
+        },
+        "dtos.CryptoHandshakeRequest": {
+            "type": "object",
+            "required": [
+                "client_public"
+            ],
+            "properties": {
+                "client_public": {
+                    "description": "44 ký tự là base64 có padding của đúng 32 byte; chặn sớm để không phải\ngọi crypto ở service với chuỗi rác.",
+                    "type": "string",
+                    "maxLength": 44,
+                    "minLength": 43,
+                    "example": "a1V3..."
+                }
+            }
+        },
+        "dtos.CryptoHandshakeResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "description": "ExpiresAt là RFC3339 của hạn phiên — chuỗi chứ không phải time.Time để\nomitempty có tác dụng (mode \"off\" thì cả ba field rỗng, FE đi plaintext).",
+                    "type": "string",
+                    "example": "2026-10-28T18:00:00Z"
+                },
+                "mode": {
+                    "type": "string",
+                    "example": "optional"
+                },
+                "server_public": {
+                    "type": "string",
+                    "example": "b2V4…"
+                },
+                "session_id": {
+                    "type": "string",
+                    "example": "3f2a…"
                 }
             }
         },

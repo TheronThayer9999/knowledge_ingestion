@@ -22,7 +22,8 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	consistencyAPI *apis.ConsistencyAPI, healthAPI *apis.HealthAPI,
 	searchAPI *apis.SearchAPI, chatAPI *apis.ChatAPI,
 	conversationAPI *apis.ConversationAPI, llmAPI *apis.LLMAPI,
-	cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
+	cryptoAPI *apis.CryptoAPI, cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
+	crypto middlewares.IChatCryptoMiddleware,
 	trace middlewares.ITraceMiddleware, rl middlewares.IRateLimiter) *Router {
 	if cfg.GetApp().Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -48,7 +49,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	// nên đổi pass/khóa acc có hiệu lực ngay. Thêm middleware mới
 	// (rate limit...) vào middlewares.Protected là đủ.
 	authed := v1.Group("")
-	authed.Use(middlewares.Protected(auth)...)
+	authed.Use(middlewares.Protected(auth, crypto)...)
 	{
 		authed.GET("/users", userAPI.GetAllUser)
 		authed.GET("/auth/profile", userAPI.Profile)
@@ -75,27 +76,35 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		// Trạng thái pipeline gọn (1 query 4 cột) cho UI poll tiến trình —
 		// không đặt dưới /articles vì đụng wildcard :id của gin.
 		authed.GET("/pipeline/articles", articleAPI.ListStatuses)
-		// Admin endpoints — yêu cầu role admin (role >= 1). Gate Role đã bật.
-		admin := authed.Group("")
-		admin.Use(middlewares.RequireRole(domain.RoleAdmin))
-		{
-			admin.POST("/admin/rebuild-vectors", adminAPI.Rebuild)
-			// Xoá trang đã trích → OCR lại (cải thiện chất lượng trích).
-			admin.POST("/admin/reset-extract", adminAPI.ResetExtract)
-			// Xem hàng đợi extract/index + bài chờ purge — read-only.
-			admin.GET("/admin/queue", adminAPI.Queue)
-			// Embed cache: monitor + janitor giữ bảng không phình.
-			admin.GET("/admin/embed-cache/stats", embedCacheAPI.Stats)
-			admin.POST("/admin/embed-cache/purge", embedCacheAPI.Purge)
-			// Kiểm tra tính toàn vẹn dữ liệu (orphan/cycle/missing self-row).
-			admin.GET("/admin/consistency", consistencyAPI.Check)
-		}
+		registerAdminRoutes(authed, adminAPI, embedCacheAPI, consistencyAPI)
 		authed.POST("/search", searchAPI.Query)
 		authed.POST("/chat", chatAPI.Chat)
-		registerConversationRoutes(authed, chatAPI, conversationAPI, llmAPI)
+		registerConversationRoutes(authed, chatAPI, conversationAPI, llmAPI, cryptoAPI)
 	}
 
 	return &Router{Engine: engine}
+}
+
+// registerAdminRoutes là nhóm quản trị (role >= 1): rebuild vector, OCR lại
+// trang, xem hàng đợi, embed cache và kiểm tra toàn vẹn dữ liệu. Tách khỏi
+// NewRouter vì hàm đó đã chạm ngân sách (guardrail
+// src/quality/function_budget_test.go).
+func registerAdminRoutes(authed *gin.RouterGroup, adminAPI *apis.ArticleAdminAPI,
+	embedCacheAPI *apis.EmbedCacheAdminAPI, consistencyAPI *apis.ConsistencyAPI) {
+	admin := authed.Group("")
+	admin.Use(middlewares.RequireRole(domain.RoleAdmin))
+	{
+		admin.POST("/admin/rebuild-vectors", adminAPI.Rebuild)
+		// Xoá trang đã trích → OCR lại (cải thiện chất lượng trích).
+		admin.POST("/admin/reset-extract", adminAPI.ResetExtract)
+		// Xem hàng đợi extract/index + bài chờ purge — read-only.
+		admin.GET("/admin/queue", adminAPI.Queue)
+		// Embed cache: monitor + janitor giữ bảng không phình.
+		admin.GET("/admin/embed-cache/stats", embedCacheAPI.Stats)
+		admin.POST("/admin/embed-cache/purge", embedCacheAPI.Purge)
+		// Kiểm tra tính toàn vẹn dữ liệu (orphan/cycle/missing self-row).
+		admin.GET("/admin/consistency", consistencyAPI.Check)
+	}
 }
 
 // registerPublicRoutes là nhóm không cần đăng nhập: ping/pong, đăng ký, đăng
@@ -125,7 +134,10 @@ func registerPublicRoutes(v1 *gin.RouterGroup, api *apis.PingPongAPI, userAPI *a
 // trên từng route — sub-group ở đây thay vì nhét thêm dòng vào block admin của
 // NewRouter (đang đúng ngân sách).
 func registerConversationRoutes(authed *gin.RouterGroup, chatAPI *apis.ChatAPI,
-	api *apis.ConversationAPI, llmAPI *apis.LLMAPI) {
+	api *apis.ConversationAPI, llmAPI *apis.LLMAPI, cryptoAPI *apis.CryptoAPI) {
+	// Mở phiên mã hoá payload — ĐƯỜNG DUY NHẤT trong nhóm này luôn plaintext
+	// (inScope của middleware loại /crypto), vì nó là thứ dựng nên khoá.
+	authed.POST("/crypto/handshake", cryptoAPI.Handshake)
 	authed.POST("/conversations", api.Create)
 	authed.GET("/conversations", api.List)
 	authed.GET("/conversations/:id", api.Get)

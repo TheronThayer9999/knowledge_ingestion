@@ -30,8 +30,13 @@ func Global(cors ICORSMiddleware, trace ITraceMiddleware) []gin.HandlerFunc {
 //		auth.Handler(),
 //		ratelimit.Handler(),
 //	}
-func Protected(auth IAuthMiddleware) []gin.HandlerFunc {
+//
+// crypto ĐỨNG SAU auth: middleware mở phong bì cần user_id đã verify để từ chối
+// sid của người khác, và mọi đường abort của auth (401) không bị lớp mã hoá chạm
+// vào — plaintext 401 là thứ FE phải đọc được để còn refresh token.
+func Protected(auth IAuthMiddleware, crypto IChatCryptoMiddleware) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		auth.Handler(),
+		crypto.Handler(),
 	}
 }

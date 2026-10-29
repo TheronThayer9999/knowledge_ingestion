@@ -142,6 +142,12 @@ func loadService() []fx.Option {
 		fx.Provide(usecase.NewLLMOptionsService),
 		fx.Provide(usecase.NewLLMModelFetcher),
 		fx.Provide(usecase.NewLLMSettingsService),
+		// Phiên mã hoá payload chat (Đợt 29): handshake X25519 + kho khoá phiên.
+		// Middleware không import services (services đã import middlewares — vòng
+		// quay tròn), nên nghiệp vụ được expose qua vai hẹp ICryptoSessions mà
+		// chính middlewares khai báo bên tiêu dùng.
+		fx.Provide(services.NewChatCryptoService),
+		fx.Provide(asCryptoSessions),
 	}
 }
 
@@ -154,6 +160,7 @@ func loadMiddleware() []fx.Option {
 		fx.Provide(middlewares.NewAuthMiddleware),
 		fx.Provide(middlewares.NewCurrentUser),
 		fx.Provide(middlewares.NewRateLimiter),
+		fx.Provide(middlewares.NewChatCryptoMiddleware),
 	}
 }
 
@@ -179,6 +186,12 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewChatAPI),
 		fx.Provide(apis.NewConversationAPI),
 		fx.Provide(apis.NewLLMAPI),
+		fx.Provide(apis.NewCryptoAPI),
 		fx.Provide(routers.NewRouter),
 	}
 }
+
+// asCryptoSessions trói nghiệp vụ phiên mã hoá với vai hẹp mà middleware cần
+// (Mode + SessionKey). Cùng một instance: fx dựng service đúng một lần nên
+// handshake và middleware nhìn thấy chung một kho phiên.
+func asCryptoSessions(svc services.IChatCryptoService) middlewares.ICryptoSessions { return svc }

@@ -142,4 +142,9 @@
     "temperature": 0,
     "max_image_bytes": 10485760
   }
+,
+  "chat_crypto": {
+    "mode": "optional",
+    "session_ttl_minutes": 720
+  }
 }
