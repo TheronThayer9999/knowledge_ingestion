@@ -162,9 +162,14 @@ func TestSessionKeyRejectsGarbageAndExpiry(t *testing.T) {
 		}
 	}
 
-	short := cryptoFixture(config.ChatCryptoOptional, time.Nanosecond)
+	// TTL đủ dài để lượt đọc ngay sau handshake chắc chắn còn hiệu lực (đồng
+	// hồ máy thô ~15ms, một tick rơi giữa lúc ghi và lúc đọc là phiên chết
+	// oan), rồi ngủ LÂU HƠN TTL để chắc chắn đã hết hạn. TTL 1ns là mẹo chỉ
+	// đúng trên đồng hồ ns — trên máy đồng hồ thô nó fail, trên Linux CI nó
+	// fail luôn (đọc sau ghi vài µs là đã quá hạn).
+	short := cryptoFixture(config.ChatCryptoOptional, 200*time.Millisecond)
 	resp, _, _ := clientHandshake(t, short, 7)
-	time.Sleep(2 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	if _, ok := short.SessionKey(ctx, resp.SessionID); ok {
 		t.Error("phiên hết hạn vẫn tra được khoá")
 	}
