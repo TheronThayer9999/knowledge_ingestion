@@ -8,7 +8,6 @@ import (
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/dtos"
-	"knowledge_ingestion/src/domain"
 )
 
 // Đợt 28 nấc 3: provider không còn là độc quyền của configs/config.json. Admin
@@ -34,8 +33,14 @@ func (s *llmSettingsService) SaveProvider(ctx context.Context, slug string,
 		return dtos.Fail[*dtos.LLMOptionsResponse](err)
 	}
 	setting := view.NewSetting()
-	if formErr := applyProviderForm(setting, req); formErr != nil {
+	if formErr := applyProviderFields(req.Form(), providerFields{
+		Label: &setting.Label, Type: &setting.Type, BaseURL: &setting.BaseURL,
+		Model: &setting.Model, Models: &setting.Models,
+	}); formErr != nil {
 		return dtos.Fail[*dtos.LLMOptionsResponse](formErr)
+	}
+	if req.Disabled != nil {
+		setting.Disabled = *req.Disabled
 	}
 	if key := strings.TrimSpace(req.APIKey); key != "" {
 		cipher, sealErr := s.catalog.Seal(key)
@@ -113,58 +118,11 @@ func (s *llmSettingsService) resetRegistry(view *ProviderView) {
 	}
 }
 
-// applyProviderForm ghi đơn form admin lên dòng cài đặt — CHỈ field nào gửi lên
-// mới đổi, nên popup "sửa mỗi cái tên" không vô tình xoá base_url đã lưu. Pure
-// function (không DB, không registry, không mã hoá key) để test trực tiếp; key do
-// caller Seal qua catalog vì secret không thuộc về hàm này.
-func applyProviderForm(setting *domain.LLMProviderSetting, req *dtos.SaveLLMProviderRequest) error {
-	if label := strings.TrimSpace(req.Label); label != "" {
-		setting.Label = label
-	}
-	if raw := strings.TrimSpace(req.Type); raw != "" {
-		kind := NormalizeProviderType(raw)
-		if kind == "" {
-			return badLLMRequest(fmt.Sprintf(
-				"loại provider %q không hỗ trợ — chỉ có ollama hoặc openai-compatible", raw))
-		}
-		setting.Type = kind
-	}
-	if url := strings.TrimSpace(req.BaseURL); url != "" {
-		setting.BaseURL = url
-	}
-	if model := strings.TrimSpace(req.Model); model != "" {
-		setting.Model = model
-	}
-	if req.Models != nil {
-		setting.Models = encodeModelList(cleanModels(req.Models))
-	}
-	if req.Disabled != nil {
-		setting.Disabled = *req.Disabled
-	}
-	return nil
-}
-
 // validateConnection chặn từ sớm những định nghĩa không đời nào dựng được client,
 // kèm lỗi đọc được cho admin. Chạy trên cấu hình ĐÃ hợp nhất (config + form) nên
 // provider trong config thiếu key vẫn sửa được từng phần, chỉ khi kết quả cuối
 // vẫn không đủ thì mới chết.
 func validateConnection(name string, merged config.LLMProviderConfig) error {
-	kind := NormalizeProviderType(merged.Type)
-	if kind == "" {
-		return badLLMRequest(fmt.Sprintf(
-			"provider %s chưa có loại — chọn Ollama hoặc OpenAI-compatible", name))
-	}
-	url := strings.TrimSpace(merged.BaseURL)
-	if url == "" {
-		return badLLMRequest(fmt.Sprintf("provider %s chưa có base_url", name))
-	}
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return badLLMRequest("base_url phải bắt đầu bằng http:// hoặc https://")
-	}
-	// Ollama local chạy không key; OpenAI-compatible thì mọi request đều cần
-	// Authorization nên thà báo ngay ở form còn hơn để chat nhận 401.
-	if kind == config.LLMTypeOpenAI && strings.TrimSpace(merged.APIKey) == "" {
-		return badLLMRequest(fmt.Sprintf("provider %s cần API key — nhập key rồi lưu lại", name))
-	}
-	return nil
+	return validateProviderConnection("provider", name, merged.Type, merged.BaseURL,
+		strings.TrimSpace(merged.APIKey) != "")
 }

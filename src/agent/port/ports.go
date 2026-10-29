@@ -58,6 +58,9 @@ type ILLMSettings interface {
 // khác. Key đi một chiều: nhận vào → mã hoá → lưu, không có endpoint đọc lại.
 type IUserProviders interface {
 	List(ctx context.Context) dtos.Result[[]*dtos.LLMProviderOption]
+	// Catalog là danh mục provider hệ thống mà người gọi có thể gắn key của
+	// chính họ — chỉ nhãn + giao thức, không có base URL nội bộ.
+	Catalog(ctx context.Context) dtos.Result[[]*dtos.LLMProviderCatalogItem]
 	// Save tạo mới (id = 0) hoặc sửa (id > 0) một kết nối của người gọi.
 	Save(ctx context.Context, id int64, req *dtos.SaveUserProviderRequest) dtos.Result[*dtos.LLMProviderOption]
 	// Delete xoá kết nối của người gọi, trả lại danh sách còn lại.

@@ -31,12 +31,25 @@ const (
 )
 
 // llmFetchError là lỗi AN TOÀN để hiện cho admin (đã lọc bỏ URL/header).
-type llmFetchError struct{ msg string }
+type llmFetchError struct {
+	msg string
+	// status là HTTP status của provider (0 = không phải lỗi HTTP: transport
+	// hoặc body không đọc được). Đường dò model dùng nó để biết có nên thử
+	// URL ứng viên kế tiếp không.
+	status int
+}
 
 func (e *llmFetchError) Error() string { return e.msg }
 
 func newProviderError(format string, args ...any) error {
 	return &llmFetchError{msg: fmt.Sprintf(format, args...)}
+}
+
+// newProviderHTTPError là lỗi có status — để đường dò model phân biệt "URL
+// này không có endpoint" (404/405, thử URL khác) với lỗi thật của provider
+// (401 sai key, 5xx hỏng).
+func newProviderHTTPError(status int, format string, args ...any) error {
+	return &llmFetchError{msg: fmt.Sprintf(format, args...), status: status}
 }
 
 // modelFetcher là bước "hỏi chính provider nó có model nào" của popup Nhà cung
@@ -48,8 +61,7 @@ type modelFetcher struct {
 	client *http.Client
 }
 
-// NewLLMModelFetcher là constructor fx gọi — không dependency nào, chỉ có timeout
-// chặn provider treo.
+// NewLLMModelFetcher là constructor fx gọi — timeout chặn provider treo.
 func NewLLMModelFetcher() *modelFetcher {
 	return newLLMModelFetcher(&http.Client{Timeout: llmModelsTimeout})
 }
@@ -59,15 +71,44 @@ func newLLMModelFetcher(client *http.Client) *modelFetcher {
 	return &modelFetcher{client: client}
 }
 
+// ModelList là kết quả dò model: danh sách model + base URL ĐÃ dùng để dò.
+// Base URL có thể khác base người dùng gõ (vd họ dán thiếu "/v1") — caller
+// lưu lại để client chat dựng đúng base đó, không đoán.
+type ModelList struct {
+	Models  []string
+	BaseURL string
+}
+
 // Fetch gọi endpoint danh sách model của provider. Key đi qua header
 // Authorization; lỗi transport đi qua transportError nên lời admin nhận được chỉ
 // là lý do đã lọc, không bao giờ là error string của net/http (có host).
-func (f *modelFetcher) Fetch(ctx context.Context, pcfg config.LLMProviderConfig) ([]string, error) {
-	url, err := modelsURL(pcfg)
+//
+// Thử nhiều URL ứng viên (xem modelsEndpoints) và trả về base của ứng viên
+// trúng: người dùng hay dán URL thiếu "/v1", mà đường dẫn đúng chỉ biết được
+// khi hỏi provider.
+func (f *modelFetcher) Fetch(ctx context.Context, pcfg config.LLMProviderConfig) (*ModelList, error) {
+	endpoints, err := modelsEndpoints(pcfg)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	var last error
+	for _, ep := range endpoints {
+		models, err := f.fetchOne(ctx, ep, pcfg)
+		if err == nil {
+			return &ModelList{Models: models, BaseURL: ep.base}, nil
+		}
+		if !isMissingEndpoint(err) {
+			return nil, err
+		}
+		last = err
+	}
+	return nil, last
+}
+
+// fetchOne gọi MỘT URL dò model rồi parse khuôn trả về.
+func (f *modelFetcher) fetchOne(ctx context.Context, ep modelsEndpoint,
+	pcfg config.LLMProviderConfig) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ep.url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +126,7 @@ func (f *modelFetcher) Fetch(ctx context.Context, pcfg config.LLMProviderConfig)
 		return nil, f.transportError(ctx, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, newProviderError("provider trả HTTP %d: %s", resp.StatusCode, clipProviderBody(body))
+		return nil, providerStatusError(pcfg.Type, resp.StatusCode, body)
 	}
 	return parseModelList(pcfg.Type, body)
 }
@@ -107,7 +148,8 @@ func (f *modelFetcher) WrapError(name string, err error) error {
 // chối, treo quá 20 giây) thành llmFetchError đã lọc — WrapError bọc thành 502
 // kèm lý do thay vì để lọt 500 "internal server error" vô nghĩa, trong khi log
 // vẫn giữ nguyên lỗi gốc. Message không chứa host/URL: base_url là nội bộ của
-// server, không có việc gì phải lộ ra client.
+// server, không có việc gì phải lộ ra client. Ngoại lệ duy nhất là địa chỉ bị
+// CHẶN — đó là base URL chính người dùng gõ, nói lại giúp họ tự sửa.
 //
 // ctx chết giữa lúc chờ (admin đóng popup, trình duyệt huỷ request) thì trả
 // nguyên văn: đó là phía người dùng, không phải provider hỏng — bọc vào
@@ -142,21 +184,83 @@ func transportReason(err error) string {
 	return "không kết nối được tới nhà cung cấp"
 }
 
-// modelsURL dựng URL danh sách model theo protocol: OpenAI-compatible có
-// /models (bắt buộc key — thiếu thì báo ngay, khỏi gọi rồi nhận 401), Ollama
-// dùng /api/tags và chạy được không key với server local.
-func modelsURL(pcfg config.LLMProviderConfig) (string, error) {
-	base := strings.TrimRight(strings.TrimSpace(pcfg.BaseURL), "/")
+// modelsEndpoint là một ứng viên để dò model: URL cần gọi và base URL ứng
+// viên (lưu lại khi trúng, để client chat dùng đúng base đó).
+type modelsEndpoint struct {
+	url  string
+	base string
+}
+
+// modelsEndpoints trả các ứng viên dò model theo thứ tự ưu tiên.
+//
+// OpenAI-compatible: người dùng hay dán URL THIẾU "/v1" (vd
+// "https://api.groq.com/openai" trong khi provider thật là
+// "https://api.groq.com/openai/v1"), nên thử base trước, rồi base + "/v1",
+// rồi base + "/api/v1" (gateway tự host đặt API dưới /api/v1). Base đã có
+// đoạn phiên bản (v1, v2, v1beta) thì không thêm nữa — thêm sẽ thành
+// /v1/v1. Đường dẫn đúng chỉ biết được khi hỏi provider, không suy ra được
+// bằng luật tĩnh (vd Gemini OpenAI-compat là ".../v1beta/openai" — không
+// phải ".../openai/v1").
+//
+// Ollama: một URL duy nhất {base}/api/tags (API native, không phải OpenAI).
+func modelsEndpoints(pcfg config.LLMProviderConfig) ([]modelsEndpoint, error) {
+	base := eino.NormalizeBaseURL(pcfg.Type, pcfg.BaseURL)
 	if base == "" {
-		return "", newProviderError("provider chưa có base_url trong config")
+		return nil, newProviderError("provider chưa có base_url trong config")
 	}
 	if pcfg.Type == config.LLMTypeOllama {
-		return eino.TrimAPIURL(base) + "/api/tags", nil
+		return []modelsEndpoint{{url: base + "/api/tags", base: base}}, nil
 	}
 	if strings.TrimSpace(pcfg.APIKey) == "" {
-		return "", newProviderError("provider chưa có api key — lưu key trước khi tải model")
+		return nil, newProviderError("provider chưa có api key — lưu key trước khi tải model")
 	}
-	return base + "/models", nil
+	out := []modelsEndpoint{{url: base + "/models", base: base}}
+	if !eino.HasVersionPath(base) {
+		out = append(out,
+			modelsEndpoint{url: base + "/v1/models", base: base + "/v1"},
+			modelsEndpoint{url: base + "/api/v1/models", base: base + "/api/v1"},
+		)
+	}
+	return out, nil
+}
+
+// isMissingEndpoint báo lỗi này có phải "URL này không có endpoint" để thử ứng
+// viên kế tiếp. CHỈ 404/405 mới đáng thử tiếp — 401 (sai key), 403 hay 5xx là
+// lỗi thật của provider, đổi URL không giúp gì.
+func isMissingEndpoint(err error) bool {
+	var pe *llmFetchError
+	if !stderrors.As(err, &pe) {
+		return false
+	}
+	return pe.status == http.StatusNotFound || pe.status == http.StatusMethodNotAllowed
+}
+
+// providerStatusError dựng lời đọc được cho người dùng từ status của provider.
+// 404/405 = không có endpoint ở base URL này (hay do thiếu /v1) — nói rõ để
+// user biết sửa base URL; 401/403 = key sai hoặc thiếu quyền; còn lại kèm
+// body đã cắt ngắn vì lỗi 500 của provider hay nói điều đáng biết.
+func providerStatusError(kind string, status int, body []byte) error {
+	switch status {
+	case http.StatusNotFound, http.StatusMethodNotAllowed:
+		if kind == config.LLMTypeOllama {
+			return newProviderHTTPError(status,
+				"provider không có endpoint /api/tags (HTTP %d) — kiểm tra lại base URL của Ollama", status)
+		}
+		return newProviderHTTPError(status,
+			"provider không có endpoint danh sách model (HTTP %d) — kiểm tra lại base URL, thường phải kết thúc bằng /v1", status)
+	case http.StatusUnauthorized:
+		// 401 ở endpoint /models KHÔNG chắc là sai key: có gateway
+		// xác thực /chat/completions khác /models. Nên nói rõ cả hai khả
+		// năng và nhắc nhập model thủ công — không chặn kết nối (các OSS lớn
+		// cũng không coi /models hỏng là chết connection).
+		return newProviderHTTPError(status,
+			"provider trả 401 cho endpoint danh sách model — key có thể sai, hoặc endpoint này dùng kiểu xác thực khác (có thể nhập model thủ công)")
+	case http.StatusForbidden:
+		return newProviderHTTPError(status,
+			"provider không cho truy cập (HTTP 403) — key không có quyền đọc danh sách model (có thể nhập model thủ công)")
+	default:
+		return newProviderHTTPError(status, "provider trả HTTP %d: %s", status, clipProviderBody(body))
+	}
 }
 
 // parseModelList đọc 2 khuôn phổ biến: OpenAI {"data":[{"id"}]} và Ollama

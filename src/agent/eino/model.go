@@ -54,7 +54,7 @@ func NewChatModel(cfg config.LLMProviderConfig, thinking bool) (einomodel.ToolCa
 		timeout = 120
 	}
 	conf := &ollamamodel.ChatModelConfig{
-		BaseURL: TrimAPIURL(cfg.BaseURL),
+		BaseURL: NormalizeBaseURL(config.LLMTypeOllama, cfg.BaseURL),
 		HTTPClient: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
 			// Ollama cloud (gemma4) cũng dính cap ~30 req/phút như Groq —
@@ -408,13 +408,15 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 // config (log + thông báo lỗi). Key rỗng thì lỗi ngay ở đây để loader bỏ qua
 // provider này (boot vẫn lên, request nào chọn slug đó mới báo chưa cấu
 // hình). base_url bắt buộc — không có default chung cho mọi backend
-// OpenAI-compatible; Temperature/TopP/MaxTokens lấy từ config (TopP 0 là
-// không gửi, provider tự quyết).
+// OpenAI-compatible; base đi qua NormalizeBaseURL nên người dùng dán nhầm
+// hậu tố endpoint (".../v1/chat/completions") vẫn chạy đúng.
+// Temperature/TopP/MaxTokens lấy từ config (TopP 0 là không gửi, provider tự
+// quyết).
 func NewOpenAIChatModel(slug string, cfg config.LLMProviderConfig) (einomodel.ToolCallingChatModel, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
 		return nil, fmt.Errorf("eino %s: api_key is required", slug)
 	}
-	base := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
+	base := NormalizeBaseURL(config.LLMTypeOpenAI, cfg.BaseURL)
 	if base == "" {
 		return nil, fmt.Errorf("eino %s: base_url is required", slug)
 	}
@@ -450,17 +452,6 @@ func NewOpenAIChatModel(slug string, cfg config.LLMProviderConfig) (einomodel.To
 		out.TopP = &topP
 	}
 	return openaiprovider.NewChatModel(context.Background(), out)
-}
-
-// TrimAPIURL cắt hậu tố API khỏi base_url đã cấu hình — lib framework parse
-// URL nguyên văn nên phải dọn trước, không thì request thành /api/api/chat.
-// Export vì service "tải model" cũng cần dựng URL /api/tags từ cùng base_url.
-func TrimAPIURL(raw string) string {
-	base := strings.TrimRight(strings.TrimSpace(raw), "/")
-	for _, suffix := range []string{"/api/chat", "/api/tags", "/api/embed", "/api"} {
-		base = strings.TrimSuffix(base, suffix)
-	}
-	return base
 }
 
 // authTransport gắn Bearer token cho Ollama Cloud — lib chính thức/ext không

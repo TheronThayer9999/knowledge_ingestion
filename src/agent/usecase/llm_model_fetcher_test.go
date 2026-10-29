@@ -5,6 +5,7 @@ import (
 	stderrors "errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
@@ -44,23 +45,105 @@ func TestParseModelList(t *testing.T) {
 	}
 }
 
-// TestModelsURL: Ollama đi /api/tags sau khi cắt hậu tố /api khỏi base_url;
-// OpenAI-compatible thiếu key thì báo ngay, khỏi gọi rồi nhận 401.
-func TestModelsURL(t *testing.T) {
-	url, err := modelsURL(config.LLMProviderConfig{Type: config.LLMTypeOllama, BaseURL: "http://localhost:11434/api/"})
-	if err != nil || url != "http://localhost:11434/api/tags" {
-		t.Errorf("ollama url = %q, err = %v", url, err)
+// TestModelsEndpoints: Ollama đi /api/tags sau khi cắt hậu tố /api khỏi
+// base_url; OpenAI-compatible thiếu key thì báo ngay, khỏi gọi rồi nhận 401.
+// Base thiếu "/v1" thì thêm ứng viên /v1 và /api/v1 — người dùng hay dán
+// URL không đủ phần version.
+func TestModelsEndpoints(t *testing.T) {
+	eps, err := modelsEndpoints(config.LLMProviderConfig{
+		Type: config.LLMTypeOllama, BaseURL: "http://localhost:11434/api/",
+	})
+	if err != nil || len(eps) != 1 || eps[0].url != "http://localhost:11434/api/tags" {
+		t.Errorf("ollama endpoints = %+v, err = %v", eps, err)
 	}
 
-	url, err = modelsURL(config.LLMProviderConfig{
+	eps, err = modelsEndpoints(config.LLMProviderConfig{
 		Type: config.LLMTypeOpenAI, BaseURL: "https://api.groq.com/openai/v1/", APIKey: "k",
 	})
-	if err != nil || url != "https://api.groq.com/openai/v1/models" {
-		t.Errorf("openai url = %q, err = %v", url, err)
+	if err != nil || len(eps) != 1 || eps[0].url != "https://api.groq.com/openai/v1/models" {
+		t.Errorf("openai endpoints = %+v, err = %v", eps, err)
+	}
+	if eps[0].base != "https://api.groq.com/openai/v1" {
+		t.Errorf("base ứng viên = %q", eps[0].base)
 	}
 
-	if _, err := modelsURL(config.LLMProviderConfig{Type: config.LLMTypeOpenAI, BaseURL: "https://x/v1"}); err == nil {
+	eps, err = modelsEndpoints(config.LLMProviderConfig{
+		Type: config.LLMTypeOpenAI, BaseURL: "https://api.groq.com/openai", APIKey: "k",
+	})
+	if err != nil || len(eps) != 3 {
+		t.Fatalf("base thiếu /v1 phải có 3 ứng viên, nhận %d (%v)", len(eps), err)
+	}
+	if eps[1].url != "https://api.groq.com/openai/v1/models" ||
+		eps[1].base != "https://api.groq.com/openai/v1" {
+		t.Errorf("ứng viên /v1 = %+v", eps[1])
+	}
+	if eps[2].url != "https://api.groq.com/openai/api/v1/models" {
+		t.Errorf("ứng viên /api/v1 = %+v", eps[2])
+	}
+
+	if _, err := modelsEndpoints(config.LLMProviderConfig{
+		Type: config.LLMTypeOpenAI, BaseURL: "https://x/v1",
+	}); err == nil {
 		t.Error("openai thiếu key phải lỗi trước khi gọi")
+	}
+}
+
+// TestModelFetcherFallsBackToV1: base user dán thiếu "/v1" thì phải dò ra
+// endpoint thật và TRẢ LẠI base đúng (để lưu vào DB, client chat dựng đúng
+// base đó) — không phải báo lỗi 404.
+func TestModelFetcherFallsBackToV1(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path != "/openai/v1/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"m1"}]}`))
+	}))
+	defer srv.Close()
+
+	fetcher := newLLMModelFetcher(srv.Client())
+	list, err := fetcher.Fetch(context.Background(), config.LLMProviderConfig{
+		Type: config.LLMTypeOpenAI, BaseURL: srv.URL + "/openai", APIKey: "k",
+	})
+	if err != nil {
+		t.Fatalf("dò model lỗi: %v", err)
+	}
+	if len(list.Models) != 1 || list.Models[0] != "m1" {
+		t.Errorf("models = %v, muốn [m1]", list.Models)
+	}
+	if list.BaseURL != srv.URL+"/openai/v1" {
+		t.Errorf("base = %q, muốn %q", list.BaseURL, srv.URL+"/openai/v1")
+	}
+	if len(paths) != 2 || paths[0] != "/openai/models" || paths[1] != "/openai/v1/models" {
+		t.Errorf("đường dẫn đã gọi = %v", paths)
+	}
+}
+
+// TestModelFetcherStopsOn401: sai key là lỗi THẬT — không đổi URL ứng viên khác
+// (đổi URL không giúp, chỉ tốn thêm request vào provider).
+func TestModelFetcherStopsOn401(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	fetcher := newLLMModelFetcher(srv.Client())
+	_, err := fetcher.Fetch(context.Background(), config.LLMProviderConfig{
+		Type: config.LLMTypeOpenAI, BaseURL: srv.URL, APIKey: "sai",
+	})
+	if err == nil {
+		t.Fatal("sai key phải báo lỗi")
+	}
+	if calls != 1 {
+		t.Errorf("số request = %d, muốn 1 (401 thì dừng luôn)", calls)
+	}
+	if !strings.Contains(err.Error(), "key") {
+		t.Errorf("lỗi = %q, muốn nói rõ là key", err.Error())
 	}
 }
 

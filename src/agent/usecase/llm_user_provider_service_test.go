@@ -108,11 +108,38 @@ func (fakeUserConfig) GetChatCrypto() config.ChatCryptoConfig {
 	return config.ChatCryptoConfig{}
 }
 
-// userProviderFixture dựng service + repo giả cho user id 7.
+// userProviderFixture dựng service + repo giả cho user id 7, kèm danh mục
+// provider giả (config) — đường BYOK tra định nghĩa ở đây.
 func userProviderFixture(userID int64) (*UserProviderService, *fakeUserProviderRepo) {
+	return userProviderFixtureWith(userProviderLLMs("https://api.groq.com/openai/v1"), userID)
+}
+
+// userProviderLLMs là danh mục provider giả: groq (openai-compatible, cần key)
+// và ollama (local, không key).
+func userProviderLLMs(groqBase string) config.LLMsConfig {
+	return config.LLMsConfig{
+		DefaultProvider: "groq",
+		Providers: map[string]config.LLMProviderConfig{
+			"groq": {
+				Type: config.LLMTypeOpenAI, Label: "Groq",
+				Model: "llama-3.3-70b-versatile", BaseURL: groqBase,
+			},
+			"ollama": {
+				Type: config.LLMTypeOllama, Label: "Ollama",
+				Model: "gemma4:31b", BaseURL: "http://localhost:11434",
+			},
+		},
+	}
+}
+
+// userProviderFixtureWith dựng service với danh mục provider tuỳ chọn (test
+// dò model cần base URL trỏ về httptest server).
+func userProviderFixtureWith(llms config.LLMsConfig, userID int64) (*UserProviderService, *fakeUserProviderRepo) {
 	repo := &fakeUserProviderRepo{}
+	settingRepo := &memorySettingRepo{rows: map[string]*domain.LLMProviderSetting{}}
+	catalog := newProviderCatalog(llms, settingRepo, "test-secret")
 	svc := NewUserProviderService(repo, eino.NewUserAgents(eino.InstructionSet{}, nil),
-		newLLMModelFetcher(nil), fakeUserConfig{}, fakeUserResolver{id: userID})
+		newLLMModelFetcher(nil), fakeUserConfig{}, fakeUserResolver{id: userID}, catalog)
 	return svc, repo
 }
 
@@ -144,12 +171,12 @@ func TestUserProviderSlugNamespace(t *testing.T) {
 }
 
 // TestSaveUserProviderSealsKey: key nhập vào được mã hoá lưu, và DTO trả ra
-// CHỈ có has_key — không có đường nào đọc ngược key thật.
+// CHỈ có has_key — không có đường nào đọc ngược key thật. Base URL lấy từ
+// danh mục (user không tự gõ URL nữa).
 func TestSaveUserProviderSealsKey(t *testing.T) {
 	svc, repo := userProviderFixture(7)
 	res := svc.Save(ctxWithUser(), 0, &dtos.SaveUserProviderRequest{
-		Label: "Groq của tôi", Type: "openai-compatible",
-		BaseURL: "https://api.groq.com/openai/v1", APIKey: "gsk-secret", Model: "llama-3.3-70b",
+		Provider: "groq", APIKey: "gsk-secret", Model: "llama-3.3-70b",
 	})
 	if res.Err != nil {
 		t.Fatalf("save lỗi: %v", res.Err)
@@ -160,7 +187,16 @@ func TestSaveUserProviderSealsKey(t *testing.T) {
 	if res.Data.Slug != "u_1" {
 		t.Errorf("slug = %q, muốn u_1", res.Data.Slug)
 	}
+	if res.Data.Provider != "groq" {
+		t.Errorf("provider = %q, muốn groq", res.Data.Provider)
+	}
 	row := repo.rows[0]
+	if row.BaseURL != "https://api.groq.com/openai/v1" {
+		t.Errorf("base_url = %q, muốn lấy từ danh mục", row.BaseURL)
+	}
+	if row.Label != "Groq" {
+		t.Errorf("label = %q, muốn lấy nhãn của provider trong danh mục", row.Label)
+	}
 	if strings.Contains(row.APIKeyCipher, "gsk-secret") {
 		t.Fatal("key thật không được nằm trong cột cipher")
 	}
@@ -174,11 +210,11 @@ func TestSaveUserProviderSealsKey(t *testing.T) {
 func TestSaveUserProviderKeepsKeyWhenBlank(t *testing.T) {
 	svc, repo := userProviderFixture(7)
 	svc.Save(ctxWithUser(), 0, &dtos.SaveUserProviderRequest{
-		Label: "Groq", Type: "openai", BaseURL: "https://api.groq.com/openai/v1", APIKey: "k1",
+		Provider: "groq", APIKey: "k1",
 	})
 	cipher := repo.rows[0].APIKeyCipher
 	res := svc.Save(ctxWithUser(), 1, &dtos.SaveUserProviderRequest{
-		Label: "Groq đổi tên", Type: "openai", BaseURL: "https://api.groq.com/openai/v1",
+		Label: "Groq đổi tên",
 	})
 	if res.Err != nil {
 		t.Fatalf("save lỗi: %v", res.Err)
@@ -191,25 +227,21 @@ func TestSaveUserProviderKeepsKeyWhenBlank(t *testing.T) {
 	}
 }
 
-// TestSaveUserProviderCreateNeedsFullForm: tạo mới thiếu nhãn / giao thức /
-// base URL / key thì phải báo 400 với câu đọc được. Binding ở tầng DTO KHÔNG
-// chặn được (bỏ trống = "giữ giá trị cũ" khi sửa) nên luật "đủ thông tin mới
-// dựng được client" nằm ở service — thiếu thì phải ra lỗi, không phải lưu
-// dòng hỏng.
-func TestSaveUserProviderCreateNeedsFullForm(t *testing.T) {
+// TestSaveUserProviderCreateNeedsProviderAndKey: tạo mới thiếu nhà cung cấp /
+// key hoặc chọn provider không có trong danh mục thì phải báo 400 với câu đọc
+// được. Binding ở tầng DTO KHÔNG chặn được (bỏ trống = "giữ giá trị cũ" khi
+// sửa) nên luật "đủ thông tin mới dựng được client" nằm ở service — thiếu thì
+// phải ra lỗi, không phải lưu dòng hỏng.
+func TestSaveUserProviderCreateNeedsProviderAndKey(t *testing.T) {
 	svc, _ := userProviderFixture(7)
 	cases := []struct {
 		name string
 		req  *dtos.SaveUserProviderRequest
 	}{
-		{"thiếu nhãn", &dtos.SaveUserProviderRequest{
-			Type: "openai", BaseURL: "https://x.example/v1", APIKey: "k"}},
-		{"thiếu giao thức", &dtos.SaveUserProviderRequest{
-			Label: "Groq", BaseURL: "https://x.example/v1", APIKey: "k"}},
-		{"thiếu base URL", &dtos.SaveUserProviderRequest{
-			Label: "Groq", Type: "openai", APIKey: "k"}},
-		{"thiếu key", &dtos.SaveUserProviderRequest{
-			Label: "Groq", Type: "openai", BaseURL: "https://x.example/v1"}},
+		{"thiếu nhà cung cấp", &dtos.SaveUserProviderRequest{APIKey: "k"}},
+		{"provider không có trong danh mục", &dtos.SaveUserProviderRequest{
+			Provider: "khong-ton-tai", APIKey: "k"}},
+		{"thiếu key", &dtos.SaveUserProviderRequest{Provider: "groq"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -225,17 +257,53 @@ func TestSaveUserProviderCreateNeedsFullForm(t *testing.T) {
 	}
 }
 
+// TestSaveUserProviderOllamaNeedsNoKey: provider ollama local chạy không key —
+// luật "cần key" chỉ áp cho giao thức openai-compatible.
+func TestSaveUserProviderOllamaNeedsNoKey(t *testing.T) {
+	svc, _ := userProviderFixture(7)
+	res := svc.Save(ctxWithUser(), 0, &dtos.SaveUserProviderRequest{Provider: "ollama"})
+	if res.Err != nil {
+		t.Fatalf("ollama không cần key: %v", res.Err)
+	}
+	if res.Data.HasKey == nil || *res.Data.HasKey {
+		t.Errorf("has_key = %v, muốn false", res.Data.HasKey)
+	}
+}
+
+// TestUserProviderCatalogHidesBaseURL: danh mục cho user chọn KHÔNG có base
+// URL và không có key — base URL là cấu hình nội bộ, và user không tự gõ
+// được nên cũng không cần thấy.
+func TestUserProviderCatalogHidesBaseURL(t *testing.T) {
+	svc, _ := userProviderFixture(7)
+	res := svc.Catalog(ctxWithUser())
+	if res.Err != nil {
+		t.Fatalf("catalog lỗi: %v", res.Err)
+	}
+	if len(res.Data) != 2 {
+		t.Fatalf("catalog có %d mục, muốn 2", len(res.Data))
+	}
+	raw := toJSON(t, res.Data)
+	if strings.Contains(raw, "base_url") || strings.Contains(raw, "api.groq.com") {
+		t.Errorf("catalog lộ base URL nội bộ: %s", raw)
+	}
+	for _, item := range res.Data {
+		if item.Slug == "" || item.Label == "" || item.Type == "" {
+			t.Errorf("mục catalog thiếu thông tin: %+v", item)
+		}
+	}
+}
+
 // TestUserProviderScopedByOwner: user khác đoán id cũng không sửa/xoá được
 // dòng của người khác — 404 cho cả hai, client không biết sự khác biệt.
 func TestUserProviderScopedByOwner(t *testing.T) {
 	svc, _ := userProviderFixture(7)
 	svc.Save(ctxWithUser(), 0, &dtos.SaveUserProviderRequest{
-		Label: "Groq", Type: "openai", BaseURL: "https://api.groq.com/openai/v1", APIKey: "k1",
+		Provider: "groq", APIKey: "k1",
 	})
 	other, _ := userProviderFixture(9)
 
 	saveRes := other.Save(ctxWithUser(), 1, &dtos.SaveUserProviderRequest{
-		Label: "Cướp", Type: "openai", BaseURL: "https://evil.example/v1",
+		Label: "Cướp", Provider: "groq",
 	})
 	assertNotFound(t, saveRes.Err)
 
@@ -257,14 +325,14 @@ func TestUserProviderLimit(t *testing.T) {
 	svc, _ := userProviderFixture(7)
 	for i := 0; i < domain.UserProviderMax; i++ {
 		res := svc.Save(ctxWithUser(), 0, &dtos.SaveUserProviderRequest{
-			Label: "P", Type: "openai", BaseURL: "https://x.example/v1", APIKey: "k",
+			Label: "P", Provider: "groq", APIKey: "k",
 		})
 		if res.Err != nil {
 			t.Fatalf("tạo %d: %v", i, res.Err)
 		}
 	}
 	res := svc.Save(ctxWithUser(), 0, &dtos.SaveUserProviderRequest{
-		Label: "P", Type: "openai", BaseURL: "https://x.example/v1", APIKey: "k",
+		Label: "P", Provider: "groq", APIKey: "k",
 	})
 	if res.Err == nil {
 		t.Error("phải chặn kết nối vượt trần")
@@ -282,10 +350,10 @@ func TestLoadModelsUsesOwnKey(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	svc, repo := userProviderFixture(7)
+	svc, repo := userProviderFixtureWith(userProviderLLMs(srv.URL), 7)
 	svc.fetcher = newLLMModelFetcher(srv.Client())
 	res := svc.Save(ctxWithUser(), 0, &dtos.SaveUserProviderRequest{
-		Label: "Groq", Type: "openai", BaseURL: srv.URL, APIKey: "gsk-secret",
+		Provider: "groq", APIKey: "gsk-secret",
 	})
 	if res.Err != nil {
 		t.Fatalf("save lỗi: %v", res.Err)
@@ -302,6 +370,40 @@ func TestLoadModelsUsesOwnKey(t *testing.T) {
 	}
 	if !strings.Contains(repo.rows[0].Models, "m1") {
 		t.Errorf("danh sách model chưa lưu: %q", repo.rows[0].Models)
+	}
+}
+
+// TestLoadModelsKeepsDiscoveredBase: base URL trong danh mục thiếu "/v1"
+// (provider thật chỉ có /v1/models) thì server phải LƯU lại base đúng —
+// client chat dựng từ base đó, nếu giữ base cũ thì mọi lượt chat sau đều 404.
+func TestLoadModelsKeepsDiscoveredBase(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/openai/v1/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"m1"}]}`))
+	}))
+	defer srv.Close()
+
+	svc, repo := userProviderFixtureWith(userProviderLLMs(srv.URL+"/openai"), 7)
+	svc.fetcher = newLLMModelFetcher(srv.Client())
+	res := svc.Save(ctxWithUser(), 0, &dtos.SaveUserProviderRequest{
+		Provider: "groq", APIKey: "k",
+	})
+	if res.Err != nil {
+		t.Fatalf("save lỗi: %v", res.Err)
+	}
+	models := svc.LoadModels(ctxWithUser(), res.Data.ID)
+	if models.Err != nil {
+		t.Fatalf("tải model lỗi: %v", models.Err)
+	}
+	if len(models.Data.Models) != 1 || models.Data.Models[0] != "m1" {
+		t.Errorf("models = %v, muốn [m1]", models.Data.Models)
+	}
+	if repo.rows[0].BaseURL != srv.URL+"/openai/v1" {
+		t.Errorf("base đã lưu = %q, muốn %q", repo.rows[0].BaseURL, srv.URL+"/openai/v1")
 	}
 }
 

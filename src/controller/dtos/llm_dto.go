@@ -10,6 +10,10 @@ type LLMProviderOption struct {
 	// đường đó định danh bằng id số chứ không phải slug. Provider chung để 0
 	// (omitempty) nên không đổi hình dạng response cũ.
 	ID int64 `json:"id,omitempty" example:"12"`
+	// Provider là slug của provider HỆ THỐNG mà kết nối riêng này gắn vào
+	// (BYOK) — rỗng với provider chung. Nhờ có nó UI biết kết nối đang dùng
+	// nhà cung cấp nào và chọn lại được khi sửa.
+	Provider string `json:"provider,omitempty" example:"groq"`
 	// Label là tên hiển thị; backend đã fallback về slug khi config để trống.
 	Label string `json:"label" example:"9Router"`
 	// Type là protocol client ("ollama" | "openai") — admin đối chiếu khi xem

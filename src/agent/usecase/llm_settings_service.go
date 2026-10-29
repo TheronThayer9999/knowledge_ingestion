@@ -90,23 +90,27 @@ func (s *llmSettingsService) SelectModel(ctx context.Context, slug, model string
 }
 
 // LoadModels hỏi chính provider danh sách model (OpenAI-compatible: GET
-// /models; Ollama: GET /api/tags), lưu lại rồi trả cho popup. Lần mở sau chỉ
-// đọc DB, không gọi provider.
+// /models — thử cả /v1 khi base URL admin dán thiếu; Ollama: GET /api/tags),
+// lưu lại rồi trả cho popup. Lần mở sau chỉ đọc DB, không gọi provider.
+//
+// Lưu luôn base URL ĐÃ dò ra: đường dẫn đúng chỉ biết được khi hỏi provider,
+// lưu lại thì client chat dựng đúng base đó.
 func (s *llmSettingsService) LoadModels(ctx context.Context, slug string) dtos.Result[*dtos.LLMModelsResponse] {
 	view, err := s.catalog.Require(ctx, slug)
 	if err != nil {
 		return dtos.Fail[*dtos.LLMModelsResponse](err)
 	}
-	models, err := s.fetcher.Fetch(ctx, view.Effective())
+	list, err := s.fetcher.Fetch(ctx, view.Effective())
 	if err != nil {
 		return dtos.Fail[*dtos.LLMModelsResponse](s.fetcher.WrapError(view.Slug, err))
 	}
 	setting := view.NewSetting()
-	setting.Models = encodeModelList(cleanModels(models))
+	setting.Models = encodeModelList(cleanModels(list.Models))
+	setting.BaseURL = list.BaseURL
 	if err := s.catalog.Save(ctx, setting); err != nil {
 		return dtos.Fail[*dtos.LLMModelsResponse](err)
 	}
-	return dtos.Ok(&dtos.LLMModelsResponse{Slug: view.Slug, Models: models})
+	return dtos.Ok(&dtos.LLMModelsResponse{Slug: view.Slug, Models: list.Models})
 }
 
 // saveAndApply ghi DB rồi cập nhật registry. Provider bị admin tắt thì tháo agent

@@ -1744,6 +1744,37 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/llm/my/providers/catalog": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Danh sách provider của hệ thống mà người dùng được phép gắn key riêng. Chỉ có nhãn + giao thức — không có base URL nội bộ, không có key.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm-my"
+                ],
+                "summary": "Danh mục nhà cung cấp để gắn key của tôi",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/llm/my/providers/{id}": {
             "put": {
                 "security": [
@@ -3052,11 +3083,6 @@ const docTemplate = `{
         },
         "dtos.SaveUserProviderRequest": {
             "type": "object",
-            "required": [
-                "base_url",
-                "label",
-                "type"
-            ],
             "properties": {
                 "api_key": {
                     "description": "APIKey là key của provider. Bắt buộc với giao thức openai-compatible;\nđể trống khi sửa thì giữ key đang có.",
@@ -3064,18 +3090,10 @@ const docTemplate = `{
                     "maxLength": 512,
                     "example": "gsk_..."
                 },
-                "base_url": {
-                    "description": "BaseURL là địa chỉ provider — vd https://api.groq.com/openai/v1.",
-                    "type": "string",
-                    "maxLength": 512,
-                    "minLength": 1,
-                    "example": "https://api.groq.com/openai/v1"
-                },
                 "label": {
-                    "description": "Label là tên hiện thị trong menu chọn model (\"Groq của tôi\").",
+                    "description": "Label là tên hiện thị trong menu chọn model (\"Groq của tôi\"). Bỏ trống\nthì lấy nhãn của provider trong danh mục.",
                     "type": "string",
                     "maxLength": 64,
-                    "minLength": 1,
                     "example": "Groq của tôi"
                 },
                 "model": {
@@ -3092,11 +3110,11 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
-                "type": {
-                    "description": "Type là giao thức client: \"openai-compatible\" (Groq/OpenRouter/NVIDIA/\n9Router...) hoặc \"ollama\" (local). Server chuẩn hoá về \"openai\"/\"ollama\".",
+                "provider": {
+                    "description": "Provider là slug của nhà cung cấp trong danh mục hệ thống (xem\nGET /llm/my/providers/catalog) — server tra định nghĩa của nó.",
                     "type": "string",
-                    "maxLength": 32,
-                    "example": "openai-compatible"
+                    "maxLength": 64,
+                    "example": "groq"
                 }
             }
         },

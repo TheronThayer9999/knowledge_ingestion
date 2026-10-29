@@ -364,17 +364,12 @@ definitions:
         example: gsk_...
         maxLength: 512
         type: string
-      base_url:
-        description: BaseURL là địa chỉ provider — vd https://api.groq.com/openai/v1.
-        example: https://api.groq.com/openai/v1
-        maxLength: 512
-        minLength: 1
-        type: string
       label:
-        description: Label là tên hiện thị trong menu chọn model ("Groq của tôi").
+        description: |-
+          Label là tên hiện thị trong menu chọn model ("Groq của tôi"). Bỏ trống
+          thì lấy nhãn của provider trong danh mục.
         example: Groq của tôi
         maxLength: 64
-        minLength: 1
         type: string
       model:
         description: Model là model mặc định của kết nối.
@@ -387,17 +382,13 @@ definitions:
           type: string
         maxItems: 300
         type: array
-      type:
+      provider:
         description: |-
-          Type là giao thức client: "openai-compatible" (Groq/OpenRouter/NVIDIA/
-          9Router...) hoặc "ollama" (local). Server chuẩn hoá về "openai"/"ollama".
-        example: openai-compatible
-        maxLength: 32
+          Provider là slug của nhà cung cấp trong danh mục hệ thống (xem
+          GET /llm/my/providers/catalog) — server tra định nghĩa của nó.
+        example: groq
+        maxLength: 64
         type: string
-    required:
-    - base_url
-    - label
-    - type
     type: object
   dtos.SearchRequest:
     properties:
@@ -1730,6 +1721,26 @@ paths:
       security:
       - BearerAuth: []
       summary: Tải danh sách model của kết nối của tôi
+      tags:
+      - llm-my
+  /api/v1/llm/my/providers/catalog:
+    get:
+      description: Danh sách provider của hệ thống mà người dùng được phép gắn key
+        riêng. Chỉ có nhãn + giao thức — không có base URL nội bộ, không có key.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Danh mục nhà cung cấp để gắn key của tôi
       tags:
       - llm-my
   /api/v1/llm/options:

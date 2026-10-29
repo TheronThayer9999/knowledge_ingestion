@@ -128,7 +128,8 @@ func registerPublicRoutes(v1 *gin.RouterGroup, api *apis.PingPongAPI, userAPI *a
 }
 
 // registerUserProviderRoutes ghi nhóm route KẾT NỐI RIÊNG của user (BYOK):
-// user tự thêm base URL + API key của họ rồi dùng cho lượt chat của chính họ.
+// user chọn một nhà cung cấp trong danh mục của hệ thống rồi dán API key của
+// họ vào, dùng cho lượt chat của chính họ.
 //
 // KHÔNG gate admin — chỉ cần đăng nhập, vì đây là tài nguyên RIÊNG của từng
 // tài khoản: service tự lấy user_id từ token và mọi truy vấn DB scope theo
@@ -136,6 +137,9 @@ func registerPublicRoutes(v1 *gin.RouterGroup, api *apis.PingPongAPI, userAPI *a
 // /llm/providers/* là cấu hình CHUNG nên vẫn gate admin.
 func registerUserProviderRoutes(authed *gin.RouterGroup, api *apis.LLMUserAPI) {
 	authed.GET("/llm/my/providers", api.List)
+	// Danh mục provider để user chọn — route TĨNH, gin ưu tiên nó hơn
+	// nhánh tham số :id (GET /llm/my/providers/catalog không rơi vào :id).
+	authed.GET("/llm/my/providers/catalog", api.Catalog)
 	authed.POST("/llm/my/providers", api.Create)
 	authed.PUT("/llm/my/providers/:id", api.Update)
 	authed.DELETE("/llm/my/providers/:id", api.Delete)

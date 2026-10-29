@@ -61,8 +61,12 @@ type LLMUserProvider struct {
 	Label string `json:"label" gorm:"size:64;not null"`
 	// Type là protocol client đã chuẩn hoá ("ollama" | "openai").
 	Type string `json:"type" gorm:"size:32;not null"`
-	// BaseURL là địa chỉ provider.
+	// BaseURL là địa chỉ provider — lấy từ định nghĩa trong danh mục hệ
+	// thống, user KHÔNG tự gõ (nên không có đường trỏ server sang host tuỳ ý).
 	BaseURL string `json:"base_url" gorm:"size:512;not null"`
+	// ProviderSlug là slug của provider hệ thống mà kết nối này gắn vào —
+	// để UI biết đang dùng nhà cung cấp nào và chọn lại được khi sửa.
+	ProviderSlug string `json:"provider_slug" gorm:"size:64;index"`
 	// APIKeyCipher là AES-GCM của key, base64. KHÔNG BAO GIỜ trả ra API hay
 	// ghi log — kể cả với chính user đó.
 	APIKeyCipher string `json:"-" gorm:"type:text"`

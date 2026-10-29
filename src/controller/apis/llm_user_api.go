@@ -101,6 +101,19 @@ func (a *LLMUserAPI) Delete(c *gin.Context) {
 	Render(c, a, a.svc.Delete(c, p.ID))
 }
 
+// Catalog godoc
+// @Summary Danh mục nhà cung cấp để gắn key của tôi
+// @Description Danh sách provider của hệ thống mà người dùng được phép gắn key riêng. Chỉ có nhãn + giao thức — không có base URL nội bộ, không có key.
+// @Tags llm-my
+// @Produce json
+// @Success 200 {object} dtos.ResponseResource
+// @Failure 401 {object} dtos.ResponseResource
+// @Security BearerAuth
+// @Router /api/v1/llm/my/providers/catalog [get]
+func (a *LLMUserAPI) Catalog(c *gin.Context) {
+	Render(c, a, a.svc.Catalog(c))
+}
+
 // LoadModels godoc
 // @Summary Tải danh sách model của kết nối của tôi
 // @Description Gọi chính provider bằng key của người gọi rồi lưu danh sách model, trả về danh sách đã sắp A→Z.

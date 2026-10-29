@@ -108,6 +108,50 @@ func (c *ProviderCatalog) Resolved(ctx context.Context) []ResolvedProvider {
 	return ProviderConfigs(c.llms, c.Settings(ctx), c.secret)
 }
 
+// ProviderDefinition là phần ĐỊNH NGHĨA của một provider — nhãn, giao thức,
+// base URL, model mặc định — KHÔNG kèm api key. Tách riêng khỏi Effective()
+// vì đường BYOK: user gắn key CỦA HỌ vào một provider có sẵn của hệ thống, nên
+// phải lấy định nghĩa mà không bao giờ chạm vào key của admin.
+type ProviderDefinition struct {
+	Slug    string
+	Label   string
+	Type    string
+	BaseURL string
+	Model   string
+}
+
+// Definition trả định nghĩa của MỘT provider (không kèm key) — đường BYOK dùng
+// nó để lấy base URL khi user chọn provider trong danh mục.
+func (c *ProviderCatalog) Definition(ctx context.Context, rawSlug string) (*ProviderDefinition, error) {
+	view, err := c.Require(ctx, rawSlug)
+	if err != nil {
+		return nil, err
+	}
+	def := definitionOf(view.Slug, view.Base, view.Setting)
+	return &def, nil
+}
+
+// Definitions trả định nghĩa của MỌI provider hiện hành (config ∪ DB, bỏ
+// provider đang bị tắt) — danh mục để user chọn khi tạo kết nối riêng. Không
+// có key trong đây, và base_url cũng không lộ ra cho user thường.
+func (c *ProviderCatalog) Definitions(ctx context.Context) []ProviderDefinition {
+	settings := c.Settings(ctx)
+	slugs := c.Slugs(settings)
+	out := make([]ProviderDefinition, 0, len(slugs))
+	for _, slug := range slugs {
+		setting := settings[slug]
+		if setting != nil && setting.Disabled {
+			continue
+		}
+		base, fromConfig := c.Base(slug)
+		if !fromConfig && setting == nil {
+			continue
+		}
+		out = append(out, definitionOf(slug, base, setting))
+	}
+	return out
+}
+
 // View chuẩn hoá slug và gom những gì một thao tác cần biết về MỘT provider:
 // entry config, dòng cài đặt (nil nếu chưa có), nguồn. Slug sai khuôn thì lỗi
 // 400 đọc được. Không kiểm tra "provider có tồn tại ở đâu không" — xem Require.

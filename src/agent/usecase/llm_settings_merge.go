@@ -236,16 +236,31 @@ func cleanModels(models []string) []string {
 	return out
 }
 
+// definitionOf gộp định nghĩa provider (nhãn/giao thức/base_url) + model mặc
+// định mà KHÔNG đụng tới key — nguồn cho danh mục provider mà user chọn khi
+// tạo kết nối riêng (key là của user, không phải key của admin).
+func definitionOf(slug string, base config.LLMProviderConfig,
+	setting *domain.LLMProviderSetting) ProviderDefinition {
+	merged := withSettingModel(withSettingDef(base, setting), setting)
+	// Cùng luật fallback của MergeProviderSetting: provider ollama tạo từ UI
+	// chỉ có type + key thì vẫn phải có base URL để dựng client.
+	if merged.Type == config.LLMTypeOllama && strings.TrimSpace(merged.BaseURL) == "" {
+		merged.BaseURL = defaultOllamaBaseURL
+	}
+	return ProviderDefinition{
+		Slug:    slug,
+		Label:   providerLabel(slug, merged),
+		Type:    merged.Type,
+		BaseURL: strings.TrimRight(strings.TrimSpace(merged.BaseURL), "/"),
+		Model:   strings.TrimSpace(merged.Model),
+	}
+}
+
 // providerKeySource cho biết key đang dùng đến từ đâu — "" nghĩa là chưa có
 // key (provider ollama local vẫn chạy được). Không giải mã, chỉ nhìn cột cipher.
 func providerKeySource(pcfg config.LLMProviderConfig, setting *domain.LLMProviderSetting) string {
-	if setting != nil && strings.TrimSpace(setting.APIKeyCipher) != "" {
-		return keySourceDB
-	}
-	if strings.TrimSpace(pcfg.APIKey) != "" {
-		return keySourceConfig
-	}
-	return ""
+	return keySourceOf(setting != nil && strings.TrimSpace(setting.APIKeyCipher) != "",
+		strings.TrimSpace(pcfg.APIKey) != "")
 }
 
 // decodeModelList đọc jsonb mảng model; hỏng/rỗng thì trả nil (config thắng).

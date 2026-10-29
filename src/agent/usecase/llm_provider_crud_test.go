@@ -203,16 +203,20 @@ func TestBuildLLMOptionsDisabledOnlyForAdmin(t *testing.T) {
 	}
 }
 
-// TestApplyProviderFormOnlyTouchesGivenFields: sửa mỗi nhãn không được xoá
+// TestApplyProviderFieldsOnlyTouchesGivenFields: sửa mỗi nhãn không được xoá
 // base_url/model đã lưu (form gửi lên thiếu field) và type "openai-compatible"
 // phải lưu về "openai". Hàm này là pure form-mapper nên KHÔNG chạm key — secret
 // nằm ở catalog, việc mã hoá do SaveProvider làm (test cấp service bên dưới).
-func TestApplyProviderFormOnlyTouchesGivenFields(t *testing.T) {
+func TestApplyProviderFieldsOnlyTouchesGivenFields(t *testing.T) {
 	setting := &domain.LLMProviderSetting{
 		Slug: "groq", Type: config.LLMTypeOpenAI, BaseURL: "https://api.groq.com/openai/v1",
 		Model: "old", APIKeyCipher: sealTestKey(t, "old-key"), Models: `["old","keep"]`,
 	}
-	err := applyProviderForm(setting, &dtos.SaveLLMProviderRequest{Label: "Groq Free"})
+	dst := providerFields{
+		Label: &setting.Label, Type: &setting.Type, BaseURL: &setting.BaseURL,
+		Model: &setting.Model, Models: &setting.Models,
+	}
+	err := applyProviderFields(dtos.ProviderForm{Label: "Groq Free"}, dst)
 	if err != nil {
 		t.Fatalf("form hợp lệ: %v", err)
 	}
@@ -221,10 +225,10 @@ func TestApplyProviderFormOnlyTouchesGivenFields(t *testing.T) {
 		t.Errorf("field không gửi phải giữ nguyên: %+v", setting)
 	}
 
-	err = applyProviderForm(setting, &dtos.SaveLLMProviderRequest{
+	err = applyProviderFields(dtos.ProviderForm{
 		Type: "openai-compatible", BaseURL: "https://api.groq.com/openai/v1/",
-		Model: "llama-3.3-70b-versatile", Models: []string{" m1 ", "m1", "", "m2"}, APIKey: "fresh",
-	})
+		Model: "llama-3.3-70b-versatile", Models: []string{" m1 ", "m1", "", "m2"},
+	}, dst)
 	if err != nil {
 		t.Fatalf("form đầy đủ: %v", err)
 	}
@@ -234,11 +238,8 @@ func TestApplyProviderFormOnlyTouchesGivenFields(t *testing.T) {
 	if setting.Model != "llama-3.3-70b-versatile" || setting.Models != `["m1","m2"]` {
 		t.Errorf("model/models = %q / %s", setting.Model, setting.Models)
 	}
-	if strings.Contains(toJSON(t, setting), "fresh") {
-		t.Error("form mapper không được nhét api key thô vào dòng cài đặt")
-	}
 
-	if err := applyProviderForm(setting, &dtos.SaveLLMProviderRequest{Type: "anthropic"}); err == nil {
+	if err := applyProviderFields(dtos.ProviderForm{Type: "anthropic"}, dst); err == nil {
 		t.Error("type lạ phải bị chặn ở form")
 	}
 }

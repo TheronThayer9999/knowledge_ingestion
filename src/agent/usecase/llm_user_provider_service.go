@@ -34,16 +34,35 @@ type UserProviderService struct {
 	fetcher *modelFetcher
 	secret  string
 	users   port.IUserResolver
+	// catalog là nguồn định nghĩa provider của hệ thống — đường BYOK KHÔNG cho
+	// user tự gõ base URL, server tra ở đây.
+	catalog *ProviderCatalog
 }
 
 // NewUserProviderService là constructor fx gọi — secret lấy từ config để mã
 // hoá key giống hệt provider chung (cùng một khoá AES-GCM).
 func NewUserProviderService(repo domain.ILLMUserProviderRepository, agents *eino.UserAgents,
-	fetcher *modelFetcher, cfg config.IConfig, users port.IUserResolver) *UserProviderService {
+	fetcher *modelFetcher, cfg config.IConfig, users port.IUserResolver,
+	catalog *ProviderCatalog) *UserProviderService {
 	return &UserProviderService{
 		repo: repo, agents: agents, fetcher: fetcher,
-		secret: cfg.GetJWT().Secret, users: users,
+		secret: cfg.GetJWT().Secret, users: users, catalog: catalog,
 	}
+}
+
+// Catalog là danh mục provider mà người dùng có thể gắn key của chính họ —
+// chỉ có nhãn + giao thức, KHÔNG có base URL nội bộ và không có key. Đường
+// BYOK không cho user tự dán URL: server tự tra định nghĩa trong danh mục, nên
+// không có đường nào để user trỏ server sang host tuỳ ý.
+func (s *UserProviderService) Catalog(ctx context.Context) dtos.Result[[]*dtos.LLMProviderCatalogItem] {
+	defs := s.catalog.Definitions(ctx)
+	out := make([]*dtos.LLMProviderCatalogItem, 0, len(defs))
+	for _, def := range defs {
+		out = append(out, &dtos.LLMProviderCatalogItem{
+			Slug: def.Slug, Label: def.Label, Type: def.Type,
+		})
+	}
+	return dtos.Ok(out)
 }
 
 // List trả các kết nối riêng của người gọi — dùng ở màn Cài đặt.
@@ -90,10 +109,24 @@ func (s *UserProviderService) Save(ctx context.Context, id int64,
 		if err := s.checkLimit(ctx, userID); err != nil {
 			return dtos.Fail[*dtos.LLMProviderOption](err)
 		}
+		if strings.TrimSpace(req.Provider) == "" {
+			return dtos.Fail[*dtos.LLMProviderOption](badLLMRequest(
+				"chưa chọn nhà cung cấp — chọn một provider trong danh mục rồi dán API key của bạn"))
+		}
 		row = &domain.LLMUserProvider{UserID: userID, Models: "[]"}
 	}
-	if err := applyUserProviderForm(row, req); err != nil {
+	form, err := s.resolveForm(ctx, req)
+	if err != nil {
 		return dtos.Fail[*dtos.LLMProviderOption](err)
+	}
+	if err := applyProviderFields(form, providerFields{
+		Label: &row.Label, Type: &row.Type, BaseURL: &row.BaseURL,
+		Model: &row.Model, Models: &row.Models,
+	}); err != nil {
+		return dtos.Fail[*dtos.LLMProviderOption](err)
+	}
+	if slug := strings.TrimSpace(req.Provider); slug != "" {
+		row.ProviderSlug = slug
 	}
 	if err := s.sealKey(row, req.APIKey); err != nil {
 		return dtos.Fail[*dtos.LLMProviderOption](err)
@@ -130,6 +163,10 @@ func (s *UserProviderService) Delete(ctx context.Context, id int64) dtos.Result[
 
 // LoadModels hỏi chính provider của user bằng key của họ rồi lưu lại —
 // danh sách đọc được không cần user tự gõ tay.
+//
+// Lưu luôn base URL ĐÃ dò ra: người dùng hay dán URL thiếu "/v1", đường dẫn
+// đúng chỉ biết được khi hỏi provider — lưu lại thì client chat dựng đúng
+// base đó, và ô "base URL" trên UI hiện đúng URL đang chạy.
 func (s *UserProviderService) LoadModels(ctx context.Context, id int64) dtos.Result[*dtos.LLMModelsResponse] {
 	userID, err := s.userID(ctx)
 	if err != nil {
@@ -142,15 +179,16 @@ func (s *UserProviderService) LoadModels(ctx context.Context, id int64) dtos.Res
 	if row == nil {
 		return dtos.Fail[*dtos.LLMModelsResponse](unknownUserProvider(id))
 	}
-	models, err := s.fetcher.Fetch(ctx, s.effective(row))
+	list, err := s.fetcher.Fetch(ctx, s.effective(row))
 	if err != nil {
 		return dtos.Fail[*dtos.LLMModelsResponse](s.fetcher.WrapError(row.Label, err))
 	}
-	row.Models = encodeModelList(cleanModels(models))
+	row.Models = encodeModelList(cleanModels(list.Models))
+	row.BaseURL = list.BaseURL
 	if err := s.repo.Save(ctx, row); err != nil {
 		return dtos.Fail[*dtos.LLMModelsResponse](err)
 	}
-	return dtos.Ok(&dtos.LLMModelsResponse{Slug: domain.UserProviderSlug(row.ID), Models: models})
+	return dtos.Ok(&dtos.LLMModelsResponse{Slug: domain.UserProviderSlug(row.ID), Models: list.Models})
 }
 
 // Resolve dựng agent cho một lượt chat chạy trên kết nối riêng của user.
@@ -254,67 +292,54 @@ func unknownUserProvider(id int64) *errors.Error {
 		fmt.Sprintf("kết nối %d không tồn tại", id))
 }
 
-// applyUserProviderForm ghi form lên dòng — CHỈ field nào có giá trị mới
-// đổi, nên sửa một ô không xoá base URL hay danh sách model đã lưu.
-func applyUserProviderForm(row *domain.LLMUserProvider, req *dtos.SaveUserProviderRequest) error {
-	if label := strings.TrimSpace(req.Label); label != "" {
-		row.Label = label
-	}
-	if raw := strings.TrimSpace(req.Type); raw != "" {
-		kind := NormalizeProviderType(raw)
-		if kind == "" {
-			return badLLMRequest(fmt.Sprintf(
-				"giao thức %q không hỗ trợ — chỉ có Ollama hoặc OpenAI-compatible", raw))
-		}
-		row.Type = kind
-	}
-	if url := strings.TrimSpace(req.BaseURL); url != "" {
-		row.BaseURL = url
-	}
-	if model := strings.TrimSpace(req.Model); model != "" {
-		row.Model = model
-	}
-	if req.Models != nil {
-		row.Models = encodeModelList(cleanModels(req.Models))
-	}
-	return nil
-}
-
 // validateUserProvider chặn sớm những kết nối không đời nào dựng được client,
-// kèm lỗi đọc được cho user.
+// kèm lỗi đọc được cho user. Dùng chung luật với provider chung, thêm đúng
+// MỘT điều riêng: kết nối riêng bắt buộc có nhãn (provider chung thì fallback
+// về slug còn dùng được).
 func validateUserProvider(row *domain.LLMUserProvider) error {
 	if strings.TrimSpace(row.Label) == "" {
 		return badLLMRequest("chưa đặt tên cho kết nối")
 	}
-	if NormalizeProviderType(row.Type) == "" {
-		return badLLMRequest("chưa chọn giao thức — Ollama hoặc OpenAI-compatible")
+	return validateProviderConnection("kết nối", row.Label, row.Type, row.BaseURL,
+		strings.TrimSpace(row.APIKeyCipher) != "")
+}
+
+// resolveForm gộp phần user tự nhập với ĐỊNH NGHĨA provider trong danh mục:
+// user chỉ chọn provider + dán key, còn giao thức và base URL do server lo.
+//
+// Provider không có trong danh mục thì báo 400 (không phải 404) — user gõ
+// nhầm tên thì cần biết là sai lựa chọn, không phải "không tồn tại".
+func (s *UserProviderService) resolveForm(ctx context.Context,
+	req *dtos.SaveUserProviderRequest) (dtos.ProviderForm, error) {
+	form := req.Form()
+	slug := strings.TrimSpace(req.Provider)
+	if slug == "" {
+		return form, nil
 	}
-	url := strings.TrimSpace(row.BaseURL)
-	if url == "" {
-		return badLLMRequest("chưa có base URL cho kết nối")
+	def, err := s.catalog.Definition(ctx, slug)
+	if err != nil {
+		return form, badLLMRequest(fmt.Sprintf(
+			"nhà cung cấp %q không có trong danh mục — chọn một mục trong danh sách", slug))
 	}
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return badLLMRequest("base URL phải bắt đầu bằng http:// hoặc https://")
+	form.Type = def.Type
+	form.BaseURL = def.BaseURL
+	if strings.TrimSpace(form.Label) == "" {
+		form.Label = def.Label
 	}
-	if row.Type == config.LLMTypeOpenAI && strings.TrimSpace(row.APIKeyCipher) == "" {
-		return badLLMRequest("kết nối OpenAI-compatible cần API key")
-	}
-	return nil
+	return form, nil
 }
 
 // userProviderOption dựng dòng UI cho một kết nối riêng. Key KHÔNG BAO GIỜ
 // có mặt — chỉ has_key (có/không) và nguồn key.
 func userProviderOption(row *domain.LLMUserProvider) *dtos.LLMProviderOption {
 	hasKey := strings.TrimSpace(row.APIKeyCipher) != ""
-	source := ""
-	if hasKey {
-		source = keySourceDB
-	}
+	source := keySourceOf(hasKey, false)
 	return &dtos.LLMProviderOption{
 		Slug:         domain.UserProviderSlug(row.ID),
 		ID:           row.ID,
 		Label:        row.Label,
 		Type:         row.Type,
+		Provider:     row.ProviderSlug,
 		DefaultModel: strings.TrimSpace(row.Model),
 		Models:       userProviderModels(row),
 		Available:    validateUserProvider(row) == nil,
