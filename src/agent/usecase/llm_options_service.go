@@ -20,18 +20,43 @@ import (
 type llmOptionsService struct {
 	catalog *ProviderCatalog
 	agents  IProviderRegistry
+	// mine là đường ĐỌC các kết nối RIÊNG của người gọi (BYOK) — nil thì
+	// nhóm "Kết nối của tôi" luôn rỗng (hệ thống chưa bật BYOK).
+	mine IUserProviderLister
+	// users lấy user_id của người gọi từ ctx — không tin id client gửi lên.
+	users port.IUserResolver
 }
 
 // NewLLMOptionsService là constructor fx gọi — catalog lo cấu hình, registry lo
 // provider nào thật sự đang chạy được.
-func NewLLMOptionsService(catalog *ProviderCatalog, agents IProviderRegistry) port.ILLMOptions {
-	return &llmOptionsService{catalog: catalog, agents: agents}
+func NewLLMOptionsService(catalog *ProviderCatalog, agents IProviderRegistry,
+	mine IUserProviderLister, users port.IUserResolver) port.ILLMOptions {
+	return &llmOptionsService{catalog: catalog, agents: agents, mine: mine, users: users}
 }
 
 // Options dựng danh sách lựa chọn; role do API đọc từ token rồi truyền vào
 // (user thường không nhận base_url/has_key). Không gọi LLM.
 func (s *llmOptionsService) Options(ctx context.Context, role int) dtos.Result[*dtos.LLMOptionsResponse] {
-	return dtos.Ok(buildLLMOptions(s.catalog, s.agents, s.catalog.Settings(ctx), role))
+	res := buildLLMOptions(s.catalog, s.agents, s.catalog.Settings(ctx), role)
+	res.MyProviders = s.myProviders(ctx)
+	return dtos.Ok(res)
+}
+
+// myProviders là các kết nối riêng của chính người gọi — đọc lỗi thì để
+// rỗng chứ không làm hỏng cả menu provider chung (menu vẫn dùng được).
+func (s *llmOptionsService) myProviders(ctx context.Context) []*dtos.LLMProviderOption {
+	if s.mine == nil || s.users == nil {
+		return []*dtos.LLMProviderOption{}
+	}
+	userID, ok := s.users.UserID(ctx)
+	if !ok || userID <= 0 {
+		return []*dtos.LLMProviderOption{}
+	}
+	items, err := s.mine.ListOptions(ctx, userID)
+	if err != nil || items == nil {
+		return []*dtos.LLMProviderOption{}
+	}
+	return items
 }
 
 // buildLLMOptions tách khỏi Options để test được thuần: liệt kê config ∪ DB vì
@@ -49,6 +74,7 @@ func buildLLMOptions(catalog *ProviderCatalog, agents IProviderRegistry,
 	res := &dtos.LLMOptionsResponse{
 		DefaultProvider: defaultSlug,
 		Providers:       make([]*dtos.LLMProviderOption, 0, len(slugs)),
+		MyProviders:     []*dtos.LLMProviderOption{},
 	}
 	for _, slug := range slugs {
 		setting := settings[slug]

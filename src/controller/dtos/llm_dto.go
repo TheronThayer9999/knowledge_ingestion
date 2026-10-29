@@ -6,6 +6,10 @@ package dtos
 // cột cipher trong DB, không bao giờ xuống trình duyệt.
 type LLMProviderOption struct {
 	Slug string `json:"slug" example:"9router"`
+	// ID là id dòng trong DB — chỉ có với kết nối RIÊNG của user (BYOK), vì
+	// đường đó định danh bằng id số chứ không phải slug. Provider chung để 0
+	// (omitempty) nên không đổi hình dạng response cũ.
+	ID int64 `json:"id,omitempty" example:"12"`
 	// Label là tên hiển thị; backend đã fallback về slug khi config để trống.
 	Label string `json:"label" example:"9Router"`
 	// Type là protocol client ("ollama" | "openai") — admin đối chiếu khi xem
@@ -51,6 +55,10 @@ type LLMOptionsResponse struct {
 	DefaultModel    string `json:"default_model" example:"kc/nvidia/nemotron-3.5-super-vl:free"`
 	// Providers luôn là mảng (kể cả rỗng) để FE khỏi phải xử lý null.
 	Providers []*LLMProviderOption `json:"providers"`
+	// MyProviders là các kết nối RIÊNG của chính người gọi (BYOK) — cùng
+	// hình dạng với Providers nên menu chat dựng được nhóm "Kết nối của tôi"
+	// bằng đúng một component. Rỗng = user chưa tạo kết nối nào.
+	MyProviders []*LLMProviderOption `json:"my_providers"`
 }
 
 // SaveLLMKeyRequest là key admin nhập trong popup provider. Key đi 1 chiều vào

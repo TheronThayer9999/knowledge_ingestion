@@ -56,7 +56,7 @@ func (s *searchService) Search(ctx context.Context, dto *dtos.SearchRequest) dto
 		qtype = question.QuestionLookup
 		if strings.TrimSpace(dto.Model) != "" {
 			classifyCtx := utils.WithLLMSite(ctx, constants.LLMSiteClassify)
-			qtype = s.classifier.Classify(classifyCtx, dto.Model, dto.Query)
+			qtype = s.classifier.Classify(classifyCtx, nil, dto.Model, dto.Query)
 		}
 	}
 	route := question.Route(qtype)

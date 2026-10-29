@@ -211,6 +211,12 @@ func providerSlug(raw string) (string, error) {
 		return "", badLLMRequest(fmt.Sprintf(
 			"slug %q không hợp lệ: chỉ chữ thường, số, - _ . và dài tối đa 64 ký tự", slug))
 	}
+	// Vùng "u_<id>" dành riêng cho kết nối của user (BYOK) — admin tạo slug
+	// trùng vùng đó thì chat không biết đâu là provider chung, đâu là của user.
+	if domain.IsReservedUserProviderSlug(slug) {
+		return "", badLLMRequest(fmt.Sprintf(
+			"slug %q nằm trong vùng dành riêng cho kết nối của người dùng — chọn slug khác", slug))
+	}
 	return slug, nil
 }
 

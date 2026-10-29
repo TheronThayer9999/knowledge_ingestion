@@ -27,6 +27,11 @@ type IArticleSectionRepository interface {
 	// Replace xóa dòng cũ của bài rồi ghi lô mới trong 1 transaction —
 	// compile chạy lại không để trạng thái nửa vời (nửa cũ nửa mới).
 	Replace(ctx context.Context, articleID int64, sections []*ArticleSection) error
+	// Upsert ghi/cập nhật lô mục theo khoá (article_id, name) — KHÔNG xoá
+	// dòng khác. Dùng cho CHECKPOINT compile: mỗi lô mục vừa tóm tắt xong
+	// ghi ngay, job chết giữa chừng thì kỳ sau chỉ làm nốt phần còn lại
+	// thay vì làm lại từ đầu (tốn lại hàng nghìn lượt LLM).
+	Upsert(ctx context.Context, sections []*ArticleSection) error
 	// ListByArticle trả mục của bài theo start_chunk tăng dần (thứ tự đọc).
 	ListByArticle(ctx context.Context, articleID int64) ([]*ArticleSection, error)
 	// DeleteByArticles xóa dòng của nhiều bài 1 câu — purge gom id đã dọn

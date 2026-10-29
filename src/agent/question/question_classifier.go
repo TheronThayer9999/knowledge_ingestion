@@ -111,14 +111,25 @@ func NewLLMClassifier(model einomodel.BaseChatModel, p Prompts) *LLMClassifier {
 // Classify gọi LLM dán nhãn loại câu hỏi — model rỗng/query rỗng/LLM lỗi/trả
 // lời không parse được đều về lookup (loại phổ biến nhất). Không bao giờ trả
 // lỗi để caller luôn có đường đi.
-func (c *LLMClassifier) Classify(ctx context.Context, model, query string) QuestionType {
-	if c == nil || c.model == nil || strings.TrimSpace(c.system) == "" {
+// client là client của provider lượt đó (rỗng thì dùng client mặc định của
+// hệ thống) — lượt chat chạy trên kết nối riêng của user thì bước phân loại
+// cũng chạy trên key của user đó.
+func (c *LLMClassifier) Classify(ctx context.Context, client einomodel.BaseChatModel,
+	model, query string) QuestionType {
+	if c == nil {
+		return QuestionLookup
+	}
+	target := client
+	if target == nil {
+		target = c.model
+	}
+	if target == nil || strings.TrimSpace(c.system) == "" {
 		return QuestionLookup
 	}
 	if strings.TrimSpace(model) == "" || strings.TrimSpace(query) == "" {
 		return QuestionLookup
 	}
-	out, err := c.model.Generate(ctx,
+	out, err := target.Generate(ctx,
 		[]*schema.Message{
 			schema.SystemMessage(c.system),
 			schema.UserMessage(query),

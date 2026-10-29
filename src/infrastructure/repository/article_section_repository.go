@@ -5,6 +5,7 @@ import (
 	"knowledge_ingestion/src/domain"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ArticleSectionRepository bảng article_sections (P2.4 phase 1b) — compile
@@ -31,6 +32,28 @@ func (r *ArticleSectionRepository) Replace(ctx context.Context, articleID int64,
 		}
 		return tx.Create(sections).Error
 	})
+}
+
+// Upsert ghi/cập nhật lô mục theo khoá (article_id, name) mà KHÔNG xoá dòng
+// khác của bài — checkpoint compile: mỗi lô vừa tóm tắt xong ghi ngay, job
+// chết giữa chừng thì kỳ sau chỉ làm nốt.
+//
+// Dòng cũ bị xoá mềm (deleted_at khác NULL) cũng được hồi sinh: uniqueIndex
+// (article_id, name) không partial nên dòng đó vẫn giữ chỗ khoá, nếu không
+// set deleted_at = NULL thì insert đụng khoá cũ và bị chặn.
+func (r *ArticleSectionRepository) Upsert(ctx context.Context, sections []*domain.ArticleSection) error {
+	if len(sections) == 0 {
+		return nil
+	}
+	return dbConn(ctx, r.db).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "article_id"}, {Name: "name"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"start_chunk": gorm.Expr("excluded.start_chunk"),
+			"summary":     gorm.Expr("excluded.summary"),
+			"updated_at":  gorm.Expr("excluded.updated_at"),
+			"deleted_at":  nil,
+		}),
+	}).Create(sections).Error
 }
 
 // ListByArticle trả mục của bài theo start_chunk tăng dần — thứ tự đọc

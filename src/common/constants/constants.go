@@ -192,8 +192,24 @@ const COMPILE_CLAIM_LIMIT = COMPILE_POOL_SIZE
 
 // COMPILE_LEASE/COMPILE_JOB_TIMEOUT cùng luật extract/index: timeout PHẢI
 // NHỎ HƠN lease để worker khác không reclaim bài đang chạy.
-const COMPILE_LEASE = 30 * time.Minute
-const COMPILE_JOB_TIMEOUT = 25 * time.Minute
+//
+// Timeout cả bài nâng lên 60 phút (trước 25) vì bài lớn có hàng nghìn mục;
+// nhưng KHÔNG phải chỗ dựa vào để không mất tiến trình — checkpoint
+// compile_done_sections đảm nhiệm phần đó (xem compile service).
+const COMPILE_LEASE = 90 * time.Minute
+const COMPILE_JOB_TIMEOUT = 60 * time.Minute
+
+// COMPILE_CALL_TIMEOUT timeout của MỘT lượt gọi LLM tóm tắt — tách riêng khỏi
+// timeout cả bài. Lý do: 1 lượt model kẹt (provider treo) chỉ nên làm hỏng
+// lô mục đang chạy, không kéo cả bài (hàng nghìn mục) bị giết kèm. Lớn hơn
+// timeout HTTP client (120s) để còn chỗ cho lượt thử lại ở tầng transport.
+const COMPILE_CALL_TIMEOUT = 5 * time.Minute
+
+// COMPILE_SECTION_BATCH số mục gộp trong 1 lượt gọi LLM. Trước đây 1 mục/lượt
+// nên bài 2000 mục tốn 2000 request provider; gộp 8 mục/lượt giảm ~8 lần số
+// request. 8 là điểm hoà đội: prompt vừa đủ context của model free mà vẫn
+// còn 8 mục/lượt để giảm chi phí mạnh.
+const COMPILE_SECTION_BATCH = 8
 
 // COMPILE_MAX_CHUNKS_PER_SECTION trần chunk nạp cho 1 mục khi gọi LLM — mục
 // dài (cả chương) chỉ cần vài chunk đầu là tóm đúng ý, chặn prompt phình

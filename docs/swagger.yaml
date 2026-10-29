@@ -355,6 +355,50 @@ definitions:
         maxLength: 32
         type: string
     type: object
+  dtos.SaveUserProviderRequest:
+    properties:
+      api_key:
+        description: |-
+          APIKey là key của provider. Bắt buộc với giao thức openai-compatible;
+          để trống khi sửa thì giữ key đang có.
+        example: gsk_...
+        maxLength: 512
+        type: string
+      base_url:
+        description: BaseURL là địa chỉ provider — vd https://api.groq.com/openai/v1.
+        example: https://api.groq.com/openai/v1
+        maxLength: 512
+        minLength: 1
+        type: string
+      label:
+        description: Label là tên hiện thị trong menu chọn model ("Groq của tôi").
+        example: Groq của tôi
+        maxLength: 64
+        minLength: 1
+        type: string
+      model:
+        description: Model là model mặc định của kết nối.
+        example: llama-3.3-70b-versatile
+        maxLength: 128
+        type: string
+      models:
+        description: Models là danh sách model đã tải từ provider (nút "Tải model").
+        items:
+          type: string
+        maxItems: 300
+        type: array
+      type:
+        description: |-
+          Type là giao thức client: "openai-compatible" (Groq/OpenRouter/NVIDIA/
+          9Router...) hoặc "ollama" (local). Server chuẩn hoá về "openai"/"ollama".
+        example: openai-compatible
+        maxLength: 32
+        type: string
+    required:
+    - base_url
+    - label
+    - type
+    type: object
   dtos.SearchRequest:
     properties:
       category_ids:
@@ -501,6 +545,62 @@ paths:
       security:
       - BearerAuth: []
       summary: Embed cache stats
+      tags:
+      - admin
+  /api/v1/admin/llm-usage:
+    get:
+      description: 'Báo cáo chi phí LLM theo tài khoản (số lượt gọi + token đầu vào/ra
+        theo phase chat/compile/classify, provider và model), tổng hợp theo NGÀY.
+        Dùng để quản lý: biết acc nào đang tốn token. Chỉ báo cáo, KHÔNG chặn dùng.
+        Lọc: from/to (yyyy-mm-dd), user_id (1 tài khoản), site (chat/compile/classify),
+        limit/offset.'
+      parameters:
+      - description: ngày bắt đầu (yyyy-mm-dd)
+        in: query
+        name: from
+        type: string
+      - description: ngày kết thúc (yyyy-mm-dd)
+        in: query
+        name: to
+        type: string
+      - description: lọc đúng 1 tài khoản
+        in: query
+        name: user_id
+        type: integer
+      - description: lọc theo phase
+        enum:
+        - chat
+        - compile
+        - classify
+        in: query
+        name: site
+        type: string
+      - description: số dòng (mặc định 200, max 500)
+        in: query
+        name: limit
+        type: integer
+      - description: bỏ qua N dòng
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: LLM usage report per account
       tags:
       - admin
   /api/v1/admin/queue:
@@ -1486,6 +1586,152 @@ paths:
       summary: Mở phiên mã hoá payload chat
       tags:
       - crypto
+  /api/v1/llm/my/providers:
+    get:
+      description: Các kết nối riêng của chính người đang đăng nhập. Key KHÔNG BAO
+        GIỜ trả về — chỉ có `has_key`.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Danh sách kết nối LLM của tôi
+      tags:
+      - llm-my
+    post:
+      consumes:
+      - application/json
+      description: Tạo kết nối riêng (base URL + API key + model). Key được mã hoá
+        rồi lưu, không bao giờ trả lại. Tối đa 5 kết nối mỗi tài khoản.
+      parameters:
+      - description: Kết nối mới
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.SaveUserProviderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Thêm kết nối LLM của tôi
+      tags:
+      - llm-my
+  /api/v1/llm/my/providers/{id}:
+    delete:
+      description: Xoá kết nối của chính mình, trả lại danh sách còn lại. 404 nếu
+        kết nối không tồn tại hoặc thuộc tài khoản khác.
+      parameters:
+      - description: id kết nối
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Xoá kết nối LLM của tôi
+      tags:
+      - llm-my
+    put:
+      consumes:
+      - application/json
+      description: Sửa một kết nối của chính mình. Field bỏ trống giữ nguyên giá trị
+        cũ; `api_key` để trống nghĩa là giữ key đang có. 404 nếu kết nối không tồn
+        tại hoặc thuộc tài khoản khác.
+      parameters:
+      - description: id kết nối
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Thông tin mới
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dtos.SaveUserProviderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Sửa kết nối LLM của tôi
+      tags:
+      - llm-my
+  /api/v1/llm/my/providers/{id}/models:
+    post:
+      description: Gọi chính provider bằng key của người gọi rồi lưu danh sách model,
+        trả về danh sách đã sắp A→Z.
+      parameters:
+      - description: id kết nối
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Tải danh sách model của kết nối của tôi
+      tags:
+      - llm-my
   /api/v1/llm/options:
     get:
       description: Trả danh sách provider đã cấu hình (sắp theo slug) kèm model gợi

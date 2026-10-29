@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"knowledge_ingestion/src/common/constants"
+	"knowledge_ingestion/src/common/llmusage"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/services/internal/worker"
@@ -35,6 +36,15 @@ import (
 //   - LLM summary chậm và hay retry (provider free dính 429); nhét vào loop
 //     embed là kéo dài lease của phase index oan.
 //
+// Ba quyết định giữ chi phí LLM trong tầm kiểm soát (đợt 29):
+//  1. GỘP LÔ: 1 lượt gọi tóm tắt COMPILE_SECTION_BATCH mục thay vì 1 mục —
+//     bài 2000 mục giảm từ 2000 request còn ~250.
+//  2. CHECKPOINT: sau mỗi lô đã tóm tắt thì ghi ngay vào article_sections và
+//     đếm compile_done_sections. Job chết/hết giờ thì kỳ sau làm nốt phần còn
+//     lại thay vì tóm tắt lại từ đầu.
+//  3. TIMEOUT THEO LƯỢT: mỗi lượt gọi LLM có deadline riêng (COMPILE_CALL_TIMEOUT)
+//     nên 1 lượt kẹt không giết cả bài.
+//
 // Cache Redis theo hash (model|tên mục|nội dung): compile lại bài không đổi
 // nội dung thì không tốn lượt LLM nào — cùng ý tưởng embed cache ngày cũ
 // nhưng đặt ở tầng có chi phí thật (gọi LLM), không phải gọi embed local.
@@ -47,11 +57,18 @@ type articleCompileService struct {
 	sectionRepo domain.IArticleSectionRepository
 	vectors     domain.IVectorStore
 	summarizer  domain.ISummarizer
-	cache       *redis.Client
-	cacheTTL    time.Duration
+	// usageRepo ghi số liệu tiêu thụ LLM theo tài khoản — bảng audit
+	// llm_usage_daily. nil = tắt audit (test/fake), không chặn compile.
+	usageRepo domain.ILLMUsageRepository
+	cache     *redis.Client
+	cacheTTL  time.Duration
 	// maxChunksPerSection trần chunk nạp cho 1 mục — loader/test truyền tay
 	// để test ép được 1 mà không đổi hằng số thật.
 	maxChunksPerSection int
+	// batchSize số mục gộp trong 1 lượt gọi LLM.
+	batchSize int
+	// callTimeout deadline riêng cho mỗi lượt gọi LLM.
+	callTimeout time.Duration
 	// cycleLLMCalls/cycleCacheHits đếm trong 1 kỳ quét để dòng "xong 1 kỳ
 	// quét" trả lời được câu "kỳ này worker có gọi LLM không": llm_calls=0
 	// khi UI đã báo xong là bằng chứng worker im lặng, dashboard provider
@@ -66,6 +83,7 @@ func NewArticleCompileService(
 	vectors domain.IVectorStore,
 	summarizer domain.ISummarizer,
 	cache caches.ICache,
+	usageRepo domain.ILLMUsageRepository,
 ) IArticleCompileService {
 	maxChunks := constants.COMPILE_MAX_CHUNKS_PER_SECTION
 	if maxChunks <= 0 {
@@ -80,16 +98,19 @@ func NewArticleCompileService(
 		// đều là lời gọi LLM thật — phải nói ra, đừng để "sao provider nhiều
 		// request thế" thành câu hỏi không có đáp án.
 		logs.Warnw("compile: không có Redis — summary không được cache, " +
-			"mỗi lần compile lại đều gọi LLM thật")
+			"mọi lần compile lại đều gọi LLM thật")
 	}
 	return &articleCompileService{
 		articleRepo:         articleRepo,
 		sectionRepo:         sectionRepo,
 		vectors:             vectors,
 		summarizer:          summarizer,
+		usageRepo:           usageRepo,
 		cache:               client,
 		cacheTTL:            constants.COMPILE_CACHE_TTL,
 		maxChunksPerSection: maxChunks,
+		batchSize:           constants.COMPILE_SECTION_BATCH,
+		callTimeout:         constants.COMPILE_CALL_TIMEOUT,
 	}
 }
 
@@ -244,10 +265,8 @@ func (s *articleCompileService) compileOneSafe(ctx context.Context, traceID stri
 	return s.compileOne(ctx, traceID, article)
 }
 
-// compileOne đọc PageIndex của bài từ Qdrant, gom text từng mục, gọi LLM tóm
-// tắt (có cache), rồi ghi cả loạt vào article_sections (Replace — dọn dòng cũ
-// trước). Phần dựng nội dung nằm ở buildRows; hàm này chỉ lo trạng thái + ghi
-// — nhờ vậy phần ghi DB ngắn và số lời gọi LLM đo được theo từng bài.
+// compileOne chỉ điều phối: đọc danh sách mục rồi chạy vòng lô (compileRun) —
+// chi tiết ghi checkpoint nằm ở compileRun bên dưới.
 func (s *articleCompileService) compileOne(ctx context.Context, traceID string, article *domain.Article) error {
 	start := time.Now()
 	filter := domain.SearchFilter{UserID: article.UserID, ArticleID: article.ID}
@@ -257,7 +276,7 @@ func (s *articleCompileService) compileOne(ctx context.Context, traceID string, 
 	}
 	if len(sections) == 0 {
 		// Bài index done mà không có mục nào (tài liệu không tiêu đề) — vẫn
-		// Replace rỗng để dọn dòng cũ, coi như compile xong.
+		// dọn dòng cũ, coi như compile xong.
 		det := worker.Detach(ctx)
 		defer det.Close()
 		if err := s.sectionRepo.Replace(det.Ctx, article.ID, nil); err != nil {
@@ -267,91 +286,260 @@ func (s *articleCompileService) compileOne(ctx context.Context, traceID string, 
 			"article_id", article.ID, "name", article.Name, "file", fileTag(article))
 		return nil
 	}
-	rows, stats, err := s.buildRows(ctx, traceID, article, filter, sections)
-	if err != nil {
+	r := newCompileRun(s, ctx, traceID, article, filter, sections)
+	if err := r.run(); err != nil {
 		return err
 	}
-	det := worker.Detach(ctx)
-	defer det.Close()
-	if err := s.sectionRepo.Replace(det.Ctx, article.ID, rows); err != nil {
-		return fmt.Errorf("ghi article_sections: %w", err)
-	}
 	logs.Infow("compile: xong 1 bài", "trace_id", traceID, "article_id", article.ID,
-		"name", article.Name, "file", fileTag(article), "sections", len(rows),
-		"llm_calls", stats.llmCalls, "cache_hits", stats.cacheHits,
+		"name", article.Name, "file", fileTag(article), "sections", r.done,
+		"llm_calls", r.stats.llmCalls, "cache_hits", r.stats.cacheHits,
 		"elapsed_ms", time.Since(start).Milliseconds())
 	return nil
 }
 
 // compileStats đếm lượt gọi LLM THẬT và lượt ăn cache trong 1 lần compile bài.
-// llm_calls là số request provider thấy cho bài đó (mỗi lượt sinh đúng 1 dòng
-// "llm: request" site=compile); llm_calls + cache_hits = số mục có nội dung.
+// llm_calls là số lượt gọi MODEL (mỗi lượt sinh đúng 1 dòng "llm: request"
+// site=compile); cache_hits là số mục không phải gọi LLM vì đã có trong cache.
 type compileStats struct {
 	llmCalls  int
 	cacheHits int
 }
 
-// buildRows dựng article_sections của cả bài: mỗi mục lấy cửa sổ chunk từ
-// sec.From tới trước mục kế tiếp (cắt thêm ở trần maxChunksPerSection để prompt
-// không phình quá cửa sổ context của model free) rồi tóm tắt. Đếm vào bộ đếm
-// của kỳ quét NGAY sau mỗi lượt: hỏng giữa chừng thì số call đã tốn vẫn hiện ra.
-func (s *articleCompileService) buildRows(ctx context.Context, traceID string, article *domain.Article, filter domain.SearchFilter, sections []domain.SectionSpan) ([]*domain.ArticleSection, compileStats, error) {
-	rows := make([]*domain.ArticleSection, 0, len(sections))
-	var stats compileStats
-	for i, sec := range sections {
-		span := s.maxChunksPerSection
-		if i+1 < len(sections) {
-			if w := sections[i+1].From - sec.From; w < span {
-				span = w
-			}
-		}
-		if span <= 0 {
-			span = 1
-		}
-		text, err := s.sectionText(ctx, filter, sec.From, span)
-		if err != nil {
-			return nil, stats, fmt.Errorf("đọc nội dung mục %q: %w", sec.Name, err)
-		}
-		summary, called, err := s.summarize(ctx, traceID, article, sec.Name, text)
-		if err != nil {
-			return nil, stats, fmt.Errorf("tóm tắt mục %q: %w", sec.Name, err)
-		}
-		s.count(&stats, called, text)
-		rows = append(rows, &domain.ArticleSection{
-			ArticleID:  article.ID,
-			Name:       sec.Name,
-			StartChunk: sec.From,
-			Summary:    summary,
-		})
-		// Bài bị xoá / job bị hủy giữa chừng thì dừng, đừng tốn LLM cho các
-		// mục còn lại (lỗi compile là transient — trả về để backoff).
-		if err := ctx.Err(); err != nil {
-			return nil, stats, err
-		}
-	}
-	return rows, stats, nil
+// compileRun là trạng thái của MỘT bài đang compile: danh sách mục, checkpoint
+// đã xong, bộ đếm lượt gọi LLM và collector audit. Tách thành struct để
+// compileOne chỉ còn điều phối — mỗi hàm dưới đây nằm gọn trong ngân sách
+// hàm của repo (src/quality/function_budget_test.go).
+type compileRun struct {
+	svc      *articleCompileService
+	ctx      context.Context
+	traceID  string
+	article  *domain.Article
+	filter   domain.SearchFilter
+	sections []domain.SectionSpan
+	// collector gom số liệu tiêu thụ LLM của bài này (mọi lượt model trong
+	// lô) — đổ vào bảng audit theo tài khoản sau mỗi lô.
+	collector *llmusage.Collector
+	stats     compileStats
+	// done là số mục ĐẦU TIÊN đã tóm tắt xong — checkpoint compile_done_sections.
+	done int
 }
 
-// count cộng dồn 1 mục vào bộ đếm của bài lẫn của kỳ quét. Mục không có text
-// thì summarize không gọi LLM lẫn không ăn cache — không đếm gì.
-func (s *articleCompileService) count(stats *compileStats, called bool, text string) {
-	switch {
-	case called:
-		stats.llmCalls++
-		s.cycleLLMCalls.Add(1)
-	case strings.TrimSpace(text) != "":
-		stats.cacheHits++
-		s.cycleCacheHits.Add(1)
+func newCompileRun(svc *articleCompileService, ctx context.Context, traceID string, article *domain.Article,
+	filter domain.SearchFilter, sections []domain.SectionSpan) *compileRun {
+	collector := llmusage.NewCollector()
+	// Checkpoint: số mục đầu đã tóm tắt xong. Chặn trên độ dài danh sách để
+	// checkpoint cũ (bài bị index lại, mục ít hơn) không chỉ tới ngoài.
+	done := article.CompileDoneSections
+	if done < 0 {
+		done = 0
 	}
+	if done > len(sections) {
+		done = len(sections)
+	}
+	return &compileRun{
+		svc:       svc,
+		ctx:       llmusage.WithCollector(ctx, collector),
+		traceID:   traceID,
+		article:   article,
+		filter:    filter,
+		sections:  sections,
+		collector: collector,
+		done:      done,
+	}
+}
+
+// run là vòng lô của compile: mỗi lô gom text → tra cache → gọi LLM cho phần
+// miss → ghi ngay article_sections (checkpoint) → đếm tiến trình.
+//
+// Ghi thứ tự quan trọng: upsert TRƯỚC, đếm checkpoint SAU. Nếu chết giữa
+// chừng thì checkpoint chỉ LAG chứ không LEAD — kỳ sau làm lại đúng 1 lô đó
+// (upsert idempotent theo khoá article_id+name) chứ không bỏ sót mục nào.
+func (r *compileRun) run() error {
+	if err := r.prepare(); err != nil {
+		return err
+	}
+	for r.done < len(r.sections) {
+		if err := r.ctx.Err(); err != nil {
+			return err
+		}
+		if err := r.step(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// prepare dọn dòng cũ khi compile CHẠY TỪ ĐẦU — đổi chunker làm danh sách mục
+// đổi theo, mục cũ phải mất đi chứ không nằm lại. Chạy lại có checkpoint thì
+// KHÔNG dọn (đó là lý do tồn tại): dọn lúc đó là xoá luôn phần đã làm xong.
+func (r *compileRun) prepare() error {
+	if r.done != 0 {
+		return nil
+	}
+	det := worker.Detach(r.ctx)
+	defer det.Close()
+	if err := r.svc.sectionRepo.Replace(det.Ctx, r.article.ID, nil); err != nil {
+		return fmt.Errorf("dọn section cũ: %w", err)
+	}
+	return nil
+}
+
+// step xử lý 1 lô mục: gom text, gọi LLM cho phần chưa có cache, ghi
+// article_sections rồi cập nhật checkpoint + audit.
+func (r *compileRun) step() error {
+	batch := r.batch()
+	rows, err := r.summarizeBatch(batch)
+	if err != nil {
+		// Lượt gọi hỏng vẫn đã tốn token đầu vào và vẫn hiện trên dashboard
+		// provider — ghi audit luôn, không thì báo cáo lệch đúng lúc cần
+		// đối chiếu nhất.
+		_ = r.flushUsage()
+		return err
+	}
+	newDone := r.done + len(batch)
+	if err := r.persist(rows, newDone); err != nil {
+		return err
+	}
+	r.done = newDone
+	return r.flushUsage()
+}
+
+// batch cắt lô mục kế tiếp — cuối lô có thể ngắn hơn COMPILE_SECTION_BATCH.
+func (r *compileRun) batch() []domain.SectionSpan {
+	end := min(r.done+r.svc.batchSize, len(r.sections))
+	return r.sections[r.done:end]
+}
+
+// persist ghi lô mục vừa tóm tắt vào article_sections rồi đếm checkpoint.
+// Upsert theo khoá (article_id, name) nên chạy lại lô cũ không nhân bản.
+func (r *compileRun) persist(rows []*domain.ArticleSection, newDone int) error {
+	det := worker.Detach(r.ctx)
+	defer det.Close()
+	if len(rows) > 0 {
+		if err := r.svc.sectionRepo.Upsert(det.Ctx, rows); err != nil {
+			return fmt.Errorf("ghi article_sections: %w", err)
+		}
+	}
+	if err := r.svc.articleRepo.MarkCompileProgress(det.Ctx, r.article.ID, newDone); err != nil {
+		return fmt.Errorf("ghi checkpoint compile: %w", err)
+	}
+	return nil
+}
+
+// flushUsage đẩy số liệu LLM của lô vừa rồi vào bảng audit theo tài khoản.
+// Lỗi ghi log ra chứ KHÔNG làm hỏng compile — số liệu audit thiếu 1 lô vẫn
+// hơn là bài không compile xong.
+func (r *compileRun) flushUsage() error {
+	bySite := r.collector.Drain()
+	if len(bySite) == 0 {
+		return nil
+	}
+	det := worker.Detach(r.ctx)
+	defer det.Close()
+	err := llmusage.Record(det.Ctx, r.svc.usageRepo, r.article.UserID,
+		r.svc.summarizer.ProviderID(), r.svc.summarizer.ModelID(), bySite)
+	if err != nil {
+		logs.Error(err, "compile: ghi audit usage lỗi", "trace_id", r.traceID,
+			"article_id", r.article.ID, "name", r.article.Name, "file", fileTag(r.article))
+	}
+	return nil
+}
+
+// summarizeBatch tóm tắt 1 lô mục: mục nào đã có trong cache thì lấy luôn
+// (không tốn lượt LLM), phần còn lại gộp trong 1 lượt gọi LLM.
+//
+// Cache theo từng mục (hash model|tên|nội dung) nên lô có thể đẹp lẻ: 3 mục
+// hit + 5 mục miss thì chỉ gọi LLM cho 5 mục đó.
+func (r *compileRun) summarizeBatch(batch []domain.SectionSpan) ([]*domain.ArticleSection, error) {
+	rows, pending, err := r.gather(batch)
+	if err != nil {
+		return nil, err
+	}
+	if len(pending) > 0 {
+		sums, err := r.callLLM(pending)
+		if err != nil {
+			return nil, err
+		}
+		for i, p := range pending {
+			rows[p.row].summary = sums[i]
+			r.svc.saveSummary(r.ctx, r.article, p.name, p.text, sums[i])
+		}
+	}
+	out := make([]*domain.ArticleSection, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, &domain.ArticleSection{
+			ArticleID:  r.article.ID,
+			Name:       row.name,
+			StartChunk: row.start,
+			Summary:    row.summary,
+		})
+	}
+	return out, nil
+}
+
+// compileRow là 1 mục của lô — text đã gom, summary đã có (từ cache) hoặc
+// chưa (cần gọi LLM).
+type compileRow struct {
+	name    string
+	start   int
+	text    string
+	summary string
+	// row là vị trí trong slice rows của lô — để gán kết quả LLM về đúng mục.
+	row int
+}
+
+// gather gom text từng mục trong lô và tra cache — trả về mọi mục của lô và
+// danh sách mục còn THIẾU summary (cần gọi LLM).
+func (r *compileRun) gather(batch []domain.SectionSpan) ([]*compileRow, []*compileRow, error) {
+	rows := make([]*compileRow, 0, len(batch))
+	pending := make([]*compileRow, 0, len(batch))
+	for i, sec := range batch {
+		row := &compileRow{name: sec.Name, start: sec.From, row: i}
+		text, err := r.sectionText(sec.From, r.spanOf(r.done+i))
+		if err != nil {
+			return nil, nil, err
+		}
+		row.text = text
+		rows = append(rows, row)
+		if strings.TrimSpace(text) == "" {
+			// Mục không có chunk nào → không có gì để tóm tắt, không tốn lượt
+			// LLM nào (và cũng không ăn cache nào).
+			continue
+		}
+		if sum, ok := r.svc.cachedSummary(r.ctx, r.traceID, r.article, sec.Name, text); ok {
+			row.summary = sum
+			r.stats.cacheHits++
+			r.svc.cycleCacheHits.Add(1)
+			continue
+		}
+		pending = append(pending, row)
+	}
+	return rows, pending, nil
+}
+
+// spanOf tính số chunk nạp cho mục ở vị trí idx — cửa sổ tới trước mục kế
+// tiếp, cắt thêm ở trần maxChunksPerSection để prompt không phình quá cửa
+// sổ context của model free.
+func (r *compileRun) spanOf(idx int) int {
+	span := r.svc.maxChunksPerSection
+	if idx+1 < len(r.sections) {
+		if w := r.sections[idx+1].From - r.sections[idx].From; w < span {
+			span = w
+		}
+	}
+	if span <= 0 {
+		span = 1
+	}
+	return span
 }
 
 // sectionText gom text các chunk của 1 mục từ Qdrant (ScrollRange cửa sổ
 // [from, from+span)) — nguồn nội dung cho LLM tóm tắt. Chunk đã mang sẵn
 // tiêu đề mục prepend lúc index nên càng thêm ngữ cảnh, không sao.
-func (s *articleCompileService) sectionText(ctx context.Context, filter domain.SearchFilter, from, span int) (string, error) {
-	chunks, err := s.vectors.ScrollRange(ctx, filter, from, span)
+func (r *compileRun) sectionText(from, span int) (string, error) {
+	chunks, err := r.svc.vectors.ScrollRange(r.ctx, r.filter, from, span)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("đọc nội dung mục tại chunk %d: %w", from, err)
 	}
 	parts := make([]string, 0, len(chunks))
 	for _, c := range chunks {
@@ -362,48 +550,66 @@ func (s *articleCompileService) sectionText(ctx context.Context, filter domain.S
 	return strings.Join(parts, "\n\n"), nil
 }
 
-// summarize trả (summary, đãGọiLLM, lỗi) — cờ thứ hai để tầng trên đếm được
-// chi phí thật của bài: cache hit thì không tốn lượt LLM nào. Cache Redis theo
-// hash (model|tên mục|nội dung), miss mới gọi LLM rồi ghi cache — cùng pattern
-// enhancer.Keywords nhưng chi phí thật ở đây là lời gọi LLM. Cache không quyết
-// định tính đúng: đọc/ghi lỗi thì log + gọi thẳng LLM, kết quả vẫn ghi DB.
-func (s *articleCompileService) summarize(ctx context.Context, traceID string, article *domain.Article, sectionName, text string) (string, bool, error) {
-	if strings.TrimSpace(text) == "" {
-		return "", false, nil
-	}
-	key := s.cacheKey(sectionName, text)
-	if s.cache != nil {
-		v, err := s.cache.Get(ctx, key).Result()
-		if err == nil && v != "" {
-			logs.Debugw("compile: cache hit, không gọi LLM", "trace_id", traceID,
-				"article_id", article.ID, "file", fileTag(article), "section", sectionName)
-			return v, false, nil
-		}
-		if err != nil && !stderrors.Is(err, redis.Nil) {
-			logs.Error(err, "compile: đọc cache lỗi, gọi LLM thẳng",
-				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
-				"file", fileTag(article))
-		}
+// callLLM gọi LLM 1 lượt cho cả lô mục còn thiếu — timeout riêng cho lượt này
+// (COMPILE_CALL_TIMEOUT) để 1 lượt kẹt không giết cả bài. Đếm vào bộ đếm của
+// bài lẫn của kỳ quét.
+func (r *compileRun) callLLM(pending []*compileRow) ([]string, error) {
+	items := make([]domain.SectionContent, 0, len(pending))
+	for _, p := range pending {
+		items = append(items, domain.SectionContent{Name: p.name, Text: p.text})
 	}
 	// 1 dòng = 1 call LLM thật: đây là chỗ DUY NHẤT trong pipeline sinh lời
 	// gọi LLM (index chỉ gọi bge-m3), nên đếm dòng này là biết chi phí của bài.
 	// site=compile lan xuống transport để dashboard provider khớp được.
-	logs.Infow("compile: gọi LLM tóm tắt mục", "trace_id", traceID,
-		"article_id", article.ID, "name", article.Name, "file", fileTag(article),
-		"section", sectionName, "chars", len(text), "model", s.summarizer.ModelID())
+	logs.Infow("compile: gọi LLM tóm tắt lô mục", "trace_id", r.traceID,
+		"article_id", r.article.ID, "name", r.article.Name, "file", fileTag(r.article),
+		"sections", len(items), "model", r.svc.summarizer.ModelID())
+	ctx, cancel := context.WithTimeout(r.ctx, r.svc.callTimeout)
+	defer cancel()
 	ctx = utils.WithLLMSite(ctx, constants.LLMSiteCompile)
-	summary, err := s.summarizer.Summarize(ctx, sectionName, text)
+	sums, err := r.svc.summarizer.SummarizeBatch(ctx, items)
 	if err != nil {
-		return "", true, err
+		return nil, fmt.Errorf("tóm tắt lô mục: %w", err)
 	}
-	if s.cache != nil && summary != "" {
-		if err := s.cache.Set(ctx, key, summary, s.cacheTTL).Err(); err != nil {
-			logs.Error(err, "compile: ghi cache lỗi (không chặn kết quả)",
-				"trace_id", traceID, "article_id", article.ID, "name", article.Name,
-				"file", fileTag(article))
-		}
+	r.stats.llmCalls++
+	r.svc.cycleLLMCalls.Add(1)
+	return sums, nil
+}
+
+// cachedSummary tra cache Redis theo hash (model|tên mục|nội dung) — cờ
+// thứ hai báo có dùng cache hay không để tầng trên đếm được chi phí thật.
+// Cache không quyết định tính đúng: đọc lỗi thì coi như miss, gọi LLM thẳng.
+func (s *articleCompileService) cachedSummary(ctx context.Context, traceID string, article *domain.Article,
+	sectionName, text string) (string, bool) {
+	if s.cache == nil {
+		return "", false
 	}
-	return summary, true, nil
+	v, err := s.cache.Get(ctx, s.cacheKey(sectionName, text)).Result()
+	if err == nil && v != "" {
+		logs.Debugw("compile: cache hit, không gọi LLM", "trace_id", traceID,
+			"article_id", article.ID, "file", fileTag(article), "section", sectionName)
+		return v, true
+	}
+	if err != nil && !stderrors.Is(err, redis.Nil) {
+		logs.Error(err, "compile: đọc cache lỗi, gọi LLM thẳng",
+			"trace_id", traceID, "article_id", article.ID, "name", article.Name,
+			"file", fileTag(article))
+	}
+	return "", false
+}
+
+// saveSummary ghi summary vừa sinh vào cache — lần compile sau (bài bị reset,
+// lease hết hạn) không tốn lượt LLM lại nếu nội dung không đổi.
+func (s *articleCompileService) saveSummary(ctx context.Context, article *domain.Article,
+	sectionName, text, summary string) {
+	if s.cache == nil || summary == "" {
+		return
+	}
+	if err := s.cache.Set(ctx, s.cacheKey(sectionName, text), summary, s.cacheTTL).Err(); err != nil {
+		logs.Error(err, "compile: ghi cache lỗi (không chặn kết quả)",
+			"article_id", article.ID, "name", article.Name, "file", fileTag(article),
+			"section", sectionName)
+	}
 }
 
 // cacheKey băm (model|tên mục|nội dung) — đổi model hoặc sửa nội dung mục thì

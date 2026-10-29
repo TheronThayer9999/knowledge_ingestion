@@ -21,7 +21,8 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	adminAPI *apis.ArticleAdminAPI, embedCacheAPI *apis.EmbedCacheAdminAPI,
 	consistencyAPI *apis.ConsistencyAPI, healthAPI *apis.HealthAPI,
 	searchAPI *apis.SearchAPI, chatAPI *apis.ChatAPI,
-	conversationAPI *apis.ConversationAPI, llmAPI *apis.LLMAPI,
+	conversationAPI *apis.ConversationAPI, llmAPI *apis.LLMAPI, usageAPI *apis.LLMUsageAdminAPI,
+	llmUserAPI *apis.LLMUserAPI,
 	cryptoAPI *apis.CryptoAPI, cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
 	crypto middlewares.IChatCryptoMiddleware,
 	trace middlewares.ITraceMiddleware, rl middlewares.IRateLimiter) *Router {
@@ -76,21 +77,23 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		// Trạng thái pipeline gọn (1 query 4 cột) cho UI poll tiến trình —
 		// không đặt dưới /articles vì đụng wildcard :id của gin.
 		authed.GET("/pipeline/articles", articleAPI.ListStatuses)
-		registerAdminRoutes(authed, adminAPI, embedCacheAPI, consistencyAPI)
+		registerAdminRoutes(authed, adminAPI, embedCacheAPI, consistencyAPI, usageAPI)
 		authed.POST("/search", searchAPI.Query)
 		authed.POST("/chat", chatAPI.Chat)
 		registerConversationRoutes(authed, chatAPI, conversationAPI, llmAPI, cryptoAPI)
+		registerUserProviderRoutes(authed, llmUserAPI)
 	}
 
 	return &Router{Engine: engine}
 }
 
 // registerAdminRoutes là nhóm quản trị (role >= 1): rebuild vector, OCR lại
-// trang, xem hàng đợi, embed cache và kiểm tra toàn vẹn dữ liệu. Tách khỏi
-// NewRouter vì hàm đó đã chạm ngân sách (guardrail
-// src/quality/function_budget_test.go).
+// trang, xem hàng đợi, embed cache, kiểm tra toàn vẹn dữ liệu và báo cáo chi
+// phí LLM theo tài khoản. Tách khỏi NewRouter vì hàm đó đã chạm ngân sách
+// (guardrail src/quality/function_budget_test.go).
 func registerAdminRoutes(authed *gin.RouterGroup, adminAPI *apis.ArticleAdminAPI,
-	embedCacheAPI *apis.EmbedCacheAdminAPI, consistencyAPI *apis.ConsistencyAPI) {
+	embedCacheAPI *apis.EmbedCacheAdminAPI, consistencyAPI *apis.ConsistencyAPI,
+	usageAPI *apis.LLMUsageAdminAPI) {
 	admin := authed.Group("")
 	admin.Use(middlewares.RequireRole(domain.RoleAdmin))
 	{
@@ -104,6 +107,8 @@ func registerAdminRoutes(authed *gin.RouterGroup, adminAPI *apis.ArticleAdminAPI
 		admin.POST("/admin/embed-cache/purge", embedCacheAPI.Purge)
 		// Kiểm tra tính toàn vẹn dữ liệu (orphan/cycle/missing self-row).
 		admin.GET("/admin/consistency", consistencyAPI.Check)
+		// Báo cáo chi phí LLM theo tài khoản — chỉ đọc, không chặn.
+		admin.GET("/admin/llm-usage", usageAPI.List)
 	}
 }
 
@@ -120,6 +125,21 @@ func registerPublicRoutes(v1 *gin.RouterGroup, api *apis.PingPongAPI, userAPI *a
 	v1.POST("/auth/login", rl.Handler(), userAPI.Login)
 	v1.POST("/auth/refresh", userAPI.Refresh)
 	v1.POST("/auth/logout", userAPI.Logout)
+}
+
+// registerUserProviderRoutes ghi nhóm route KẾT NỐI RIÊNG của user (BYOK):
+// user tự thêm base URL + API key của họ rồi dùng cho lượt chat của chính họ.
+//
+// KHÔNG gate admin — chỉ cần đăng nhập, vì đây là tài nguyên RIÊNG của từng
+// tài khoản: service tự lấy user_id từ token và mọi truy vấn DB scope theo
+// user đó, nên không có đường nào đọc được kết nối của người khác. Ngược lại
+// /llm/providers/* là cấu hình CHUNG nên vẫn gate admin.
+func registerUserProviderRoutes(authed *gin.RouterGroup, api *apis.LLMUserAPI) {
+	authed.GET("/llm/my/providers", api.List)
+	authed.POST("/llm/my/providers", api.Create)
+	authed.PUT("/llm/my/providers/:id", api.Update)
+	authed.DELETE("/llm/my/providers/:id", api.Delete)
+	authed.POST("/llm/my/providers/:id/models", api.LoadModels)
 }
 
 // registerConversationRoutes ghi nhóm route phiên chat của chính user (S1),

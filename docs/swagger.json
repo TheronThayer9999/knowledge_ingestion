@@ -96,6 +96,86 @@
                 }
             }
         },
+        "/api/v1/admin/llm-usage": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Báo cáo chi phí LLM theo tài khoản (số lượt gọi + token đầu vào/ra theo phase chat/compile/classify, provider và model), tổng hợp theo NGÀY. Dùng để quản lý: biết acc nào đang tốn token. Chỉ báo cáo, KHÔNG chặn dùng. Lọc: from/to (yyyy-mm-dd), user_id (1 tài khoản), site (chat/compile/classify), limit/offset.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "LLM usage report per account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ngày bắt đầu (yyyy-mm-dd)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ngày kết thúc (yyyy-mm-dd)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "lọc đúng 1 tài khoản",
+                        "name": "user_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "chat",
+                            "compile",
+                            "classify"
+                        ],
+                        "type": "string",
+                        "description": "lọc theo phase",
+                        "name": "site",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "số dòng (mặc định 200, max 500)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "bỏ qua N dòng",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/queue": {
             "get": {
                 "security": [
@@ -1577,6 +1657,228 @@
                 }
             }
         },
+        "/api/v1/llm/my/providers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Các kết nối riêng của chính người đang đăng nhập. Key KHÔNG BAO GIỜ trả về — chỉ có `has_key`.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm-my"
+                ],
+                "summary": "Danh sách kết nối LLM của tôi",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Tạo kết nối riêng (base URL + API key + model). Key được mã hoá rồi lưu, không bao giờ trả lại. Tối đa 5 kết nối mỗi tài khoản.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm-my"
+                ],
+                "summary": "Thêm kết nối LLM của tôi",
+                "parameters": [
+                    {
+                        "description": "Kết nối mới",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.SaveUserProviderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/llm/my/providers/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sửa một kết nối của chính mình. Field bỏ trống giữ nguyên giá trị cũ; `api_key` để trống nghĩa là giữ key đang có. 404 nếu kết nối không tồn tại hoặc thuộc tài khoản khác.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm-my"
+                ],
+                "summary": "Sửa kết nối LLM của tôi",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "id kết nối",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Thông tin mới",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dtos.SaveUserProviderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Xoá kết nối của chính mình, trả lại danh sách còn lại. 404 nếu kết nối không tồn tại hoặc thuộc tài khoản khác.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm-my"
+                ],
+                "summary": "Xoá kết nối LLM của tôi",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "id kết nối",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/llm/my/providers/{id}/models": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Gọi chính provider bằng key của người gọi rồi lưu danh sách model, trả về danh sách đã sắp A→Z.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "llm-my"
+                ],
+                "summary": "Tải danh sách model của kết nối của tôi",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "id kết nối",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/dtos.ResponseResource"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/llm/options": {
             "get": {
                 "security": [
@@ -2735,6 +3037,56 @@
                     ]
                 },
                 "type": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "example": "openai-compatible"
+                }
+            }
+        },
+        "dtos.SaveUserProviderRequest": {
+            "type": "object",
+            "required": [
+                "base_url",
+                "label",
+                "type"
+            ],
+            "properties": {
+                "api_key": {
+                    "description": "APIKey là key của provider. Bắt buộc với giao thức openai-compatible;\nđể trống khi sửa thì giữ key đang có.",
+                    "type": "string",
+                    "maxLength": 512,
+                    "example": "gsk_..."
+                },
+                "base_url": {
+                    "description": "BaseURL là địa chỉ provider — vd https://api.groq.com/openai/v1.",
+                    "type": "string",
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "example": "https://api.groq.com/openai/v1"
+                },
+                "label": {
+                    "description": "Label là tên hiện thị trong menu chọn model (\"Groq của tôi\").",
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "example": "Groq của tôi"
+                },
+                "model": {
+                    "description": "Model là model mặc định của kết nối.",
+                    "type": "string",
+                    "maxLength": 128,
+                    "example": "llama-3.3-70b-versatile"
+                },
+                "models": {
+                    "description": "Models là danh sách model đã tải từ provider (nút \"Tải model\").",
+                    "type": "array",
+                    "maxItems": 300,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "type": {
+                    "description": "Type là giao thức client: \"openai-compatible\" (Groq/OpenRouter/NVIDIA/\n9Router...) hoặc \"ollama\" (local). Server chuẩn hoá về \"openai\"/\"ollama\".",
                     "type": "string",
                     "maxLength": 32,
                     "example": "openai-compatible"

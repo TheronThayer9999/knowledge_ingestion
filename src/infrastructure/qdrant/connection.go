@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -808,26 +809,59 @@ func (c *connection) ScrollRange(ctx context.Context, filter domain.SearchFilter
 	return hits, nil
 }
 
-// listSectionsLimit trần point scroll khi liệt kê mục — bài dài nhất cũng chỉ
-// vài trăm chunk, 500 là dư mà 1 lượt Scroll vẫn nhẹ (chỉ đọc payload).
-const listSectionsLimit = 500
+// listSectionsPageSize số point đọc trong 1 lượt Scroll khi liệt kê mục.
+// KHÔNG phải trần tổng số mục: bài dài có hơn 2000 mục (đo được ở bài 16/17)
+// nên phải phân trang để không mất mục nào — trần 500 cũ làm 1600+ mục vĩnh
+// viễn không bao giờ được compile.
+const listSectionsPageSize = 500
 
 // ListSections trả các mục khác nhau của 1 bài theo thứ tự chunk, mỗi mục
 // kèm chunk bắt đầu (tọa độ) — ground-truth đếm/liệt kê Điều + bản đồ để
 // read_article nhảy vùng. Mục rỗng (chunk đầu bài chưa có heading) bỏ qua.
+//
+// Đọc bằng ScrollAll (phân trang theo offset id của Qdrant) nên số mục trả
+// về KHÔNG bị giới hạn theo độ dài bài.
 func (c *connection) ListSections(ctx context.Context, filter domain.SearchFilter) ([]domain.SectionSpan, error) {
 	if filter.ArticleID <= 0 {
 		return nil, fmt.Errorf("%w: ListSections cần article_id", ErrBadRequest)
 	}
-	points, err := c.client.Scroll(ctx, &qdrantapi.ScrollPoints{
+	points, err := c.scrollAll(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	return sectionSpans(points), nil
+}
+
+// scrollAll đọc HẾT point của bài bằng phân trang — mỗi lượt Scroll lấy
+// listSectionsPageSize point rồi lấy offset của điểm cuối để lấy trang kế.
+// Dừng khi trang vừa đọc ngắn hơn trang (đã hết dữ liệu) hoặc server không
+// trả offset (hết).
+func (c *connection) scrollAll(ctx context.Context, filter domain.SearchFilter) ([]*qdrantapi.RetrievedPoint, error) {
+	iter := c.client.ScrollAll(ctx, &qdrantapi.ScrollPoints{
 		CollectionName: c.collection,
 		Filter:         searchFilter(filter),
-		Limit:          ptrUint32(listSectionsLimit),
+		Limit:          ptrUint32(listSectionsPageSize),
 		WithPayload:    qdrantapi.NewWithPayload(true),
 	})
-	if err != nil {
-		return nil, fmt.Errorf("qdrant: list sections: %w", err)
+	points := make([]*qdrantapi.RetrievedPoint, 0, listSectionsPageSize)
+	for {
+		page, err := iter.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return points, nil
+			}
+			return nil, fmt.Errorf("qdrant: list sections: %w", err)
+		}
+		points = append(points, page...)
+		if len(page) < listSectionsPageSize {
+			return points, nil
+		}
 	}
+}
+
+// sectionSpans rút danh sách mục (tên + chunk bắt đầu) từ point đã đọc —
+// giữ lần xuất hiện đầu của mỗi tên, đây là tọa độ nhảy vùng.
+func sectionSpans(points []*qdrantapi.RetrievedPoint) []domain.SectionSpan {
 	type ranked struct {
 		index   int
 		section string
@@ -854,7 +888,7 @@ func (c *connection) ListSections(ctx context.Context, filter domain.SearchFilte
 		seen[r.section] = true
 		out = append(out, domain.SectionSpan{Name: r.section, From: r.index})
 	}
-	return out, nil
+	return out
 }
 
 // asInt64/asString đọc payload Qdrant đã decode — số về int64/float64, thiếu

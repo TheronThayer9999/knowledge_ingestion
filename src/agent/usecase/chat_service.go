@@ -5,13 +5,17 @@ import (
 	stderrors "errors"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
+
+	einomodel "github.com/cloudwego/eino/components/model"
 
 	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/agent/port"
 	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/errors"
+	"knowledge_ingestion/src/common/llmusage"
 	"knowledge_ingestion/src/common/logs"
 	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/controller/dtos"
@@ -28,6 +32,12 @@ type chatService struct {
 	// sessions là cổng lưu hội thoại (S1) — nil là TẮT tính lưu, để test/fake
 	// dựng chatService không phải kéo theo DB.
 	sessions port.IChatSessions
+	// usageRepo ghi số liệu tiêu thụ LLM của lượt chat vào bảng audit theo
+	// tài khoản (llm_usage_daily). nil = tắt audit, không chặn chat.
+	usageRepo domain.ILLMUsageRepository
+	// userProviders là đường provider RIÊNG của user (BYOK) — nil = chưa bật,
+	// lượt chat chỉ chạy được trên provider chung của hệ thống.
+	userProviders IUserProviderResolver
 }
 
 // NewChatService dựng chat agentic thuần: 1 lượt agent chạy toàn bộ vòng
@@ -36,8 +46,12 @@ type chatService struct {
 // request, phạm vi tin cậy, dán nhãn question_type và dựng cites. Không
 // Route/switch trong Go.
 func NewChatService(providers IProviderRegistry, classifier IClassifier,
-	currentUser port.IUserResolver, sessions port.IChatSessions) port.IChatter {
-	return &chatService{providers: providers, classifier: classifier, currentUser: currentUser, sessions: sessions}
+	currentUser port.IUserResolver, sessions port.IChatSessions,
+	usageRepo domain.ILLMUsageRepository, userProviders IUserProviderResolver) port.IChatter {
+	return &chatService{
+		providers: providers, classifier: classifier, currentUser: currentUser,
+		sessions: sessions, usageRepo: usageRepo, userProviders: userProviders,
+	}
 }
 
 // snippetLen là độ dài trích đoạn mỗi cite — đủ để frontend hiện preview,
@@ -123,25 +137,16 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 	// bật thì đi bản agent đã dựng client có `think` (provider không hỗ trợ
 	// thì Resolve tự fallback bản thường). Chốt slug THỰC đã chạy vào in để
 	// response + lượt lưu ghi đúng provider, không phải chuỗi client gửi.
-	provider := s.providers.EffectiveProvider(in.Provider)
-	agent, model, err := s.providers.Resolve(provider, in.Model, in.Thinking)
+	agent, model, err := s.resolveProvider(ctx, userID, &in)
 	if err != nil {
-		return dtos.Fail[*dtos.ChatResponse](
-			errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, err.Error()),
-		)
+		return dtos.Fail[*dtos.ChatResponse](chatProviderError(err))
 	}
-	in.Provider = provider
-	in.Model = model
 
-	ctx = eino.WithScope(ctx, eino.Scope{UserID: userID, CategoryIDs: in.CategoryIDs})
-
-	// Mỗi lượt 1 dòng: khi nhìn log (hoặc dashboard provider) phải phân biệt
-	// được call LLM của chat với call của worker compile — cùng model nhưng
-	// khác phase, khác lý do.
-	// site=chat cho MỌI request model của lượt này (agent loop có thể gọi
-	// model nhiều vòng vì tool) — transport in kèm nhãn nên dashboard provider
-	// đối chiếu được request nào là chat, request nào là worker compile.
-	ctx = utils.WithLLMSite(ctx, constants.LLMSiteChat)
+	ctx, collector := s.prepareTurn(ctx, userID, in)
+	// Ghi audit CẢ khi lượt hỏng: model hỏng vẫn đã tốn token đầu vào và vẫn
+	// hiện trên dashboard provider — bỏ qua thì báo cáo lệch đúng lúc cần
+	// đối chiếu nhất (provider lỗi hàng loạt).
+	defer func() { s.recordUsage(ctx, userID, in.Provider, model, collector) }()
 	// Tệp đính kèm chỉ chèn vào ngữ cảnh của LƯỢT này; bản lưu phiên và nhãn
 	// câu hỏi vẫn dùng câu hỏi gốc (xem withAttachment).
 	message := withAttachment(dto.Message, dto.Attachment)
@@ -152,7 +157,102 @@ func (s *chatService) Chat(ctx context.Context, dto *dtos.ChatRequest) dtos.Resu
 		// embedding, Qdrant tắt) trả 503 — xem providerError.
 		return dtos.Fail[*dtos.ChatResponse](providerError(err, model))
 	}
-	return dtos.Ok(s.compose(ctx, res, model, dto.Message, in, userID, session))
+	out := s.compose(ctx, res, model, dto.Message, in, userID, session)
+	return dtos.Ok(out)
+}
+
+// resolveProvider chốt provider + model THỰC sẽ chạy cho lượt này — rỗng thì
+// mặc định theo cấu hình, chưa cấu hình key thì trả lỗi rõ ràng (400) chứ
+// không để tầng dưới đổ thành 500. Ghi slug/model đã chạy vào in để response
+// + lượt lưu ghi đúng provider, không phải chuỗi client gửi lên.
+//
+// Slug dạng u_<id> là kết nối RIÊNG của người gọi (BYOK) — đi đường riêng,
+// còn lại là provider chung của hệ thống.
+func (s *chatService) resolveProvider(ctx context.Context, userID int64,
+	in *turnInput) (*eino.ChatAgent, string, error) {
+	if _, ok := domain.ParseUserProviderSlug(in.Provider); ok {
+		return s.resolveUserProvider(ctx, userID, in)
+	}
+	provider := s.providers.EffectiveProvider(in.Provider)
+	agent, model, err := s.providers.Resolve(provider, in.Model, in.Thinking)
+	if err != nil {
+		return nil, "", err
+	}
+	in.Provider = provider
+	in.Model = model
+	return agent, model, nil
+}
+
+// resolveUserProvider chạy lượt chat trên kết nối RIÊNG của user: agent dựng
+// từ base_url + key của chính họ, và client thô đi kèm để bước phân loại câu
+// hỏi cũng chạy trên provider đó — không call nào lấy key của hệ thống.
+//
+// Kết nối không tồn tại (hoặc thuộc user khác) trả 404 — xem unknownUserProvider.
+func (s *chatService) resolveUserProvider(ctx context.Context, userID int64,
+	in *turnInput) (*eino.ChatAgent, string, error) {
+	if s.userProviders == nil {
+		return nil, "", errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest,
+			"kết nối riêng chưa được bật trên hệ thống")
+	}
+	agent, model, client, err := s.userProviders.Resolve(ctx, userID, in.Provider, in.Model, in.Thinking)
+	if err != nil {
+		return nil, "", err
+	}
+	in.Model = model
+	in.Client = client
+	return agent, model, nil
+}
+
+// chatProviderError chuyển lỗi chọn provider thành lỗi HTTP đọc được:
+// kết nối riêng không tồn tại → 404, còn lại → 400 (thiếu key / model chưa
+// chọn là lỗi phía client, không phải sự cố server).
+func chatProviderError(err error) error {
+	if e := errors.From(err); e != nil {
+		return e
+	}
+	return errors.NewCustomHttpError(http.StatusBadRequest, errors.BadRequest, err.Error())
+}
+
+// prepareTurn gắn vào ctx 3 thứ cho lượt chat: phạm vi tin cậy (tool đọc lúc
+// thực thi), nhãn phase và collector audit.
+//
+// site=chat cho MỌI request model của lượt này (agent loop có thể gọi model
+// nhiều vòng vì tool) — transport in kèm nhãn nên dashboard provider đối
+// chiếu được request nào là chat, request nào là worker compile. Collector
+// đếm lượt gọi model (vòng agent + classifier) để ghi bảng audit theo
+// tài khoản.
+func (s *chatService) prepareTurn(ctx context.Context, userID int64, in turnInput) (context.Context, *llmusage.Collector) {
+	ctx = eino.WithScope(ctx, eino.Scope{UserID: userID, CategoryIDs: in.CategoryIDs})
+	ctx = utils.WithLLMSite(ctx, constants.LLMSiteChat)
+	return s.withAudit(ctx)
+}
+
+// withAudit gắn collector usage vào ctx — mọi lượt gọi model trong lượt chat
+// (vòng agent + classifier) được đếm ở tầng handler rồi gom về đây.
+func (s *chatService) withAudit(ctx context.Context) (context.Context, *llmusage.Collector) {
+	c := llmusage.NewCollector()
+	return llmusage.WithCollector(ctx, c), c
+}
+
+// recordUsage đẩy số liệu LLM của lượt chat vào bảng audit theo tài khoản.
+// Lỗi ghi chỉ log — KHÔNG làm hỏng câu trả lời đã trả về cho user.
+func (s *chatService) recordUsage(ctx context.Context, userID int64, provider, model string, c *llmusage.Collector) {
+	if s.usageRepo == nil || c == nil {
+		return
+	}
+	bySite := c.Snapshot()
+	if len(bySite) == 0 {
+		return
+	}
+	// Ctx gốc có thể đã hủy (client đóng tab) — ghi audit bằng ctx tách rời để
+	// số liệu không mất vì lý do không liên quan tới nghiệp vụ.
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := llmusage.Record(writeCtx, s.usageRepo, userID, provider, model, bySite); err != nil {
+		logs.Error(err, "chat: ghi audit usage lỗi",
+			"trace_id", utils.TraceIDFromCtx(ctx), "user_id", userID,
+			"provider", provider, "model", model)
+	}
 }
 
 // compose dựng response cuối của một lượt: đánh số cites, chuẩn hoá khuôn [^n]
@@ -176,7 +276,7 @@ func (s *chatService) compose(ctx context.Context, res eino.RunResult, model, me
 	s.persist(ctx, session, in, userID, message, answer, cites, charts)
 	return &dtos.ChatResponse{
 		Answer:       answer,
-		QuestionType: s.label(ctx, model, message, res.Searched),
+		QuestionType: s.label(ctx, in.Client, model, message, res.Searched),
 		Provider:     in.Provider,
 		Model:        model,
 		Cites:        cites,
@@ -193,6 +293,10 @@ type turnInput struct {
 	Provider    string
 	Model       string
 	Thinking    bool
+	// Client là client THÔ của provider đã chạy — bước phân loại câu hỏi dùng
+	// nó để lượt chat trên kết nối riêng không phát sinh call nào lấy key hệ
+	// thống. Provider chung thì để rỗng (classifier tự dùng client mặc định).
+	Client einomodel.BaseChatModel
 }
 
 // resolveSession đọc phiên của user; trả nil khi request không gắn
@@ -355,7 +459,11 @@ func (s *chatService) run(ctx context.Context, agent *eino.ChatAgent, model stri
 // label dán nhãn question_type cho response — agent trong loop không bị ép
 // gọi classify, nhãn suy ra sau run: không đọc tài liệu thì chitchat (khỏi
 // tốn lượt LLM), có đọc thì classify 1 lần (lỗi → lookup, không chặn trả lời).
-func (s *chatService) label(ctx context.Context, model, message string, searched bool) string {
+//
+// client là client của provider đã chạy — lượt chat trên kết nối riêng thì
+// phân loại cũng chạy trên key của user đó, không lấy key hệ thống.
+func (s *chatService) label(ctx context.Context, client einomodel.BaseChatModel,
+	model, message string, searched bool) string {
 	if !searched {
 		return question.QuestionChitchat.String()
 	}
@@ -363,5 +471,5 @@ func (s *chatService) label(ctx context.Context, model, message string, searched
 		return question.QuestionLookup.String()
 	}
 	classifyCtx := utils.WithLLMSite(ctx, constants.LLMSiteClassify)
-	return s.classifier.Classify(classifyCtx, model, message).String()
+	return s.classifier.Classify(classifyCtx, client, model, message).String()
 }

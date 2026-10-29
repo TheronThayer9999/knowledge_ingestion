@@ -69,25 +69,46 @@ func loadAdapter() []fx.Option {
 		// Tool agent đọc sheet của Excel — cùng bảng, vai hẹp "đọc text theo
 		// cửa sổ" (không mở đường ghi cho agent).
 		fx.Provide(repository.NewArticlePageText),
-		// API /sections đọc summary đã compile (phase 1b) merge vào PageIndex.
-		fx.Provide(repository.NewArticleSectionRepository),
+		// API /sections đọc summary đã compile (phase 1b) merge vào PageIndex;
+		// repo audit chi phí LLM theo tài khoản (bảng llm_usage_daily) — chat
+		// ghi mỗi lượt, admin đọc báo cáo.
+		fx.Options(loadCompileRepositories()...),
 		fx.Provide(repository.NewUnitOfWork),
 		// qdrant cho API rebuild-vectors (xoá vector cũ) — NewConnection
 		// ensureCollection lúc dựng nên API boot giờ fail-fast khi Qdrant
 		// chết, giống worker (đánh đổi để endpoint rebuild luôn sẵn sàng).
 		fx.Provide(qdrant.NewConnection),
 		//
-		fx.Provide(repository.NewCategoryClosureRepository),
-		fx.Provide(repository.NewEmbedCacheRepository),
-		// Nhịp sống worker để API trả về UI biết "đang xử lý" hay "chờ vì
-		// worker đã tắt".
-		fx.Provide(repository.NewWorkerHeartbeatRepository),
+		// Repo vận hành: closure table, cache embed, nhịp sống worker (API trả
+		// về UI biết "đang xử lý" hay "chờ vì worker đã tắt").
+		fx.Options(loadOpsRepositories()...),
 		// Phiên chat (S1): 2 repo conversations/messages — tách ra hàm riêng vì
 		// loadAdapter đã đầy ngân sách hàm (guardrail function_budget_test.go).
 		fx.Options(loadChatRepositories()...),
 		// VLM đọc ảnh (qwen-vl) — bind 2 vai hẹp cho agent dùng `Ask`; provider
 		// lazy nên không thành phụ thuộc bắt buộc lúc boot.
 		fx.Options(vlmOptions()...),
+	}
+}
+
+// loadOpsRepositories: repo vận hành (closure table, cache embed, nhịp sống
+// worker). Tách riêng để loadAdapter còn đủ ngân sách dòng (guardrail
+// src/quality/function_budget_test.go).
+func loadOpsRepositories() []fx.Option {
+	return []fx.Option{
+		fx.Provide(repository.NewCategoryClosureRepository),
+		fx.Provide(repository.NewEmbedCacheRepository),
+		fx.Provide(repository.NewWorkerHeartbeatRepository),
+	}
+}
+
+// loadCompileRepositories: repo của phase compile + repo audit chi phí LLM.
+// Tách riêng để loadAdapter còn đủ ngân sách dòng (guardrail
+// src/quality/function_budget_test.go).
+func loadCompileRepositories() []fx.Option {
+	return []fx.Option{
+		fx.Provide(repository.NewArticleSectionRepository),
+		fx.Provide(repository.NewLLMUsageRepository),
 	}
 }
 
@@ -99,6 +120,9 @@ func loadChatRepositories() []fx.Option {
 		fx.Provide(repository.NewConversationRepository),
 		fx.Provide(repository.NewChatMessageRepository),
 		fx.Provide(repository.NewLLMProviderSettingRepository),
+		// Kết nối LLM RIÊNG của từng user (BYOK) — bảng riêng, mọi truy vấn
+		// scope theo user_id nên không đọc lẫn sang nhau.
+		fx.Provide(repository.NewLLMUserProviderRepository),
 	}
 }
 
@@ -112,6 +136,8 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewArticleService),
 		fx.Provide(services.NewArticleAdminService),
 		fx.Provide(services.NewEmbedCacheAdminService),
+		// Báo cáo chi phí LLM theo tài khoản (bảng llm_usage_daily).
+		fx.Provide(services.NewLLMUsageAdminService),
 		// Bộ reconcile mất vector — API cần nó cho endpoint consistency (phần
 		// kiểm phía Qdrant); worker dựng bản riêng trong cmd/worker.
 		fx.Provide(services.NewIndexReconcileService),
@@ -128,7 +154,11 @@ func loadService() []fx.Option {
 		// cần biết "provider nào, key nào, model nào" đều nhận cùng instance:
 		// registry agent lúc boot, /llm/options, popup Nhà cung cấp AI.
 		fx.Provide(usecase.NewProviderCatalog),
+		fx.Provide(newAgentTools),
 		fx.Provide(newProviderAgents),
+		// Registry agent RIÊNG của user (BYOK) — rỗng lúc boot, sinh agent
+		// theo kết nối khi user dùng tới.
+		fx.Provide(newUserAgents),
 		// Registry có hai vai — đọc cho UI/chat, ghi cho admin — nên service đọc
 		// không cầm được quyền gỡ agent của người đang chat.
 		fx.Provide(asProviderRegistry),
@@ -151,6 +181,20 @@ func loadService() []fx.Option {
 		// chính middlewares khai báo bên tiêu dùng.
 		fx.Provide(services.NewChatCryptoService),
 		fx.Provide(asCryptoSessions),
+		// BYOK: kết nối riêng của user — tách hàm riêng cho loadService (guardrail function_budget).
+		fx.Options(loadUserProviderServices()...),
+	}
+}
+
+// loadUserProviderServices: service kết nối LLM RIÊNG của user (BYOK) + 3 vai
+// hẹp của nó (API CRUD, đường chat, menu chọn model). Tách riêng để
+// loadService còn đủ ngân sách dòng (guardrail src/quality/function_budget_test.go).
+func loadUserProviderServices() []fx.Option {
+	return []fx.Option{
+		fx.Provide(usecase.NewUserProviderService),
+		fx.Provide(asUserProviders),
+		fx.Provide(asUserProviderResolver),
+		fx.Provide(asUserProviderLister),
 	}
 }
 
@@ -183,12 +227,14 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewArticleAPI),
 		fx.Provide(apis.NewArticleAdminAPI),
 		fx.Provide(apis.NewEmbedCacheAdminAPI),
+		fx.Provide(apis.NewLLMUsageAdminAPI),
 		fx.Provide(apis.NewConsistencyAPI),
 		fx.Provide(apis.NewHealthAPI),
 		fx.Provide(apis.NewSearchAPI),
 		fx.Provide(apis.NewChatAPI),
 		fx.Provide(apis.NewConversationAPI),
 		fx.Provide(apis.NewLLMAPI),
+		fx.Provide(apis.NewLLMUserAPI),
 		fx.Provide(apis.NewCryptoAPI),
 		fx.Provide(routers.NewRouter),
 	}
@@ -198,3 +244,19 @@ func loadEngine() []fx.Option {
 // (Mode + SessionKey). Cùng một instance: fx dựng service đúng một lần nên
 // handshake và middleware nhìn thấy chung một kho phiên.
 func asCryptoSessions(svc services.IChatCryptoService) middlewares.ICryptoSessions { return svc }
+
+// asUserProviders expose phần CRUD kết nối riêng cho API (vai hẹp của
+// service). Cùng một instance với 2 vai dưới — fx dựng service đúng một lần.
+func asUserProviders(svc *usecase.UserProviderService) port.IUserProviders { return svc }
+
+// asUserProviderResolver expose đường chat dùng kết nối riêng — service chat
+// nhận vai hẹp này để không phải biết cả CRUD.
+func asUserProviderResolver(svc *usecase.UserProviderService) usecase.IUserProviderResolver {
+	return svc
+}
+
+// asUserProviderLister expose đường ĐỌC cho menu chọn model — service options
+// chỉ cần đọc, không cầm được quyền ghi/xoá.
+func asUserProviderLister(svc *usecase.UserProviderService) usecase.IUserProviderLister {
+	return svc
+}

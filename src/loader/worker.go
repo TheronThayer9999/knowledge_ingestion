@@ -44,6 +44,9 @@ func LoadWorkerInfra() []fx.Option {
 		fx.Provide(repository.NewRefreshTokenRepository),
 		fx.Provide(repository.NewArticlePageRepository),
 		fx.Provide(repository.NewArticleSectionRepository),
+		// Audit chi phí LLM theo tài khoản — worker compile ghi số liệu mỗi lô
+		// mục vào đây (bảng llm_usage_daily).
+		fx.Provide(repository.NewLLMUsageRepository),
 		// Cache embed — tránh gọi lại model cho chunk đã tính. Ý tưởng lấy từ
 		// AnythingLLM (cachedVectorInformation) nhưng khoá theo NỘI DUNG chunk
 		// thay vì cả file, nên trùng lặp giữa các bài cũng ăn.
@@ -139,9 +142,10 @@ func LoadWorkerInfra() []fx.Option {
 		// phình thêm (ngân sách hàm, src/quality/function_budget_test.go).
 		fx.Options(workerRoles()...),
 		// ISummarizer cho compile phase 2 (P2.4 phase 1b) — dựng chat model từ
-		// provider mặc định (llms.default_provider) + system prompt load từ
-		// prompts/compile_section.md lúc startup (fail-fast nếu thiếu file).
-		// Tool-calling model thỏa BaseChatModel nên đưa thẳng vào summarizer.
+		// provider mặc định (llms.default_provider) + 2 system prompt load từ
+		// prompts/compile_section.md (1 mục) và prompts/compile_sections.md (lô
+		// N mục) lúc startup (fail-fast nếu thiếu file). Tool-calling model thỏa
+		// BaseChatModel nên đưa thẳng vào summarizer.
 		fx.Provide(func(cfg config.IConfig, db *gorm.DB) (domain.ISummarizer, error) {
 			found, pcfg, err := compileProviderConfig(cfg, repository.NewLLMProviderSettingRepository(db))
 			if err != nil {
@@ -155,7 +159,11 @@ func LoadWorkerInfra() []fx.Option {
 			if err != nil {
 				return nil, err
 			}
-			return eino.NewSectionSummarizer(model, pcfg.Model, system), nil
+			batchSystem, err := prompts.Load(cfg.GetAgent().PromptDir, "compile_sections.md")
+			if err != nil {
+				return nil, err
+			}
+			return eino.NewSectionSummarizer(model, pcfg.Model, found, system, batchSystem), nil
 		}),
 		// VLM đọc ảnh — worker dùng vai `Transcribe` khi extract gặp trang bảng/
 		// scan; prompt thiếu thì fail-fast ngay lúc boot.

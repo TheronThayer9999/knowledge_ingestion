@@ -49,6 +49,23 @@ type ILLMSettings interface {
 	DeleteProvider(ctx context.Context, slug string) dtos.Result[*dtos.LLMOptionsResponse]
 }
 
+// IUserProviders là phần BYOK: mỗi tài khoản tự thêm kết nối LLM riêng (base
+// URL + API key) và dùng cho lượt chat của chính họ. Endpoint gọi tới đây chỉ
+// cần đăng nhập — KHÔNG cần role admin (khác hẳn /llm/providers/* của admin).
+//
+// Service tự lấy user_id từ ctx (không tin id client gửi lên) và mọi truy vấn
+// DB scope theo user đó, nên không có đường nào đọc được kết nối của người
+// khác. Key đi một chiều: nhận vào → mã hoá → lưu, không có endpoint đọc lại.
+type IUserProviders interface {
+	List(ctx context.Context) dtos.Result[[]*dtos.LLMProviderOption]
+	// Save tạo mới (id = 0) hoặc sửa (id > 0) một kết nối của người gọi.
+	Save(ctx context.Context, id int64, req *dtos.SaveUserProviderRequest) dtos.Result[*dtos.LLMProviderOption]
+	// Delete xoá kết nối của người gọi, trả lại danh sách còn lại.
+	Delete(ctx context.Context, id int64) dtos.Result[[]*dtos.LLMProviderOption]
+	// LoadModels hỏi chính provider bằng key của người gọi rồi lưu danh sách.
+	LoadModels(ctx context.Context, id int64) dtos.Result[*dtos.LLMModelsResponse]
+}
+
 // ChatSession là những gì một phiên chat cần biết trước khi chạy một lượt:
 // lịch sử (đã cắt cửa sổ) + phạm vi/provider/model đã lưu của phiên.
 type ChatSession struct {

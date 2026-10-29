@@ -8,14 +8,34 @@ import (
 	"gorm.io/gorm"
 )
 
+// migrateLockID là khoá advisory của Postgres cho việc migrate — số cố định,
+// mọi tiến trình của app dùng chung.
+const migrateLockID = 7244915
+
+// autoMigrate chạy AutoMigrate trong 1 transaction có khoá advisory — chỉ 1
+// tiến trình chạy migrate tại 1 thời điểm (khoá tự nhả khi commit).
+//
+// Cần khoá vì AutoMigrate KHÔNG idempotent 100%: nó đọc danh sách cột rồi
+// ADD COLUMN còn thiếu. Hai tiến trình boot cùng lúc (API + worker, hoặc 2
+// package test chạy song song) sẽ cùng thấy "thiếu cột" rồi cùng ADD → bên
+// sau fail "column already exists" và app không boot được.
+func autoMigrate(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", migrateLockID).Error; err != nil {
+			return fmt.Errorf("khoá migrate: %w", err)
+		}
+		return tx.AutoMigrate(domain.User{}, domain.Category{}, domain.Article{}, domain.ArticlePage{},
+			domain.EmbedCacheEntry{}, domain.OutboxEvent{}, domain.CategoryClosure{}, domain.ArticleSection{},
+			domain.RefreshToken{}, domain.WorkerHeartbeat{}, domain.Conversation{}, domain.ChatMessage{},
+			domain.LLMProviderSetting{}, domain.LLMUsageDaily{}, domain.LLMUserProvider{})
+	})
+}
+
 // migrate dựng schema + backfill dữ liệu — tách khỏi NewConnection để
 // constructor chỉ lo mở kết nối, tune pool và ping. Mọi câu idempotent nên
 // boot lại an toàn.
 func migrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(domain.User{}, domain.Category{}, domain.Article{}, domain.ArticlePage{},
-		domain.EmbedCacheEntry{}, domain.OutboxEvent{}, domain.CategoryClosure{}, domain.ArticleSection{},
-		domain.RefreshToken{}, domain.WorkerHeartbeat{}, domain.Conversation{}, domain.ChatMessage{},
-		domain.LLMProviderSetting{}); err != nil {
+	if err := autoMigrate(db); err != nil {
 		return err
 	}
 	// Bảng article_chunks đã bị bỏ hoàn toàn (phase chunk + embed gộp làm 1,
@@ -53,10 +73,23 @@ func migrate(db *gorm.DB) error {
 	if err := migrateIndexes(db); err != nil {
 		return err
 	}
-	// Seq: thứ tự đọc của mảnh, tách khỏi page_num (số trang thật để trích
-	// dẫn). Cần vì file txt bị chia thành nhiều mảnh cùng page_num = 0 —
-	// unique theo page_num buộc cả file txt phải là 1 row, tức là hoặc cắt
-	// cụt mất dữ liệu, hoặc kéo cả file lên RAM 1 lần.
+	// Seq của article_pages (thứ tự đọc của mảnh) + index queue cho worker.
+	if err := migratePageSeq(db); err != nil {
+		return err
+	}
+	if err := migrateQueueIndexes(db); err != nil {
+		return err
+	}
+	return nil
+}
+
+// migratePageSeq dựng cột seq + index của article_pages.
+//
+// Seq là thứ tự đọc của mảnh, tách khỏi page_num (số trang thật để trích
+// dẫn). Cần vì file txt bị chia thành nhiều mảnh cùng page_num = 0 —
+// unique theo page_num buộc cả file txt phải là 1 row, tức là hoặc cắt cụt
+// mất dữ liệu, hoặc kéo cả file lên RAM 1 lần.
+func migratePageSeq(db *gorm.DB) error {
 	if !hasColumn(db, "article_pages", "seq") {
 		if err := db.Exec(`ALTER TABLE article_pages ADD COLUMN seq integer`).Error; err != nil {
 			return fmt.Errorf("thêm cột article_pages.seq: %w", err)
@@ -101,9 +134,13 @@ func migrate(db *gorm.DB) error {
 	// không cần index riêng. chunk_count phục vụ dọn LRU sau này, chưa dùng
 	// nên không index.
 	_ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_embed_cache_model ON embed_cache (model, dim)`).Error
+	return nil
+}
 
-	// Index cho worker poll queue 2 phase. Index poll của phase index thêm
-	// điều kiện extract_status done để chỉ hốt bài đã qua phase trước.
+// migrateQueueIndexes dựng index cho worker poll queue 2 phase. Index poll
+// của phase index thêm điều kiện extract_status done để chỉ hốt bài đã qua
+// phase trước.
+func migrateQueueIndexes(db *gorm.DB) error {
 	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_articles_extract_poll ON articles (extract_status, extract_next_retry_at, id) WHERE deleted_at IS NULL`).Error; err != nil {
 		return fmt.Errorf("failed to create articles extract poll index: %w", err)
 	}

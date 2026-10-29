@@ -72,7 +72,6 @@ var functionBudgetAllowlist = []allowEntry{
 	{"src/controller/services/article_purge_service.go::(*articlePurgeService).PurgeDeleted", 86, 12},
 	{"src/controller/services/category_service.go::(*categoryService).Update", 57, 19},
 	{"src/controller/services/user_service.go::(*userService).Refresh", 67, 14},
-	{"src/infrastructure/postgres/migrate.go::migrate", 102, 15},
 	{"src/infrastructure/postgres/migrate.go::migrateCategoryClosure", 61, 9},
 	{"src/infrastructure/qdrant/connection.go::(*connection).ensureCollection", 68, 17},
 	{"src/infrastructure/vlm/ollama/client.go::(*Reader).chat", 63, 13},

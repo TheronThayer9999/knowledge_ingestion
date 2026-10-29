@@ -47,11 +47,14 @@
 |---|---|---|---|
 | **0 extract** | Tesseract OCR (VLM chỉ khi `vlm.enabled`) — **không LLM** | 1/trang scan | `extract: bắt đầu bài` |
 | **1 index** | **bge-m3** qua `embedding.model` (Ollama), **không LLM** | 1 call `EmbedBatch`/đợt chunk + 1 call embed tên bài/đợt | `index: gọi embed` / `index: embed xong` (`model=bge-m3:latest`) |
-| **2 compile** | **LLM** = `llms.default_provider` (local: `9router`) + `prompts/compile_section.md` | **1 call/mục tài liệu** (cache Redis `compile:sum:*` 30 ngày) | `compile: gọi LLM tóm tắt mục` (`model=<tên model>`), hit cache → debug `compile: cache hit` |
+| **2 compile** | **LLM** = `llms.default_provider` (local: `9router`) + `prompts/compile_sections.md` (lô) / `compile_section.md` (1 mục) | **1 call/lô 8 mục** (`constants.COMPILE_SECTION_BATCH`), cache Redis `compile:sum:*` 30 ngày | `compile: gọi LLM tóm tắt lô mục` (`model=<tên model>`, `sections=<n>`), hit cache → debug `compile: cache hit` |
 | **chat** | **LLM** theo provider của request + bge-m3 cho câu hỏi | 1+/lượt (thêm lượt tool/retry) | `chat: gọi agent` |
 
 - Chỉ compile và chat sinh lời gọi **LLM**; index chỉ sinh lời gọi **embedding** (bge-m3) — bảng `embed_cache` đã bỏ hẳn (không còn cache vector, rebuild dựa vào `index_done_chunks`). `worker.enhance_keywords` mặc định tắt (bật mới có LLM/chunk trong index).
-- Compile claim theo `compile_status IN (pending, processing)` nên bài đã `done` **không** bị compile lại; muốn nạp lại tóm tắt thì reset `compile_status`/xoá cache `compile:sum:*`.
+- Compile claim theo `compile_status IN (pending, processing)` nên bài đã `done` **không** bị compile lại; muốn nạp lại tóm tắt thì reset `compile_status`/xoá cache `compile:sum:*`. Thứ tự claim `ORDER BY index_done_chunks ASC` → bài nhỏ xong sớm, bài to không chặn cả pipeline.
+- **Checkpoint compile**: `articles.compile_done_sections` = số mục ĐẦU đã tóm tắt xong. Mỗi lô upsert `article_sections` **trước**, rồi mới tăng checkpoint → checkpoint chỉ LAG chứ không LEAD, job chết giữa chừng làm lại đúng 1 lô chứ không bỏ sót mục. Chạy lại có checkpoint thì KHÔNG dọn dòng cũ.
+- **Audit chi phí LLM theo tài khoản**: bảng `llm_usage_daily` (khoá user_id+day+site+provider+model, cộng dồn ON CONFLICT). `usageHandler` của Eino đăng ký GLOBAL nên bắt MỌI lượt gọi chat model (kể cả lượt hỏng) rồi cộng vào collector đi theo ctx (`src/common/llmusage`). Admin đọc `GET /api/v1/admin/llm-usage` (role ≥ 1), lọc `?site=chat|compile|classify&user_id=&from=&to=`. Lượt hỏng VẪN ghi (token đầu vào đã mất).
+
 
 ## Conventions
 

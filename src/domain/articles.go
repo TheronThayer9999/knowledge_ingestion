@@ -69,6 +69,11 @@ type Article struct {
 	CompileStatus      string    `json:"-" gorm:"not null;default:'pending'"`
 	CompileAttempts    int       `json:"-" gorm:"not null;default:0"`
 	CompileNextRetryAt time.Time `json:"-" gorm:"not null;default:now()"`
+	// CompileDoneSections là checkpoint compile: đã tóm tắt xong N mục ĐẦU
+	// TIÊN của bài. Kỳ sau bỏ qua N mục đó, nên job chết/hết giờ giữa chừng
+	// không phải tóm tắt lại từ đầu. Cùng kiểu checkpoint với
+	// IndexDoneChunks — 1 số nguyên thay cho bảng row.
+	CompileDoneSections int `json:"-" gorm:"not null;default:0"`
 	// CompiledAt mốc compile xong (nil khi chưa) — audit, cùng pattern
 	// ExtractedAt/IndexedAt.
 	CompiledAt *time.Time `json:"-" gorm:"index"`
@@ -250,6 +255,10 @@ type IArticleRepository interface {
 	// 1 transaction (FOR UPDATE SKIP LOCKED, cùng pattern extract/index) — chỉ
 	// lấy bài đã index done.
 	ClaimCompilePending(ctx context.Context, limit int, lease time.Duration) ([]*Article, error)
+	// MarkCompileProgress ghi checkpoint compile: đã tóm tắt xong N mục đầu
+	// tiên. Nhờ nó job chết giữa bài lớn thì kỳ sau chỉ làm nốt phần còn lại
+	// thay vì tóm tắt lại từ đầu (mỗi mục là 1 lượt LLM).
+	MarkCompileProgress(ctx context.Context, id int64, done int) error
 	// MarkCompileDone đánh dấu compile xong 1 bài (kèm mốc compiled_at).
 	MarkCompileDone(ctx context.Context, id int64) error
 	// MarkCompileError ghi lỗi compile 1 bài — cùng luật backoff/failed như
@@ -302,6 +311,8 @@ type ArticleExtractQueue interface {
 // đọc mục từ Qdrant, LLM tóm tắt từng mục, ghi article_sections.
 type ArticleCompileQueue interface {
 	ClaimCompilePending(ctx context.Context, limit int, lease time.Duration) ([]*Article, error)
+	// MarkCompileProgress ghi checkpoint — xem IArticleRepository cùng tên.
+	MarkCompileProgress(ctx context.Context, id int64, done int) error
 	MarkCompileDone(ctx context.Context, id int64) error
 	MarkCompileError(ctx context.Context, id int64, attempts int) error
 	ReleaseCompileClaims(ctx context.Context, ids []int64) error

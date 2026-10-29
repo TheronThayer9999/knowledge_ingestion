@@ -3,6 +3,8 @@ package loader
 import (
 	"context"
 
+	einotool "github.com/cloudwego/eino/components/tool"
+
 	"knowledge_ingestion/src/agent/eino"
 	"knowledge_ingestion/src/agent/question"
 	"knowledge_ingestion/src/agent/retrieval"
@@ -21,22 +23,21 @@ import (
 // prompt file không phải sửa.
 type ProviderAgents = eino.ProviderAgents
 
-// newProviderAgents dựng agent cho từng provider HIỆU LỰC — config ∪ bảng cài
-// đặt, luật gộp nằm trong usecase.ProviderCatalog — qua eino.NewProviderAgents:
-// thêm backend mới (Groq, DeepSeek, ...) chỉ cần khai báo config, còn admin bấm
-// "Thêm provider" trong popup là có luôn không sửa file. Provider thiếu cấu hình
-// (vd thiếu key) thì boot vẫn lên, request nào chọn nó mới 400; provider admin
-// tắt không được dựng agent.
-func newProviderAgents(
-	cfg config.IConfig, catalog *usecase.ProviderCatalog, prompts synthesis.Prompts,
-	hybrid *retrieval.HybridSearcher,
+// AgentTools là bộ tool chat — dùng CHUNG cho registry chung (provider của
+// hệ thống) và registry riêng (kết nối của user), nên dựng đúng một lần.
+// Tool stateless, phạm vi tin cậy đi qua ctx chứ không nằm trong tool.
+type AgentTools = []einotool.BaseTool
+
+// newAgentTools dựng bộ tool cho mọi agent chat. Tách riêng khỏi newProviderAgents
+// vì registry RIÊNG của user cần ĐÚNG bộ tool này — dựng lần thứ hai thì hai
+// registry lệch nhau, lượt chat trên kết nối riêng sẽ thiếu tool của agent thường.
+func newAgentTools(cfg config.IConfig, hybrid *retrieval.HybridSearcher,
 	categoryRepo domain.ICategoryRepositoryImpl,
 	vectors domain.IVectorStore,
 	articleRepo domain.IArticleRepository,
 	pageIssues domain.ArticlePageIssues,
-	pageText domain.ArticlePageText) (*ProviderAgents, error) {
-
-	tools, err := eino.NewDefaultTools(eino.ToolDeps{
+	pageText domain.ArticlePageText) (AgentTools, error) {
+	return eino.NewDefaultTools(eino.ToolDeps{
 		Hybrid:       hybrid,
 		Vectors:      vectors,
 		Categories:   categoryRepo,
@@ -45,9 +46,16 @@ func newProviderAgents(
 		PageText:     pageText,
 		ChartEnabled: chartEnabled(cfg),
 	})
-	if err != nil {
-		return nil, err
-	}
+}
+
+// newProviderAgents dựng agent cho từng provider HIỆU LỰC — config ∪ bảng cài
+// đặt, luật gộp nằm trong usecase.ProviderCatalog — qua eino.NewProviderAgents:
+// thêm backend mới (Groq, DeepSeek, ...) chỉ cần khai báo config, còn admin bấm
+// "Thêm provider" trong popup là có luôn không sửa file. Provider thiếu cấu hình
+// (vd thiếu key) thì boot vẫn lên, request nào chọn nó mới 400; provider admin
+// tắt không được dựng agent.
+func newProviderAgents(catalog *usecase.ProviderCatalog, prompts synthesis.Prompts,
+	tools AgentTools) (*ProviderAgents, error) {
 	resolved := catalog.Resolved(context.Background())
 	providers := make([]eino.LLMProvider, 0, len(resolved))
 	for _, item := range resolved {
@@ -56,6 +64,14 @@ func newProviderAgents(
 	return eino.NewProviderAgents(
 		eino.InstructionSet{Base: prompts.System, Sheets: prompts.Sheets},
 		catalog.ConfiguredDefault(), tools, providers...)
+}
+
+// newUserAgents dựng registry agent cho các kết nối RIÊNG của user (BYOK).
+// Rỗng lúc boot — kết nối sinh ra theo yêu cầu từng user, không khai báo
+// trước trong config.
+func newUserAgents(prompts synthesis.Prompts, tools AgentTools) *eino.UserAgents {
+	return eino.NewUserAgents(
+		eino.InstructionSet{Base: prompts.System, Sheets: prompts.Sheets}, tools)
 }
 
 // asProviderRegistry expose registry cho service CHỈ ĐỌC (bảng chọn model của

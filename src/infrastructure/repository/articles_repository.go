@@ -359,6 +359,10 @@ func (a *ArticleRepository) ResetQueue(ctx context.Context, ids []int64, userID 
 			"compile_status":        domain.QueuePending,
 			"compile_attempts":      0,
 			"compile_next_retry_at": now,
+			// Checkpoint compile phải về 0: index lại sinh danh sách mục MỚI
+			// (đổi chunker), giữ số mục đã xong cũ thì kỳ sau bỏ qua nhầm
+			// mục chưa tóm tắt.
+			"compile_done_sections": 0,
 			"compiled_at":           nil,
 			"updated_at":            now,
 		})
@@ -577,7 +581,11 @@ func (a *ArticleRepository) ClaimCompilePending(ctx context.Context, limit int, 
 			Where("compile_status IN ? AND compile_next_retry_at <= ?",
 				[]string{domain.QueuePending, domain.QueueProcessing}, now).
 			Where("index_status = ?", domain.QueueDone).
-			Order("id ASC").
+			// Ưu tiên bài NHỎ trước: index_done_chunks là tổng số chunk đã
+			// index (= độ lớn tài liệu), nên ASC là "bài ít chunk trước". Bài
+			// to tốn hàng nghìn lượt LLM, nếu hốt theo id thì nó chiếm chỗ
+			// và các bài nhỏ phía sau bị đẩy lùi vô hạn.
+			Order("index_done_chunks ASC, id ASC").
 			Limit(limit)
 		if err := q.Find(&articles).Error; err != nil {
 			return err
@@ -596,6 +604,19 @@ func (a *ArticleRepository) ClaimCompilePending(ctx context.Context, limit int, 
 		return nil, err
 	}
 	return articles, nil
+}
+
+// MarkCompileProgress ghi checkpoint compile — đã tóm tắt xong N mục đầu
+// tiên. Ghi SAU khi đã upsert article_sections: nếu chết giữa chừng thì
+// counter lùi chứ không tiến, kỳ sau làm lại vài mục (upsert idempotent)
+// thay vì bỏ sót mục nào.
+func (a *ArticleRepository) MarkCompileProgress(ctx context.Context, id int64, done int) error {
+	return dbConn(ctx, a.db).Model(&domain.Article{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"compile_done_sections": done,
+			"updated_at":            time.Now(),
+		}).Error
 }
 
 // MarkCompileDone đánh dấu compile xong 1 bài (kèm mốc compiled_at để audit).
