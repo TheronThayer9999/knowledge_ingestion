@@ -86,11 +86,14 @@ type IVectorStore interface {
 	// trả lời bừa; limit <= 0 thì adapter tự lấy mặc định.
 	Search(ctx context.Context, vector []float32, filter SearchFilter, limit int, scoreThreshold float32) ([]*ScoredChunk, error)
 	// SearchText tìm chunk khớp từ khóa trong payload text (full-text
-	// MatchText) cùng phạm vi filter — nửa keyword của hybrid search. Trả theo
-	// thứ tự Qdrant với Score = 0 (Scroll không có score; service fuse bằng
-	// RRF theo rank chứ không theo score). Cần text index trên field "text"
-	// (ensureCollection tạo best-effort) — collection cũ chưa có thì báo lỗi
-	// để service degraded dense-only, không fail cả query.
+	// MatchText) cùng phạm vi filter — nửa keyword của hybrid search. Qdrant
+	// chỉ có MATCH, không có scoring cho payload, nên đây là tập KHỚP chứ không
+	// phải tập XẾP HẠNG: thứ tự là thứ tự nội bộ của segment, Score = 0. Vì
+	// vậy bên gọi phải xin dư (constants.SEARCH_TEXT_FETCH) rồi tự xếp hạng
+	// theo độ phủ từ (retrieval.RankLexical) trước khi fuse — xin đúng limit
+	// thì RRF nhận rank của một mẫu ngẫu nhiên. Cần text index trên field
+	// "text" (ensureCollection tạo best-effort) — collection cũ chưa có thì
+	// báo lỗi để service degraded dense-only, không fail cả query.
 	SearchText(ctx context.Context, query string, filter SearchFilter, limit int) ([]*ScoredChunk, error)
 	// ScrollNeighbors đọc các chunk kề chunkIndex của 1 bài trong phạm vi
 	// filter — tool read_context cho agent đọc thêm ngữ cảnh khi đoạn trích

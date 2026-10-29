@@ -670,11 +670,12 @@ func ptrFloat64(f float64) *float64 { return &f }
 // proto dùng enum Memory thay cho cờ on_disk cũ.
 func ptrMemory(m qdrantapi.Memory) *qdrantapi.Memory { return &m }
 
-// SearchText tìm chunk khớp từ khóa trong payload text (full-text MatchText)
-// cùng phạm vi filter quyền — nửa keyword của hybrid search. Dùng Scroll
-// (không score) vì service fuse bằng RRF theo rank: Score trả 0, thứ tự mảng
-// là rank. Query rỗng trả nil (service không gọi khi query rỗng, đây là guard
-// cho agent tool gọi thẳng).
+// SearchText lọc chunk theo từ khóa trong payload text (full-text MatchText)
+// cùng phạm vi filter quyền — nửa keyword của hybrid search. MatchText của
+// Qdrant là "có ít nhất một từ của query" và Scroll trả theo thứ tự nội bộ của
+// segment: kết quả là TẬP KHỚP, không phải danh sách xếp hạng, Score để 0.
+// Bên gọi xin dư rồi tự xếp hạng (xem domain.IVectorStore). Query rỗng trả nil
+// (service không gọi khi query rỗng, đây là guard cho agent tool gọi thẳng).
 func (c *connection) SearchText(ctx context.Context, query string, filter domain.SearchFilter, limit int) ([]*domain.ScoredChunk, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, nil

@@ -54,7 +54,6 @@ var functionBudgetAllowlist = []allowEntry{
 	{"src/agent/eino/read_context.go::NewArticleInfoTool", 73, 17},
 	{"src/agent/eino/read_context.go::NewReadContextTool", 68, 13},
 	{"src/agent/eino/read_sheet.go::NewReadSheetTool", 83, 18},
-	{"src/agent/retrieval/hybrid_search.go::(*HybridSearcher).SearchHybrid", 67, 15},
 	{"src/common/chunker/section.go::findHeadings", 37, 20},
 	{"src/common/chunker/template.go::DetectType", 16, 15},
 	{"src/common/extractor/compare.go::compareTokens", 37, 17},

@@ -257,6 +257,13 @@ const SEARCH_DEFAULT_LIMIT = 5
 // Qdrant + response phình.
 const SEARCH_MAX_LIMIT = 20
 
+// SEARCH_TEXT_FETCH số chunk nửa keyword nạp về trước khi xếp hạng từ.
+// Scroll của Qdrant KHÔNG có thứ tự liên quan — nó trả N point khớp từ khóa
+// theo thứ tự nội bộ, nên lấy đúng limit thì ranking của RRF dựa trên một mẫu
+// ngẫu nhiên. Gọi dư rồi tự xếp hạng theo độ phủ từ (retrieval.RankLexical)
+// và cắt: mẫu càng rộng thì chunk thật sự khớp đứng vào top.
+const SEARCH_TEXT_FETCH = 200
+
 const (
 	CONTENT_TYPE_PDF  = "application/pdf"
 	CONTENT_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

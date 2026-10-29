@@ -85,28 +85,36 @@ func (h *HybridSearcher) SearchHybrid(ctx context.Context, p HybridParams) ([]*d
 	if err != nil {
 		return nil, err
 	}
-	var text = make([]*domain.ScoredChunk, 0)
-	if hits, err := h.vectors.SearchText(ctx, p.Query, filter, fetch); err != nil {
-		logs.Warnw("hybrid: text search lỗi, chạy dense-only (collection cũ thiếu text index?)", "error", err)
-	} else {
-		text = hits
-	}
+	text := h.keywordLeg(ctx, p.Query, filter, fetch)
 	fused := FuseRRF(dense, text)
 	if len(fused) > limit {
 		fused = fused[:limit]
 	}
+	return h.dropUnfinished(ctx, p.UserID, fused)
+}
+
+// dropUnfinished bỏ hit thuộc bài chưa index xong — hàng đợi có thể trả kết quả
+// của bài đang tải lên (chunk một nửa, điều khoản chưa xong), cho vào context
+// thì model trả lời dựa trên tài liệu dang dở. Lọc SAU fuse chứ không trước:
+// trước khi fuse thì mỗi phía phải mang theo danh sách id, lọc hai lần là hai
+// câu hỏi DB cho cùng một việc.
+//
+// ListDoneIDs hỏi theo tập id riêng (đại số hóa các bài xuất hiện trong kết
+// quả, thường <= 20) nên đây là MỘT câu SQL, không phải N.
+func (h *HybridSearcher) dropUnfinished(ctx context.Context, userID int64,
+	fused []*domain.ScoredChunk) ([]*domain.ScoredChunk, error) {
 	if len(fused) == 0 {
 		return fused, nil
 	}
 	ids := make([]int64, 0, len(fused))
 	seen := make(map[int64]bool, len(fused))
-	for _, h := range fused {
-		if !seen[h.ArticleID] {
-			seen[h.ArticleID] = true
-			ids = append(ids, h.ArticleID)
+	for _, hit := range fused {
+		if !seen[hit.ArticleID] {
+			seen[hit.ArticleID] = true
+			ids = append(ids, hit.ArticleID)
 		}
 	}
-	done, err := h.articleRepo.ListDoneIDs(ctx, p.UserID, ids)
+	done, err := h.articleRepo.ListDoneIDs(ctx, userID, ids)
 	if err != nil {
 		return nil, fmt.Errorf("hybrid search: lọc bài done: %w", err)
 	}
@@ -115,12 +123,30 @@ func (h *HybridSearcher) SearchHybrid(ctx context.Context, p HybridParams) ([]*d
 		allowed[id] = true
 	}
 	out := make([]*domain.ScoredChunk, 0, len(fused))
-	for _, h := range fused {
-		if allowed[h.ArticleID] {
-			out = append(out, h)
+	for _, hit := range fused {
+		if allowed[hit.ArticleID] {
+			out = append(out, hit)
 		}
 	}
 	return out, nil
+}
+
+// keywordLeg là nửa từ khóa của pipeline: hỏi Qdrant một MẪU LỚN rồi tự xếp
+// hạng theo độ phủ từ, cắt ở limit.
+//
+// Hai chuyện ở đây đều là bất đắc dĩ có lý do: (1) Qdrant không có scoring cho
+// full-text trên payload nên Scroll trả theo thứ tự nội bộ — lấy đúng limit thì
+// nửa text chỉ là mẫu ngẫu nhiên, FuseRRF nhận rank rác và ranking bị kéo xuống
+// thay vì được nâng; (2) lỗi text (collection cũ chưa có chỉ mục text) thì
+// degraded về dense-only + warn chứ không fail cả query.
+func (h *HybridSearcher) keywordLeg(ctx context.Context, query string,
+	filter domain.SearchFilter, limit int) []*domain.ScoredChunk {
+	hits, err := h.vectors.SearchText(ctx, query, filter, constants.SEARCH_TEXT_FETCH)
+	if err != nil {
+		logs.Warnw("hybrid: text search lỗi, chạy dense-only (collection cũ thiếu text index?)", "error", err)
+		return nil
+	}
+	return RankLexical(query, hits, limit)
 }
 
 // RRFFusionK hằng số k của Reciprocal Rank Fusion (Cormack et al.) — 60 là
