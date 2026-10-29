@@ -41,6 +41,11 @@ export interface LlmProviderOption {
   fromConfig?: boolean;
   /** chỉ admin — admin tắt provider (vẫn hiện trong popup để bật lại) */
   disabled?: boolean;
+  /**
+   * Slug của provider HỆ THỐNG mà kết nối riêng này gắn vào. Chỉ có ở đường
+   * BYOK — user chọn provider trong danh mục rồi dán key của họ vào.
+   */
+  provider?: string;
 }
 
 /** Nguồn của api key đang có hiệu lực (backend trả, không phải giá trị key) */
@@ -69,16 +74,43 @@ export interface LlmProviderForm {
 
 /**
  * Body POST/PUT /llm/my/providers — kết nối RIÊNG của user. Field bỏ trống
- * nghĩa là "giữ nguyên giá trị cũ" (khi sửa); khi tạo mới thì nhãn + giao
- * thức + base URL là bắt buộc — không có gì để "giữ".
+ * nghĩa là "giữ nguyên giá trị cũ" (khi sửa); khi tạo mới thì nhà cung cấp +
+ * API key là bắt buộc — không có gì để "giữ".
+ *
+ * KHÔNG có base_url/type: user KHÔNG tự gõ URL. Server tra định nghĩa của
+ * provider trong danh mục hệ thống, nên không có đường nào trỏ server sang
+ * host tuỳ ý và đường dẫn luôn đúng sẵn.
  */
 export interface LlmUserProviderForm {
-  label: string;
-  type: LlmProviderKind;
-  base_url: string;
+  label?: string;
+  provider?: string;
   api_key?: string;
   model?: string;
   models?: string[];
+}
+
+/**
+ * Một provider trong danh mục hệ thống mà user được gắn key của riêng mình.
+ * KHÔNG có base_url và không có key — base URL là cấu hình nội bộ.
+ */
+export interface LlmProviderCatalogItem {
+  slug: string;
+  label: string;
+  type: string;
+}
+
+export interface LlmProviderCatalogItemDto {
+  slug?: string;
+  label?: string;
+  type?: string;
+}
+
+export function toLlmProviderCatalogItem(dto: LlmProviderCatalogItemDto): LlmProviderCatalogItem {
+  return {
+    slug: dto.slug ?? '',
+    label: dto.label || dto.slug || '',
+    type: dto.type ?? '',
+  };
 }
 
 export interface LlmOptions {
@@ -107,6 +139,7 @@ export interface LlmProviderOptionDto {
   config_model?: string;
   from_config?: boolean;
   disabled?: boolean;
+  provider?: string;
 }
 
 export interface LlmOptionsDto {
@@ -135,6 +168,7 @@ export function toLlmProviderOption(dto: LlmProviderOptionDto): LlmProviderOptio
     configModel: dto.config_model,
     fromConfig: dto.from_config === true,
     disabled: dto.disabled === true,
+    provider: dto.provider,
   };
 }
 

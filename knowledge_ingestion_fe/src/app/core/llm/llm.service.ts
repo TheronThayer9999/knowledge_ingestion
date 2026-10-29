@@ -3,10 +3,13 @@ import { map, Observable } from 'rxjs';
 import { ApiService } from '../api/api.service';
 import {
   toLlmOptions,
+  toLlmProviderCatalogItem,
   toLlmProviderOption,
   type LlmModelsDto,
   type LlmOptions,
   type LlmOptionsDto,
+  type LlmProviderCatalogItem,
+  type LlmProviderCatalogItemDto,
   type LlmProviderForm,
   type LlmProviderOption,
   type LlmProviderOptionDto,
@@ -91,6 +94,16 @@ export class LlmService {
     return this.api
       .get<LlmProviderOptionDto[]>('/llm/my/providers')
       .pipe(map((list) => (list ?? []).map(toLlmProviderOption)));
+  }
+
+  /**
+   * Danh mục provider hệ thống mà tôi được gắn key riêng. Chỉ có nhãn +
+   * giao thức — không có base URL nội bộ và không có key.
+   */
+  catalog(): Observable<LlmProviderCatalogItem[]> {
+    return this.api
+      .get<LlmProviderCatalogItemDto[]>('/llm/my/providers/catalog')
+      .pipe(map((list) => (list ?? []).map(toLlmProviderCatalogItem)));
   }
 
   /** Tạo mới (id = 0) hoặc sửa (id > 0) một kết nối riêng. */

@@ -394,12 +394,12 @@ export const VI_ENTRIES = {
   // ---- Kết nối RIÊNG của tôi (BYOK) ----
   SETTINGS_LLM_MY: 'Kết nối của tôi',
   SETTINGS_LLM_MY_DESC:
-    'Dùng provider AI của riêng bạn: tự nhập base URL và API key — chỉ tài khoản của bạn thấy.',
+    'Dùng provider AI của riêng bạn: chọn nhà cung cấp và dán API key của bạn — chỉ tài khoản của bạn thấy.',
   SETTINGS_LLM_MY_NOTE:
     'Kết nối riêng chỉ dùng cho lượt chat của bạn và không thay thế cấu hình chung của hệ thống.',
   SETTINGS_LLM_MY_MANAGE: 'Mở kết nối của tôi',
   SETTINGS_LLM_MY_DIALOG_DESC:
-    'Thêm nhà cung cấp AI của riêng bạn — chỉ cần base URL và API key. Key được mã hoá ở máy chủ và không bao giờ được trả lại trình duyệt.',
+    'Thêm nhà cung cấp AI của riêng bạn — chọn nhà cung cấp rồi dán API key. Key được mã hoá ở máy chủ và không bao giờ được trả lại trình duyệt.',
   SETTINGS_LLM_MY_LOADING: 'Đang tải kết nối của bạn…',
   SETTINGS_LLM_MY_FAILED: 'Không tải được danh sách kết nối của bạn.',
   SETTINGS_LLM_MY_EMPTY: 'Bạn chưa thêm kết nối AI riêng nào.',
@@ -420,6 +420,11 @@ export const VI_ENTRIES = {
   SETTINGS_LLM_MY_KEY_PLACEHOLDER: 'Nhập key mới để thay key đang có',
   SETTINGS_LLM_MY_KEY_SET: 'Đã có key (đã mã hoá)',
   SETTINGS_LLM_MY_MODEL_PICK: 'Model có sẵn',
+  SETTINGS_LLM_MY_PROVIDER: 'Nhà cung cấp',
+  SETTINGS_LLM_MY_PROVIDER_HINT:
+    'Danh sách do hệ thống cấu hình — bạn chỉ cần dán API key của mình.',
+  SETTINGS_LLM_MY_CREATE_HINT:
+    'Model có thể để trống — bấm "Tải model" ở hàng kết nối để lấy danh sách.',
   PROFILE_TITLE: 'Hồ sơ cá nhân',
   PROFILE_SUBTITLE: 'Thông tin tài khoản và bảo mật.',
   PROFILE_ACCOUNT_INFO: 'Thông tin tài khoản',

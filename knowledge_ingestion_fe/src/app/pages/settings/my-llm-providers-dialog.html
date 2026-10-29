@@ -22,6 +22,15 @@
       <p class="hint">{{ lang.t('SETTINGS_LLM_MY_ADD_HINT') }}</p>
       <div class="def-row">
         <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
+          <mat-label>{{ lang.t('SETTINGS_LLM_MY_PROVIDER') }}</mat-label>
+          <mat-select [value]="create().provider" (selectionChange)="setCreateProvider($event.value)">
+            @for (item of catalog(); track item.slug) {
+              <mat-option [value]="item.slug">{{ item.label }}</mat-option>
+            }
+          </mat-select>
+          <mat-hint>{{ lang.t('SETTINGS_LLM_MY_PROVIDER_HINT') }}</mat-hint>
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
           <mat-label>{{ lang.t('SETTINGS_LLM_MY_LABEL') }}</mat-label>
           <input
             matInput
@@ -30,27 +39,8 @@
             (input)="onCreateInput('label', $event)"
           />
         </mat-form-field>
-        <mat-form-field appearance="outline" subscriptSizing="dynamic">
-          <mat-label>{{ lang.t('SETTINGS_LLM_TYPE') }}</mat-label>
-          <mat-select [value]="create().type" (selectionChange)="setCreateType($event.value)">
-            @for (kind of kinds; track kind) {
-              <mat-option [value]="kind">{{ lang.t(kindLabel(kind)) }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
       </div>
       <div class="def-row">
-        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
-          <mat-label>{{ lang.t('SETTINGS_LLM_BASE_URL') }}</mat-label>
-          <input
-            matInput
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="https://api.example.com/v1"
-            [value]="create().base_url"
-            (input)="onCreateInput('base_url', $event)"
-          />
-        </mat-form-field>
         <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
           <mat-label>{{ lang.t('SETTINGS_LLM_KEY') }}</mat-label>
           <input
@@ -63,8 +53,6 @@
           />
           <mat-hint>{{ lang.t('SETTINGS_LLM_MY_KEY_HINT') }}</mat-hint>
         </mat-form-field>
-      </div>
-      <div class="def-row">
         <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
           <mat-label>{{ lang.t('SETTINGS_LLM_MODEL') }}</mat-label>
           <input
@@ -75,6 +63,9 @@
             (input)="onCreateInput('model', $event)"
           />
         </mat-form-field>
+      </div>
+      <div class="def-row">
+        <span class="hint">{{ lang.t('SETTINGS_LLM_MY_CREATE_HINT') }}</span>
         <button matButton="filled" type="button" [disabled]="!canCreate" (click)="createProvider()">
           {{ lang.t(creating() ? 'SETTINGS_LLM_MY_CREATING' : 'SETTINGS_LLM_MY_CREATE') }}
         </button>
@@ -117,8 +108,8 @@
             <div class="provider-body">
               <dl class="meta">
                 <div class="meta-item">
-                  <dt>{{ lang.t('SETTINGS_LLM_BASE_URL') }}</dt>
-                  <dd>{{ item.baseUrl || '—' }}</dd>
+                  <dt>{{ lang.t('SETTINGS_LLM_MY_PROVIDER') }}</dt>
+                  <dd>{{ providerLabel(item) || '—' }}</dd>
                 </div>
                 <div class="meta-item">
                   <dt>{{ lang.t('SETTINGS_LLM_MODEL') }}</dt>
@@ -139,32 +130,6 @@
                     [value]="defValue(item, 'label')"
                     [disabled]="busy() === item.id"
                     (input)="onDefInput(item, 'label', $event)"
-                  />
-                </mat-form-field>
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>{{ lang.t('SETTINGS_LLM_TYPE') }}</mat-label>
-                  <mat-select
-                    [value]="defValue(item, 'type')"
-                    [disabled]="busy() === item.id"
-                    (selectionChange)="setDefType(item, $event.value)"
-                  >
-                    @for (kind of kinds; track kind) {
-                      <mat-option [value]="kind">{{ lang.t(kindLabel(kind)) }}</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
-              </div>
-
-              <div class="def-row">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">
-                  <mat-label>{{ lang.t('SETTINGS_LLM_BASE_URL') }}</mat-label>
-                  <input
-                    matInput
-                    autocomplete="off"
-                    spellcheck="false"
-                    [value]="defValue(item, 'base_url')"
-                    [disabled]="busy() === item.id"
-                    (input)="onDefInput(item, 'base_url', $event)"
                   />
                 </mat-form-field>
                 <mat-form-field appearance="outline" subscriptSizing="dynamic" class="grow">

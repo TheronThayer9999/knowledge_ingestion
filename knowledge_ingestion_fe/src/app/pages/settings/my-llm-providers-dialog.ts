@@ -5,10 +5,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
+import { LangService } from '../../core/i18n/lang.service';
+import { compactForm, valueOf } from '../../core/llm/llm.form';
 import {
-  toProviderKind,
-  type LlmProviderKind,
+  type LlmProviderCatalogItem,
   type LlmProviderOption,
   type LlmUserProviderForm,
 } from '../../core/llm/llm.models';
@@ -21,22 +21,28 @@ import { MessageService } from '../../shared/feedback/message.service';
  */
 interface MyProviderDraft {
   label: string;
-  type: string;
-  base_url: string;
+  provider: string;
   api_key: string;
   model: string;
 }
 
 /** Ô nhập của form — trùng tên field DTO để bản nháp gửi lên không phải đổi tên. */
-type MyDraftField = 'label' | 'type' | 'base_url' | 'api_key' | 'model';
+type MyDraftField = 'label' | 'provider' | 'api_key' | 'model';
 
 /**
- * Popup "Kết nối của tôi" (BYOK): mỗi tài khoản tự thêm provider LLM riêng —
- * base URL + API key của họ — rồi dùng cho lượt chat của chính họ.
+ * Popup "Kết nối của tôi" (BYOK): mỗi tài khoản gắn API key của riêng họ vào
+ * một nhà cung cấp trong danh mục hệ thống, rồi dùng nó cho lượt chat của
+ * chính họ.
+ *
+ * User KHÔNG tự gõ base URL: server tra định nghĩa của provider đã chọn
+ * (giao thức + base URL) trong danh mục. Nhờ vậy không có đường nào để user
+ * trỏ server sang host tuỳ ý, và đường dẫn luôn đúng sẵn — không phải đoán
+ * mò xem provider thật nằm ở /v1 hay /api/v1.
  *
  * Khác popup của admin ở vài điểm cốt lõi:
  *   - KHÔNG có slug: backend tự sinh slug "u_<id>" nên user không phải nghĩ về
  *     tên khoá, cũng không tranh chỗ với slug của admin.
+ *   - KHÔNG có ô base URL / giao thức: chọn provider là đủ, server tự tra.
  *   - KHÔNG có nút tắt/bật: kết nối riêng chỉ có "dùng" và "xoá"; muốn ngưng thì
  *     chỉ cần không chọn nó ở menu chat.
  *   - API key đi MỘT CHIỀU: nhập vào → server mã hoá rồi lưu; không có lời gọi
@@ -61,13 +67,9 @@ export class MyLlmProvidersDialog {
   private readonly llm = inject(LlmService);
   private readonly messages = inject(MessageService);
 
-  /**
-   * Hai loại provider backend dựng được. "openai-compatible" là cách gọi quen
-   * thuộc của Groq/OpenRouter/NVIDIA — server chuẩn hoá về khuôn "openai".
-   */
-  protected readonly kinds: readonly LlmProviderKind[] = ['openai-compatible', 'ollama'];
-
   protected readonly providers = signal<LlmProviderOption[]>([]);
+  /** Danh mục provider hệ thống — user chọn ở đây rồi dán key của họ */
+  protected readonly catalog = signal<LlmProviderCatalogItem[]>([]);
   protected readonly loading = signal(true);
   protected readonly failed = signal(false);
   /** id của hàng đang mở; null = thu gọn hết */
@@ -88,15 +90,12 @@ export class MyLlmProvidersDialog {
 
   constructor() {
     this.load();
+    this.loadCatalog();
   }
 
   protected toggle(item: LlmProviderOption): void {
     const id = item.id ?? 0;
     this.expanded.update((open) => (open === id ? null : id));
-  }
-
-  protected kindLabel(kind: string): TranslationKey {
-    return kind === 'ollama' ? 'SETTINGS_LLM_KIND_OLLAMA' : 'SETTINGS_LLM_KIND_OPENAI';
   }
 
   // ---- form tạo mới ----
@@ -111,19 +110,27 @@ export class MyLlmProvidersDialog {
     this.create.update((draft) => ({ ...draft, [field]: valueOf(event) }));
   }
 
-  protected setCreateType(kind: string): void {
-    this.create.update((draft) => ({ ...draft, type: kind }));
+  protected setCreateProvider(slug: string): void {
+    this.create.update((draft) => ({ ...draft, provider: slug }));
   }
 
-  /** Tạo mới cần đủ nhãn + giao thức + base URL — không có gì để "giữ". */
+  /**
+   * Tạo mới cần nhà cung cấp + API key — không có gì để "giữ". Provider ollama
+   * (local) chạy không key nên ô key không bắt buộc với loại đó.
+   */
   protected get canCreate(): boolean {
     const draft = this.create();
-    return (
-      draft.label.trim() !== '' &&
-      draft.type !== '' &&
-      draft.base_url.trim() !== '' &&
-      !this.creating()
-    );
+    const slug = draft.provider.trim();
+    if (slug === '' || this.creating()) {
+      return false;
+    }
+    return !this.needsKey(slug) || draft.api_key.trim() !== '';
+  }
+
+  /** Ollama local chạy không key; loại khác (openai-compatible) thì cần key. */
+  private needsKey(slug: string): boolean {
+    const entry = this.catalog().find((item) => item.slug === slug);
+    return entry ? entry.type !== 'ollama' : true;
   }
 
   protected createProvider(): void {
@@ -152,8 +159,7 @@ export class MyLlmProvidersDialog {
 
   /**
    * Giá trị ô định nghĩa: bản nháp nếu có, không thì đúng giá trị đang chạy.
-   * Server bắt buộc có nhãn + giao thức + base URL nên mỗi lần lưu đều gửi
-   * đủ ba — không gửi thì backend trả 400.
+   * Sửa chỉ đổi nhãn / key / model — nhà cung cấp của hàng đã tạo không đổi.
    */
   protected defValue(item: LlmProviderOption, field: MyDraftField): string {
     const id = item.id ?? 0;
@@ -164,12 +170,6 @@ export class MyLlmProvidersDialog {
     }
     if (field === 'label') {
       return item.label;
-    }
-    if (field === 'type') {
-      return toProviderKind(item.type);
-    }
-    if (field === 'base_url') {
-      return item.baseUrl ?? '';
     }
     if (field === 'model') {
       return item.defaultModel;
@@ -182,14 +182,6 @@ export class MyLlmProvidersDialog {
     this.drafts.update((all) => ({
       ...all,
       [id]: { ...emptyDraft(), ...all[id], [field]: valueOf(event) },
-    }));
-  }
-
-  protected setDefType(item: LlmProviderOption, kind: string): void {
-    const id = item.id ?? 0;
-    this.drafts.update((all) => ({
-      ...all,
-      [id]: { ...emptyDraft(), ...all[id], type: kind },
     }));
   }
 
@@ -301,21 +293,26 @@ export class MyLlmProvidersDialog {
     return item.hasKey === true;
   }
 
+  /** Tên nhà cung cấp của hàng đang mở — tra theo danh mục, không lộ base URL. */
+  protected providerLabel(item: LlmProviderOption): string {
+    const slug = item.provider ?? '';
+    return this.catalog().find((entry) => entry.slug === slug)?.label ?? slug;
+  }
+
   // ---- nội bộ ----
 
   /**
    * Form đầy đủ của một hàng: giá trị đang chạy, đè bản nháp user gõ (ô để
    * trống thì giữ giá trị cũ), rồi đè `change` (vd model vừa chọn).
    *
-   * Luôn gửi đủ nhãn + giao thức + base URL vì backend bắt buộc có ba cái đó —
-   * bản nháp chỉ chứa ô user vừa gõ nên không thể gửi trực tiếp.
+   * Chỉ gửi field có giá trị: key rỗng = giữ key đang có, model rỗng = giữ
+   * model đang có — sửa một ô không vô tình xoá danh sách model đã tải.
    */
   private formOf(item: LlmProviderOption, change: Partial<MyProviderDraft>): LlmUserProviderForm {
     const draft = this.drafts()[item.id ?? 0] ?? emptyDraft();
     const merged: MyProviderDraft = {
       label: draft.label || item.label,
-      type: draft.type || toProviderKind(item.type),
-      base_url: draft.base_url || (item.baseUrl ?? ''),
+      provider: draft.provider || item.provider || '',
       api_key: draft.api_key,
       model: draft.model || item.defaultModel,
       ...change,
@@ -350,14 +347,25 @@ export class MyLlmProvidersDialog {
       next: (list) => {
         this.loading.set(false);
         this.providers.set(list);
-        // Mở sẵn kết nối đầu tiên — user thấy ngay base URL và trạng thái
-        // key thay vì phải bấm mở từng hàng.
+        // Mở sẵn kết nối đầu tiên — user thấy ngay trạng thái key thay vì
+        // phải bấm mở từng hàng.
         this.expanded.set(list[0]?.id ?? null);
       },
       error: () => {
         this.loading.set(false);
         this.failed.set(true);
       },
+    });
+  }
+
+  /**
+   * Danh mục provider: lỗi thì để rỗng — form tạo mới sẽ không cho chọn gì
+   * thay vì làm hỏng luôn danh sách kết nối đang xem.
+   */
+  private loadCatalog(): void {
+    this.llm.catalog().subscribe({
+      next: (list) => this.catalog.set(list),
+      error: () => this.catalog.set([]),
     });
   }
 
@@ -371,12 +379,12 @@ export class MyLlmProvidersDialog {
 }
 
 function emptyDraft(): MyProviderDraft {
-  return { label: '', type: '', base_url: '', api_key: '', model: '' };
+  return { label: '', provider: '', api_key: '', model: '' };
 }
 
-/** Bản nháp form "Thêm kết nối" — giao thức mặc định là openai-compatible. */
+/** Bản nháp form "Thêm kết nối" — chưa chọn provider nào. */
 function defaultCreateDraft(): MyProviderDraft {
-  return { ...emptyDraft(), type: 'openai-compatible' };
+  return emptyDraft();
 }
 
 /**
@@ -384,22 +392,10 @@ function defaultCreateDraft(): MyProviderDraft {
  * đang có, nên sửa một ô không vô tình xoá danh sách model đã tải.
  */
 function toForm(draft: MyProviderDraft): LlmUserProviderForm {
-  const form: LlmUserProviderForm = {
+  return compactForm({
     label: draft.label.trim(),
-    type: draft.type === 'ollama' ? 'ollama' : 'openai-compatible',
-    base_url: draft.base_url.trim(),
-  };
-  const apiKey = draft.api_key.trim();
-  if (apiKey) {
-    form.api_key = apiKey;
-  }
-  const model = draft.model.trim();
-  if (model) {
-    form.model = model;
-  }
-  return form;
-}
-
-function valueOf(event: Event): string {
-  return (event.target as HTMLInputElement).value;
+    provider: draft.provider.trim(),
+    api_key: draft.api_key.trim(),
+    model: draft.model.trim(),
+  });
 }

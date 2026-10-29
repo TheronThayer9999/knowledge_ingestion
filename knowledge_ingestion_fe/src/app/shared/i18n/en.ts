@@ -399,12 +399,12 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   // ---- My own connection (BYOK) ----
   SETTINGS_LLM_MY: 'My connections',
   SETTINGS_LLM_MY_DESC:
-    'Use your own AI provider: enter the base URL and API key yourself — visible only to your account.',
+    'Use your own AI provider: pick a provider and paste your API key — visible only to your account.',
   SETTINGS_LLM_MY_NOTE:
     'Your own connection is used only for your chat turns and does not replace the system-wide configuration.',
   SETTINGS_LLM_MY_MANAGE: 'Open my connections',
   SETTINGS_LLM_MY_DIALOG_DESC:
-    'Add your own AI provider — just the base URL and API key. The key is encrypted on the server and never sent back to the browser.',
+    'Add your own AI provider — pick a provider, then paste your API key. The key is encrypted on the server and never sent back to the browser.',
   SETTINGS_LLM_MY_LOADING: 'Loading your connections…',
   SETTINGS_LLM_MY_FAILED: 'Could not load your connections.',
   SETTINGS_LLM_MY_EMPTY: 'You have not added any own connection yet.',
@@ -425,6 +425,11 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   SETTINGS_LLM_MY_KEY_PLACEHOLDER: 'Enter a new key to replace the current one',
   SETTINGS_LLM_MY_KEY_SET: 'Key stored (encrypted)',
   SETTINGS_LLM_MY_MODEL_PICK: 'Available models',
+  SETTINGS_LLM_MY_PROVIDER: 'Provider',
+  SETTINGS_LLM_MY_PROVIDER_HINT:
+    'Configured by the system — you only need to paste your own API key.',
+  SETTINGS_LLM_MY_CREATE_HINT:
+    'The model is optional — click "Load models" on the connection row to fetch the list.',
   PROFILE_TITLE: 'Profile',
   PROFILE_SUBTITLE: 'Account information and security.',
   PROFILE_ACCOUNT_INFO: 'Account information',

@@ -18,15 +18,21 @@ const MY_CONNECTION = {
   id: 12,
   label: 'Groq của tôi',
   type: 'openai',
+  provider: 'groq',
   default_model: 'llama-3.3-70b',
   models: ['llama-3.3-70b'],
   available: true,
   thinking: false,
   is_default: false,
-  base_url: 'https://api.groq.com/openai/v1',
   has_key: true,
   key_source: 'database',
 };
+
+/** Danh mục provider hệ thống — user chọn ở đây rồi dán key của họ. */
+const CATALOG = [
+  { slug: 'groq', label: 'Groq', type: 'openai' },
+  { slug: 'ollama', label: 'Ollama local', type: 'ollama' },
+];
 
 interface Harness {
   fixture: ComponentFixture<MyLlmProvidersDialog>;
@@ -54,6 +60,9 @@ function setup(connections: unknown[] = [MY_CONNECTION]): Harness {
   http
     .expectOne({ method: 'GET', url: api('/llm/my/providers') })
     .flush({ ...ENVELOPE_OK, data: connections });
+  http
+    .expectOne({ method: 'GET', url: api('/llm/my/providers/catalog') })
+    .flush({ ...ENVELOPE_OK, data: CATALOG });
   fixture.detectChanges();
   return { fixture, element: fixture.nativeElement as HTMLElement, http, messages };
 }
@@ -68,12 +77,12 @@ function button(element: HTMLElement, label: string): HTMLButtonElement {
   return found;
 }
 
-/** Ô nhập trong hàng đang mở: [nhãn, base_url, api_key, model]. */
+/** Ô nhập trong hàng đang mở: [nhãn, api_key, model]. */
 function defInputs(element: HTMLElement): HTMLInputElement[] {
   return Array.from(element.querySelectorAll<HTMLInputElement>('.provider-body .def-row input'));
 }
 
-/** Ô nhập trong form "Thêm kết nối": [nhãn, base_url, api_key, model]. */
+/** Ô nhập trong form "Thêm kết nối": [nhãn, api_key, model]. */
 function createInputs(element: HTMLElement): HTMLInputElement[] {
   return Array.from(element.querySelectorAll<HTMLInputElement>('.create-form input'));
 }
@@ -81,6 +90,22 @@ function createInputs(element: HTMLElement): HTMLInputElement[] {
 function type(input: HTMLInputElement, value: string): void {
   input.value = value;
   input.dispatchEvent(new Event('input'));
+}
+
+/** Chọn provider trong select của form tạo mới (mat-select render option overlay). */
+function pickProvider(element: HTMLElement, label: string): void {
+  const trigger = element.querySelector<HTMLElement>('.create-form mat-select');
+  if (!trigger) {
+    throw new Error('Không tìm thấy ô chọn nhà cung cấp');
+  }
+  trigger.click();
+  const option = Array.from(document.querySelectorAll('mat-option')).find((item) =>
+    (item.textContent ?? '').includes(label),
+  );
+  if (!option) {
+    throw new Error(`Không tìm thấy lựa chọn "${label}"`);
+  }
+  (option as HTMLElement).click();
 }
 
 describe('MyLlmProvidersDialog — kết nối LLM riêng của tôi (BYOK)', () => {
@@ -104,7 +129,7 @@ describe('MyLlmProvidersDialog — kết nối LLM riêng của tôi (BYOK)', ()
     expect(element.textContent).toContain('Bạn chưa thêm kết nối AI riêng nào.');
   });
 
-  it('form thêm kết nối: ẩn tới khi bấm, thiếu base URL thì nút tạo còn tắt', () => {
+  it('form thêm kết nối: chọn provider + nhập key thì mới cho tạo', () => {
     const { fixture, element } = setup();
 
     expect(element.querySelector('.create-form')).toBeNull();
@@ -119,28 +144,31 @@ describe('MyLlmProvidersDialog — kết nối LLM riêng của tôi (BYOK)', ()
     fixture.detectChanges();
     expect(button(element, 'Tạo kết nối').disabled).toBe(true);
 
-    type(inputs[1], 'https://api.groq.com/openai/v1');
+    pickProvider(element, 'Groq');
+    fixture.detectChanges();
+    expect(button(element, 'Tạo kết nối').disabled).toBe(true);
+
+    type(inputs[1], 'gsk-secret');
     fixture.detectChanges();
     expect(button(element, 'Tạo kết nối').disabled).toBe(false);
   });
 
-  it('tạo kết nối: POST /llm/my/providers, hàng mới hiện ra và mở sẵn', () => {
+  it('tạo kết nối: POST /llm/my/providers với provider đã chọn, không có base URL', () => {
     const { fixture, element, http, messages } = setup([]);
     button(element, 'Thêm kết nối').click();
     fixture.detectChanges();
 
+    pickProvider(element, 'Groq');
     const inputs = createInputs(element);
     type(inputs[0], 'Groq của tôi');
-    type(inputs[1], 'https://api.groq.com/openai/v1');
-    type(inputs[2], 'gsk-secret');
+    type(inputs[1], 'gsk-secret');
     fixture.detectChanges();
 
     button(element, 'Tạo kết nối').click();
     const req = http.expectOne({ method: 'POST', url: api('/llm/my/providers') });
     expect(req.request.body).toEqual({
       label: 'Groq của tôi',
-      type: 'openai-compatible',
-      base_url: 'https://api.groq.com/openai/v1',
+      provider: 'groq',
       api_key: 'gsk-secret',
     });
     req.flush({ ...ENVELOPE_OK, data: MY_CONNECTION });
@@ -153,7 +181,7 @@ describe('MyLlmProvidersDialog — kết nối LLM riêng của tôi (BYOK)', ()
     http.verify();
   });
 
-  it('sửa kết nối: gửi đủ nhãn + giao thức + base URL (backend bắt buộc)', () => {
+  it('sửa kết nối: chỉ gửi nhãn + key + model, không gửi base URL', () => {
     const { fixture, element, http, messages } = setup();
 
     const [labelInput] = defInputs(element);
@@ -166,8 +194,7 @@ describe('MyLlmProvidersDialog — kết nối LLM riêng của tôi (BYOK)', ()
     const req = http.expectOne({ method: 'PUT', url: api('/llm/my/providers/12') });
     expect(req.request.body).toEqual({
       label: 'Groq free',
-      type: 'openai-compatible',
-      base_url: 'https://api.groq.com/openai/v1',
+      provider: 'groq',
       model: 'llama-3.3-70b',
     });
     req.flush({ ...ENVELOPE_OK, data: { ...MY_CONNECTION, label: 'Groq free' } });
@@ -209,21 +236,22 @@ describe('MyLlmProvidersDialog — kết nối LLM riêng của tôi (BYOK)', ()
     button(element, 'Thêm kết nối').click();
     fixture.detectChanges();
 
+    pickProvider(element, 'Groq');
     const inputs = createInputs(element);
     type(inputs[0], 'Groq của tôi');
-    type(inputs[1], 'https://api.groq.com/openai/v1');
+    type(inputs[1], 'gsk-secret');
     fixture.detectChanges();
     button(element, 'Tạo kết nối').click();
 
     http
       .expectOne({ method: 'POST', url: api('/llm/my/providers') })
       .flush(
-        { ...ENVELOPE_OK, status: false, code: 400, message: 'Kết nối OpenAI-compatible cần API key' },
+        { ...ENVELOPE_OK, status: false, code: 400, message: 'Kết nối Groq cần API key' },
         { status: 400, statusText: 'Bad Request' },
       );
     fixture.detectChanges();
 
-    expect(element.textContent).toContain('Kết nối OpenAI-compatible cần API key');
+    expect(element.textContent).toContain('Kết nối Groq cần API key');
     expect(element.querySelector('.create-form')).not.toBeNull();
     expect(messages.success).not.toHaveBeenCalled();
     http.verify();

@@ -179,21 +179,27 @@ describe('LlmService', () => {
     http.verify();
   });
 
+  it('catalog: GET /llm/my/providers/catalog, map sang danh mục provider', async () => {
+    const result = service.catalog().toPromise();
+    const req = http.expectOne({ method: 'GET', url: api('/llm/my/providers/catalog') });
+    req.flush({ ...ENVELOPE_OK, data: [{ slug: 'groq', label: 'Groq', type: 'openai' }] });
+
+    const list = await result;
+    expect(list![0].slug).toBe('groq');
+    expect(list![0].label).toBe('Groq');
+    http.verify();
+  });
+
   it('saveMyProvider tạo mới: POST /llm/my/providers, sửa thì PUT /llm/my/providers/{id}', async () => {
-    const created = service
-      .saveMyProvider(0, { label: 'Groq của tôi', type: 'openai-compatible', base_url: 'https://x/v1' })
-      .toPromise();
+    const created = service.saveMyProvider(0, { label: 'Groq của tôi', provider: 'groq' }).toPromise();
     const create = http.expectOne({ method: 'POST', url: api('/llm/my/providers') });
     expect(create.request.body).toEqual({
       label: 'Groq của tôi',
-      type: 'openai-compatible',
-      base_url: 'https://x/v1',
+      provider: 'groq',
     });
     create.flush({ ...ENVELOPE_OK, data: MY_CONNECTION });
 
-    const updated = service
-      .saveMyProvider(12, { label: 'Groq của tôi', type: 'openai-compatible', base_url: 'https://x/v1' })
-      .toPromise();
+    const updated = service.saveMyProvider(12, { label: 'Groq của tôi', provider: 'groq' }).toPromise();
     const update = http.expectOne({ method: 'PUT', url: api('/llm/my/providers/12') });
     expect(update.request.body.label).toBe('Groq của tôi');
     update.flush({ ...ENVELOPE_OK, data: MY_CONNECTION });

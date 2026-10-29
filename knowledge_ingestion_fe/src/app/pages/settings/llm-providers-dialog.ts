@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { LangService, type TranslationKey } from '../../core/i18n/lang.service';
+import { compactForm, valueOf } from '../../core/llm/llm.form';
 import {
   toProviderKind,
   type LlmProviderForm,
@@ -444,30 +445,18 @@ function defaultCreateDraft(): ProviderDraft {
 /**
  * Chỉ gửi field có giá trị: backend hiểu "không gửi = giữ nguyên", nên form
  * sửa mỗi nhãn không vô tình xoá base_url/key đã lưu.
+ *
+ * `type` chỉ gửi khi là một trong hai loại hợp lệ — bản nháp rỗng (chỉ sửa
+ * nhãn) không được ghi đè type của provider ollama.
  */
 function toForm(draft: ProviderDraft): LlmProviderForm {
-  const form: LlmProviderForm = {};
-  const label = draft.label.trim();
-  if (label) {
-    form.label = label;
-  }
-  if (draft.type === 'ollama' || draft.type === 'openai-compatible') {
-    form.type = draft.type;
-  }
-  const baseUrl = draft.base_url.trim();
-  if (baseUrl) {
-    form.base_url = baseUrl;
-  }
-  const apiKey = draft.api_key.trim();
-  if (apiKey) {
-    form.api_key = apiKey;
-  }
-  if (draft.disabled !== undefined) {
-    form.disabled = draft.disabled;
-  }
-  return form;
-}
-
-function valueOf(event: Event): string {
-  return (event.target as HTMLInputElement).value;
+  const type =
+    draft.type === 'ollama' || draft.type === 'openai-compatible' ? draft.type : undefined;
+  return compactForm({
+    label: draft.label.trim(),
+    type,
+    base_url: draft.base_url.trim(),
+    api_key: draft.api_key.trim(),
+    disabled: draft.disabled,
+  });
 }
