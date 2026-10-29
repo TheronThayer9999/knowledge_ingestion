@@ -38,6 +38,9 @@ func (f *fakeArticleVectors) CountByFilter(_ context.Context, filter domain.Sear
 	f.gotCountFilter = filter
 	return f.scopedTotal, nil
 }
+func (f *fakeArticleVectors) CountCollection(context.Context) (int64, error) {
+	return f.total, nil
+}
 func (f *fakeArticleVectors) Search(_ context.Context, _ []float32, _ domain.SearchFilter, _ int, _ float32) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }

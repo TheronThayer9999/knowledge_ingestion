@@ -46,7 +46,6 @@ type allowEntry struct {
 var functionBudgetAllowlist = []allowEntry{
 	{"cmd/examples/main.go::main", 67, 4},
 	{"cmd/examples/main.go::runAgent", 71, 8},
-	{"cmd/worker/main.go::main", 96, 4},
 	{"src/agent/eino/agent.go::(*ChatAgent).Run", 67, 17},
 	{"src/agent/eino/knowledge_search.go::NewKnowledgeSearchTool", 78, 14},
 	{"src/agent/eino/list_unreadable_pages.go::NewListUnreadablePagesTool", 76, 15},

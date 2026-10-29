@@ -18,7 +18,7 @@ func NewConsistencyAPI(base *baseController, svc services.IConsistencyService) *
 
 // Check godoc
 // @Summary Data consistency check
-// @Description Kiểm tra orphan/cycle/missing self-row trong category closure, articles, article_pages. Tất cả 0 = lành mạnh.
+// @Description Kiểm tra orphan/cycle/missing self-row trong category closure, articles, article_pages + quét phía Qdrant (ghost_articles = bài báo done nhưng mất hết vector). Tất cả 0 = lành mạnh; vector_error khác rỗng nghĩa là không kiểm được phía vector.
 // @Tags admin
 // @Produce json
 // @Success 200 {object} dtos.ResponseResource

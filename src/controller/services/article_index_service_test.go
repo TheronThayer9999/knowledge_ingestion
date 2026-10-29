@@ -2,13 +2,16 @@ package services
 
 import (
 	"context"
+	stderrors "errors"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"knowledge_ingestion/src/common/chunker"
 	"knowledge_ingestion/src/common/constants"
+	"knowledge_ingestion/src/common/utils"
 	"knowledge_ingestion/src/domain"
 )
 
@@ -23,8 +26,11 @@ type indexStubArticles struct {
 	progressAt  []int
 	alive       bool
 	markedError int
-	claim       []*domain.Article
-	released    [][]int64
+	// attemptsAt ghi số attempts mà service giao xuống mỗi lần MarkIndexError —
+	// phân biệt backoff bình thường với "đốt thành failed luôn".
+	attemptsAt []int
+	claim      []*domain.Article
+	released   [][]int64
 }
 
 func (a *indexStubArticles) ClaimIndexPending(context.Context, int, time.Duration) ([]*domain.Article, error) {
@@ -38,8 +44,9 @@ func (a *indexStubArticles) MarkIndexDone(context.Context, int64) error {
 	a.markedDone = true
 	return nil
 }
-func (a *indexStubArticles) MarkIndexError(context.Context, int64, int) error {
+func (a *indexStubArticles) MarkIndexError(_ context.Context, _ int64, attempts int) error {
 	a.markedError++
+	a.attemptsAt = append(a.attemptsAt, attempts)
 	return nil
 }
 func (a *indexStubArticles) ReleaseIndexClaims(_ context.Context, ids []int64) error {
@@ -159,6 +166,13 @@ func (indexStubEmbedder) IsPermanentError(error) bool {
 type indexStubVectors struct {
 	points  []*domain.VectorPoint
 	deleted int
+	// carried = số point của các lần chạy TRƯỚC vẫn còn nằm trên Qdrant. Stub
+	// không giữ state cross-run nên test resume phải khai rõ, nếu không guard
+	// done-rỗng tưởng bài mất vector mà requeue.
+	carried int64
+	// countByArticle, khi != nil, thay cho (carried + len(points)) — guard mất
+	// vector cần mô phỏng "upsert được ack nhưng collection vẫn trống".
+	countByArticle func(articleID int64) (int64, error)
 }
 
 func (v *indexStubVectors) UpsertPoints(_ context.Context, points []*domain.VectorPoint) error {
@@ -167,11 +181,17 @@ func (v *indexStubVectors) UpsertPoints(_ context.Context, points []*domain.Vect
 }
 func (v *indexStubVectors) DeleteByArticle(context.Context, int64) error    { v.deleted++; return nil }
 func (v *indexStubVectors) DeleteByArticles(context.Context, []int64) error { return nil }
-func (v *indexStubVectors) CountByArticle(context.Context, int64) (int64, error) {
-	return int64(len(v.points)), nil
+func (v *indexStubVectors) CountByArticle(_ context.Context, articleID int64) (int64, error) {
+	if v.countByArticle != nil {
+		return v.countByArticle(articleID)
+	}
+	return v.carried + int64(len(v.points)), nil
 }
 func (v *indexStubVectors) CountByFilter(context.Context, domain.SearchFilter) (int64, error) {
-	return int64(len(v.points)), nil
+	return v.carried + int64(len(v.points)), nil
+}
+func (v *indexStubVectors) CountCollection(context.Context) (int64, error) {
+	return v.carried + int64(len(v.points)), nil
 }
 func (v *indexStubVectors) Search(context.Context, []float32, domain.SearchFilter, int, float32) ([]*domain.ScoredChunk, error) {
 	return nil, nil
@@ -254,7 +274,9 @@ func TestIndexOneChunkIndexAndPage(t *testing.T) {
 func TestIndexOneResumeSkipsCheckpoint(t *testing.T) {
 	body := strings.Repeat("Điều khoản này quy định rõ ràng. ", 60)
 	arts := &indexStubArticles{alive: true}
-	vec := &indexStubVectors{}
+	// carried = 3: 3 chunk đầu đã nằm trên Qdrant từ lần trước — guard
+	// done-rỗng đếm point THẬT, test không khai thì nó tưởng bài mất vector.
+	vec := &indexStubVectors{carried: 3}
 	pages := &indexStubPages{pages: pagesFrom(body)}
 	svc := newIndexSvc(arts, pages, vec).(*articleIndexService)
 
@@ -428,6 +450,70 @@ func TestIndexWindowStopsAtCharCap(t *testing.T) {
 	}
 	if r.piecesSeen != 3 {
 		t.Errorf("piecesSeen = %d, muốn 3 sau 2 lượt — có trang bị bỏ sót/đọc lặp", r.piecesSeen)
+	}
+}
+
+// TestIndexDoneGuardBlocksVectorsGone khoá guard "done-rỗng": Qdrant có thể mất
+// cả collection (ensureCollection drop/recreate khi shape vector đổi) trong khi
+// DB vẫn báo done — search khi đó thiếu mà không lỗi ở đâu cả, đúng cái đã xảy
+// ra với 16 bài trên môi trường dev.
+//
+// Kỳ vọng: indexOne trả errIndexVectorsGone, checkpoint bị đưa về 0 để kỳ sau
+// index lại từ đầu (dropStaleVectors rồi đọc lại article_pages — không tốn OCR),
+// và bài KHÔNG được đánh done.
+func TestIndexDoneGuardBlocksVectorsGone(t *testing.T) {
+	body := strings.Repeat("Điều khoản này quy định rõ ràng. ", 60)
+	arts := &indexStubArticles{alive: true}
+	// Upsert vẫn được ack nhưng collection trả về 0 point = mất vector.
+	vec := &indexStubVectors{countByArticle: func(int64) (int64, error) { return 0, nil }}
+	svc := newIndexSvc(arts, &indexStubPages{pages: pagesFrom(body)}, vec).(*articleIndexService)
+
+	article := &domain.Article{BaseModel: domain.BaseModel{ID: 11}, StorageKey: "uploads/a.txt", PageCount: 1}
+	err := svc.indexOne(context.Background(), "trace-guard", article)
+	if !stderrors.Is(err, errIndexVectorsGone) {
+		t.Fatalf("muốn errIndexVectorsGone, nhận %v", err)
+	}
+	if len(vec.points) == 0 {
+		t.Error("guard chạy trước khi upsert? không có point nào được ghi")
+	}
+	last := arts.progressAt[len(arts.progressAt)-1]
+	if last != 0 {
+		t.Errorf("checkpoint cuối = %d, muốn 0 để kỳ sau index lại từ đầu", last)
+	}
+	if arts.markedDone {
+		t.Error("bài mất vector mà vẫn được đánh done — guard bị lọt")
+	}
+}
+
+// TestIndexClaimedVectorLossIsRetryable khoá đường xử lý lỗi: mất vector là lỗi
+// TỰ CHỮA ĐƯỢC (kỳ sau index lại từ checkpoint 0) nên phải đi backoff bình
+// thường, KHÔNG failed luôn như lỗi contract. Failed luôn ở đây nghĩa là bài
+// nằm chết chờ admin bấm rebuild trong khi worker chỉ cần thêm 1 kỳ nữa.
+func TestIndexClaimedVectorLossIsRetryable(t *testing.T) {
+	body := strings.Repeat("Điều khoản này quy định rõ ràng. ", 60)
+	arts := &indexStubArticles{alive: true}
+	vec := &indexStubVectors{countByArticle: func(int64) (int64, error) { return 0, nil }}
+	svc := newIndexSvc(arts, &indexStubPages{pages: pagesFrom(body)}, vec).(*articleIndexService)
+
+	article := &domain.Article{
+		BaseModel:     domain.BaseModel{ID: 12},
+		UserID:        3,
+		StorageKey:    "uploads/a.txt",
+		PageCount:     1,
+		IndexAttempts: 1,
+	}
+	var done atomic.Int64
+	svc.indexClaimed(context.Background(), "trace-guard", article, &done)
+
+	if len(arts.attemptsAt) != 1 {
+		t.Fatalf("muốn 1 lần MarkIndexError, nhận %d", len(arts.attemptsAt))
+	}
+	if got := arts.attemptsAt[0]; got != 2 {
+		t.Errorf("attempts = %d, muốn 2 (backoff bình thường, không đốt thành failed) — MaxQueueAttempts = %d",
+			got, utils.MaxQueueAttempts)
+	}
+	if arts.markedDone || done.Load() != 0 {
+		t.Error("bài mất vector không được tính là index xong")
 	}
 }
 

@@ -112,6 +112,9 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewArticleService),
 		fx.Provide(services.NewArticleAdminService),
 		fx.Provide(services.NewEmbedCacheAdminService),
+		// Bộ reconcile mất vector — API cần nó cho endpoint consistency (phần
+		// kiểm phía Qdrant); worker dựng bản riêng trong cmd/worker.
+		fx.Provide(services.NewIndexReconcileService),
 		fx.Provide(services.NewConsistencyService),
 		fx.Provide(services.NewHealthService),
 		// agent không import middlewares — loader nối ICurrentUser với IUserResolver.

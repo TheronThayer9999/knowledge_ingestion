@@ -907,6 +907,22 @@ func (c *connection) CountByFilter(ctx context.Context, filter domain.SearchFilt
 	return int64(n), nil
 }
 
+// CountCollection đếm mọi point trong collection, không filter — xem hợp đồng
+// domain.IVectorStore. Filter nil nghĩa là "cả collection"; Exact vẫn bật vì
+// con số này dùng để so với tổng chunk trong DB, estimate của Qdrant làm phép
+// so sánh thành nhiễu.
+func (c *connection) CountCollection(ctx context.Context) (int64, error) {
+	exact := true
+	n, err := c.client.Count(ctx, &qdrantapi.CountPoints{
+		CollectionName: c.collection,
+		Exact:          &exact,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("qdrant: count toàn bộ collection %s: %w", c.collection, err)
+	}
+	return int64(n), nil
+}
+
 func (c *connection) IsPermanentError(err error) bool { return IsPermanent(err) }
 
 // ErrBadRequest báo request sai từ phía client (sai dim) — retry vô ích.

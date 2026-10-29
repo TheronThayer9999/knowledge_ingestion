@@ -484,17 +484,53 @@ func (r *indexRun) flush() error {
 	return nil
 }
 
-// finish log tổng kết; không trang nào ra chữ là lỗi dữ liệu (ErrInvalid) chứ
-// không phải "index xong 0 chunk".
+// finish xác nhận vector THẬT SỰ nằm ở Qdrant rồi mới log tổng kết; không
+// trang nào ra chữ là lỗi dữ liệu (ErrInvalid) chứ không phải "index xong 0
+// chunk".
 func (r *indexRun) finish() error {
 	if r.total == 0 {
 		return fmt.Errorf("%w: không có trang nào ra chữ để chunk", extractor.ErrInvalid)
+	}
+	if err := r.verifyVectors(); err != nil {
+		return err
 	}
 	logs.Infow("index: xong 1 bài", "trace_id", r.traceID, "article_id", r.article.ID,
 		"name", r.article.Name, "file", fileTag(r.article),
 		"pieces", r.piecesSeen, "chunks", r.total,
 		"elapsed_ms", time.Since(r.start).Milliseconds())
 	return nil
+}
+
+// verifyVectors là guard "done-rỗng" — bước cuối cùng trước khi bài được đánh
+// done: đếm point THẬT trên Qdrant và so với số chunk đã checkpoint.
+//
+// Nó tồn tại vì Qdrant có thể mất cả collection mà DB không biết:
+// ensureCollection drop/recreate khi shape vector đổi (đổi model embedding,
+// đổi dim), và mọi bài đã done TRƯỚC đó vẫn còn index_done_chunks > 0 trong
+// Postgres trong khi kho trống trơn — search trả kết quả thiếu cho tới khi có
+// người để ý. Upsert luôn wait=true nên đếm ngay sau khi ghi là tin được.
+//
+// Thiếu point thì KHÔNG được done: đưa checkpoint về 0 rồi trả lỗi transient
+// (backoff, không đốt thành failed luôn) — kỳ sau ClaimIndexPending thấy
+// resumeFrom = 0 nên dọn phần dư rồi index lại toàn bộ từ article_pages, không
+// tốn OCR. Tự chữa mà không cần admin bấm rebuild.
+func (r *indexRun) verifyVectors() error {
+	det := worker.Detach(r.ctx)
+	defer det.Close()
+	points, err := r.svc.vectors.CountByArticle(det.Ctx, r.article.ID)
+	if err != nil {
+		// Không đếm được thì không được phép kết luận "đủ vector" — để backoff.
+		return fmt.Errorf("kiểm tra vector sau index: %w", err)
+	}
+	if points >= int64(r.total) {
+		return nil
+	}
+	if err := r.svc.articleRepo.MarkIndexProgress(det.Ctx, r.article.ID, 0); err != nil {
+		logs.Error(err, "index: không đưa checkpoint về 0 được", "trace_id", r.traceID,
+			"article_id", r.article.ID, "name", r.article.Name, "file", fileTag(r.article))
+	}
+	return fmt.Errorf("%w: bài %d có %d point nhưng checkpoint %d chunk",
+		errIndexVectorsGone, r.article.ID, points, r.total)
 }
 
 // resolveTemplate chọn template theo loại tài liệu của bài (laws/table/...),
@@ -624,6 +660,12 @@ func (s *articleIndexService) ensureAlive(ctx context.Context, traceID string, a
 // phát hiện) — retry vô ích nên failed luôn, cùng nhóm với lỗi vĩnh viễn của
 // embedder/vector store (hỏi qua domain interface, không import infra).
 var errIndexContract = stderrors.New("embed trả thiếu vector")
+
+// errIndexVectorsGone báo index xong nhưng point không nằm trên Qdrant
+// (guard done-rỗng ở indexRun.verifyVectors). Khác errIndexContract: đây là
+// lỗi TỰ CHỮA ĐƯỢC — checkpoint đã đưa về 0 nên kỳ sau chạy lại từ đầu, vì
+// vậy để transient (backoff) chứ không failed luôn.
+var errIndexVectorsGone = stderrors.New("mất vector sau index")
 
 // ---- CỬA SỔ TRƯỢT ----
 //

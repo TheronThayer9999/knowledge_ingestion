@@ -30,6 +30,9 @@ func (f *fakeNeighborVectors) CountByArticle(_ context.Context, _ int64) (int64,
 func (f *fakeNeighborVectors) CountByFilter(_ context.Context, _ domain.SearchFilter) (int64, error) {
 	return 0, nil
 }
+func (f *fakeNeighborVectors) CountCollection(context.Context) (int64, error) {
+	return 0, nil
+}
 func (f *fakeNeighborVectors) Search(_ context.Context, _ []float32, _ domain.SearchFilter, _ int, _ float32) ([]*domain.ScoredChunk, error) {
 	return nil, nil
 }

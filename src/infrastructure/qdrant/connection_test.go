@@ -104,6 +104,11 @@ func TestUpsertCountDelete_Integration(t *testing.T) {
 	if n, err := c.CountByFilter(ctx, domain.SearchFilter{UserID: 8, CategoryIDs: []int64{3}, ArticleID: 5}); err != nil || n != 0 {
 		t.Fatalf("count scoped sai user = %d, err = %v, want 0", n, err)
 	}
+	// CountCollection KHÔNG filter — con số bộ reconcile dùng để so với tổng
+	// chunk trong DB, phải tính cả bài khác (không nhân bản CountByArticle).
+	if n, err := c.CountCollection(ctx); err != nil || n != 3 {
+		t.Fatalf("count collection = %d, err = %v, want 3", n, err)
+	}
 	// Payload đọc lại phải đủ 6 field phân quyền + text.
 	withPayload := true
 	var scrollLimit uint32 = 10

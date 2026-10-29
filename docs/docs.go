@@ -22,7 +22,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Kiểm tra orphan/cycle/missing self-row trong category closure, articles, article_pages. Tất cả 0 = lành mạnh.",
+                "description": "Kiểm tra orphan/cycle/missing self-row trong category closure, articles, article_pages + quét phía Qdrant (ghost_articles = bài báo done nhưng mất hết vector). Tất cả 0 = lành mạnh; vector_error khác rỗng nghĩa là không kiểm được phía vector.",
                 "produces": [
                     "application/json"
                 ],

@@ -146,6 +146,34 @@ const INDEX_CALL_BASE_DELAY = 2 * time.Second
 // sau chỉ làm nốt phần còn lại.
 const INDEX_JOB_TIMEOUT = 45 * time.Minute
 
+// Knob vận hành bộ tự chữa mất vector (reconcile) — so articles.index_done_chunks
+// với point thật trên Qdrant, bài "done" mà kho trống thì đưa về hàng đợi index.
+// Cần vì ensureCollection drop/recreate collection khi shape vector đổi: DB vẫn
+// báo done trong khi search trả kết quả thiếu.
+
+// RECONCILE_PAGE_SIZE số bài done nạp mỗi lượt quét (LIMIT của
+// ListByIndexStatus) — quét theo lô, không kéo cả bảng.
+const RECONCILE_PAGE_SIZE = 200
+
+// RECONCILE_MAX_ARTICLES trần số bài quét trong MỘT lượt reconcile: mỗi bài là
+// 1 câu Count gửi lên Qdrant, kho có triệu bài thì không được phép biến lượt
+// quét thành hàng nghìn round trip. Quét chưa hết thì log báo "thừa" để người
+// vận hành biết, job vẫn hội tụ dần qua nhiều kỳ.
+const RECONCILE_MAX_ARTICLES = 2000
+
+// RECONCILE_INTERVAL nhịp quét — thưa hơn index nhiều vì đây là lưới chắn
+// cho tai biến (mất collection), không phải đường dữ liệu hằng ngày; mất
+// collection thì guard trong phase 1 đã chặn bài mới thành ma ngay.
+const RECONCILE_INTERVAL = 6 * time.Hour
+
+// RECONCILE_TIMEOUT trần 1 lượt quét — phải nhỏ hơn RECONCILE_INTERVAL để kỳ
+// sau không chồng lên kỳ đang chạy.
+const RECONCILE_TIMEOUT = 5 * time.Minute
+
+// GHOST_SAMPLE_SIZE số id ma đưa vào response consistency — đủ để kiểm chứng
+// bằng tay mà không đẩy payload phình theo số bài hỏng.
+const GHOST_SAMPLE_SIZE = 20
+
 // Knob vận hành phase compile của worker (P2.4 phase 1b) — đọc mục từ Qdrant,
 // LLM sinh summary từng mục, ghi article_sections. Chạy SAU index, bật mặc
 // định: bài index done tự vào hàng đợi.

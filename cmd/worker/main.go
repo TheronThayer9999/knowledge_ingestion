@@ -63,62 +63,16 @@ func main() {
 		fx.Provide(services.NewArticleCompileService),
 		fx.Provide(services.NewRefreshTokenJanitor),
 		fx.Provide(services.NewWorkerHeartbeatService),
-		// Thêm job mới = inject service ở tham số + append 1 dòng Schedule:
-		// {Name: "...", Interval: ..., Run: asJob(svc.Method)}.
-		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, extract services.IArticleExtractService, index services.IArticleIndexService, compile services.IArticleCompileService, refreshJanitor services.IRefreshTokenJanitor, opts services.PurgeOptions) {
-			NewRunner([]Schedule{
-				{Name: "purge-articles", Interval: constants.PURGE_GRACE_PERIOD, Run: func(ctx context.Context) error {
-					_, err := purge.PurgeDeleted(ctx)
-					return err
-				}},
-				{Name: "trim-orphan-pages", Interval: opts.TrimInterval, Run: func(ctx context.Context) error {
-					_, err := purge.TrimOrphanPages(ctx)
-					return err
-				}},
-				// Timeout riêng vì bài 500 trang OCR mất ~17 phút — cancel giữa
-				// chừng thì mất công. Nhờ EXTRACT_FLUSH_PAGES nên hết giờ chỉ
-				// mất tối đa 1 lô trang, kỳ sau nhảy tiếp.
-				{Name: "extract-articles", Interval: constants.EXTRACT_INTERVAL, Timeout: constants.EXTRACT_JOB_TIMEOUT, Run: func(ctx context.Context) error {
-					_, err := extract.ExtractPending(ctx)
-					return err
-				}},
-				// Phase index không còn OCR nên nhẹ hơn hẳn, nhưng bài lớn vẫn
-				// gọi Ollama ~47 lần nên vẫn cần timeout riêng.
-				{Name: "index-articles", Interval: constants.INDEX_INTERVAL, Timeout: constants.INDEX_JOB_TIMEOUT, Run: func(ctx context.Context) error {
-					_, err := index.IndexPending(ctx)
-					return err
-				}},
-				// Phase compile (P2.4 phase 1b): bài index done → LLM tóm tắt
-				// từng mục → article_sections. Nhịp thưa hơn index vì call LLM
-				// chậm; timeout riêng < lease để worker khác không reclaim oan.
-				{Name: "compile-articles", Interval: constants.COMPILE_INTERVAL, Timeout: constants.COMPILE_JOB_TIMEOUT, Run: func(ctx context.Context) error {
-					_, err := compile.CompilePending(ctx)
-					return err
-				}},
-				// Dọn refresh token hết hạn/bị thu hồi — bảng nhỏ nhưng không dọn
-				// thì phình mãi theo số lần login.
-				{Name: "purge-refresh-tokens", Interval: constants.REFRESH_TOKEN_JANITOR_INTERVAL, Run: func(ctx context.Context) error {
-					_, err := refreshJanitor.PurgeExpired(ctx)
-					return err
-				}},
-			}).Attach(lc)
+		// Lưới chắn mất vector — khai báo job nằm ở schedulesFor, không rải
+		// trong main.
+		fx.Provide(services.NewIndexReconcileService),
+		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, extract services.IArticleExtractService, index services.IArticleIndexService, compile services.IArticleCompileService, refreshJanitor services.IRefreshTokenJanitor, reconcile services.IIndexReconcileService, opts services.PurgeOptions) {
+			NewRunner(schedulesFor(purge, extract, index, compile, refreshJanitor, reconcile, opts)).Attach(lc)
 		}),
 		// Nhịp sống worker — ghi bảng worker_heartbeats mỗi
 		// WORKER_HEARTBEAT_INTERVAL để API/UI biết worker còn chạy (không
 		// phải job Schedule: log "job xong" mỗi 15s chỉ tổ nhiễu).
-		fx.Invoke(func(lc fx.Lifecycle, beat services.IWorkerHeartbeatService) {
-			ctx, cancel := context.WithCancel(context.Background())
-			lc.Append(fx.Hook{
-				OnStart: func(context.Context) error {
-					go beat.Run(ctx)
-					return nil
-				},
-				OnStop: func(context.Context) error {
-					cancel()
-					return nil
-				},
-			})
-		}),
+		fx.Invoke(attachHeartbeat),
 	)
 
 	if err := app.Start(context.Background()); err != nil {
@@ -137,4 +91,21 @@ func main() {
 	}
 	logs.Info("worker stopped")
 	logs.Sync()
+}
+
+// attachHeartbeat chạy nhịp sống worker trên goroutine riêng, gắn vòng đời vào
+// fx lifecycle để OnStop cancel trước khi fx đóng DB. Tách khỏi main() vì main
+// chỉ nên còn mỗi việc lắp fx (ngân sách hàm, src/quality).
+func attachHeartbeat(lc fx.Lifecycle, beat services.IWorkerHeartbeatService) {
+	ctx, cancel := context.WithCancel(context.Background())
+	lc.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			go beat.Run(ctx)
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			cancel()
+			return nil
+		},
+	})
 }

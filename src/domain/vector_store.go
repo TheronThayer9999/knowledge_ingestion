@@ -75,6 +75,12 @@ type IVectorStore interface {
 	// + article_id) — read_article dùng để total_chunk không vượt phạm vi
 	// scope. CountByArticle giữ nguyên cho worker (guard nội bộ, không scope).
 	CountByFilter(ctx context.Context, filter SearchFilter) (int64, error)
+	// CountCollection đếm TOÀN BỘ point của collection, không filter — con số
+	// rẻ (1 round trip) để so với tổng articles.index_done_chunks: lệch nhau
+	// là dấu collection bị drop/recreate mà DB vẫn báo done. Chỉ dùng cho
+	// bước kiểm tra vận hành (reconcile lúc boot, endpoint consistency), không
+	// phải đường search vì nó không phân quyền.
+	CountCollection(ctx context.Context) (int64, error)
 	// Search trả top chunk gần vector nhất trong phạm vi filter — agent RAG
 	// gọi qua service search. ScoreThreshold > 0 thì lọc hit yếu để không
 	// trả lời bừa; limit <= 0 thì adapter tự lấy mặc định.

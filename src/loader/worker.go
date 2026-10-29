@@ -135,12 +135,9 @@ func LoadWorkerInfra() []fx.Option {
 			}
 			return extractor.ExtractOptions{extractor.WithLayoutDetection(true)}
 		}),
-		// Role interface hẹp cho worker — cùng 1 instance ArticleRepository,
-		// fx match theo type tường minh nên bind 1 dòng mỗi vai.
-		fx.Provide(func(r domain.IArticleRepository) domain.ArticleExtractQueue { return r }),
-		fx.Provide(func(r domain.IArticleRepository) domain.ArticleIndexQueue { return r }),
-		fx.Provide(func(r domain.IArticleRepository) domain.ArticleJanitor { return r }),
-		fx.Provide(func(r domain.IArticleRepository) domain.ArticleCompileQueue { return r }),
+		// Vai repo hẹp của worker — khai báo ở hàm riêng để LoadWorkerInfra không
+		// phình thêm (ngân sách hàm, src/quality/function_budget_test.go).
+		fx.Options(workerRoles()...),
 		// ISummarizer cho compile phase 2 (P2.4 phase 1b) — dựng chat model từ
 		// provider mặc định (llms.default_provider) + system prompt load từ
 		// prompts/compile_section.md lúc startup (fail-fast nếu thiếu file).
@@ -163,6 +160,24 @@ func LoadWorkerInfra() []fx.Option {
 		// VLM đọc ảnh — worker dùng vai `Transcribe` khi extract gặp trang bảng/
 		// scan; prompt thiếu thì fail-fast ngay lúc boot.
 		fx.Options(vlmOptions()...),
+	}
+}
+
+// workerRoles bind mỗi vai repo hẹp mà service của worker cần — đúng 1 dòng
+// mỗi vai, cùng 1 instance ArticleRepository vì fx match theo type tường minh.
+//
+// ArticleAdminQueue là vai của bộ reconcile mất vector: ListByIndexStatus để
+// duyệt bài đã done, ResetQueue để đưa bài ma về hàng đợi. ID và owner đều lấy
+// từ row vừa đọc nên bộ lọc user_id của ResetQueue vẫn khớp đúng chủ — không có
+// đường nào cho client đặt tên bài của người khác ở đường này (nó không đi qua
+// HTTP).
+func workerRoles() []fx.Option {
+	return []fx.Option{
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleExtractQueue { return r }),
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleIndexQueue { return r }),
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleJanitor { return r }),
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleCompileQueue { return r }),
+		fx.Provide(func(r domain.IArticleRepository) domain.ArticleAdminQueue { return r }),
 	}
 }
 
