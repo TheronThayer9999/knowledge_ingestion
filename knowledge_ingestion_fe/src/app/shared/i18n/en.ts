@@ -275,6 +275,8 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   CHAT_MODEL: 'Model',
   CHAT_MODEL_CONFIG: 'Per configuration',
   CHAT_MODEL_HINT: 'Pick the provider and model for the next answer',
+  CHAT_MODEL_MY_GROUP: 'My connections',
+  CHAT_MODEL_MY_EMPTY: 'You have no own connection yet — add one in Settings.',
   // ---- Attachments for one turn: ask about a local file, NOT added to the corpus ----
   CHAT_ATTACH: 'Attach a file',
   CHAT_ATTACHING: 'Reading the file…',
@@ -394,6 +396,35 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   SETTINGS_LLM_PROVIDER_SAVED: 'Connection updated',
   SETTINGS_LLM_PROVIDER_CREATED: 'New connection created',
   SETTINGS_LLM_PROVIDER_DELETED: 'Connection deleted',
+  // ---- My own connection (BYOK) ----
+  SETTINGS_LLM_MY: 'My connections',
+  SETTINGS_LLM_MY_DESC:
+    'Use your own AI provider: enter the base URL and API key yourself — visible only to your account.',
+  SETTINGS_LLM_MY_NOTE:
+    'Your own connection is used only for your chat turns and does not replace the system-wide configuration.',
+  SETTINGS_LLM_MY_MANAGE: 'Open my connections',
+  SETTINGS_LLM_MY_DIALOG_DESC:
+    'Add your own AI provider — just the base URL and API key. The key is encrypted on the server and never sent back to the browser.',
+  SETTINGS_LLM_MY_LOADING: 'Loading your connections…',
+  SETTINGS_LLM_MY_FAILED: 'Could not load your connections.',
+  SETTINGS_LLM_MY_EMPTY: 'You have not added any own connection yet.',
+  SETTINGS_LLM_MY_ADD: 'Add connection',
+  SETTINGS_LLM_MY_ADD_HINT:
+    'The connection is stored for your account only. Delete it to stop using it.',
+  SETTINGS_LLM_MY_LABEL: 'Display name',
+  SETTINGS_LLM_MY_CREATE: 'Create connection',
+  SETTINGS_LLM_MY_CREATING: 'Creating…',
+  SETTINGS_LLM_MY_SAVE: 'Save changes',
+  SETTINGS_LLM_MY_SAVED: 'Your connection was saved',
+  SETTINGS_LLM_MY_CREATED: 'Your connection was created',
+  SETTINGS_LLM_MY_DELETED: 'Your connection was deleted',
+  SETTINGS_LLM_MY_DELETE: 'Delete connection',
+  SETTINGS_LLM_MY_DELETE_HINT: 'Deleting removes this connection and its stored API key for good',
+  SETTINGS_LLM_MY_KEY_HINT:
+    'Required for Groq/OpenRouter/OpenAI; leave empty for a local Ollama server',
+  SETTINGS_LLM_MY_KEY_PLACEHOLDER: 'Enter a new key to replace the current one',
+  SETTINGS_LLM_MY_KEY_SET: 'Key stored (encrypted)',
+  SETTINGS_LLM_MY_MODEL_PICK: 'Available models',
   PROFILE_TITLE: 'Profile',
   PROFILE_SUBTITLE: 'Account information and security.',
   PROFILE_ACCOUNT_INFO: 'Account information',

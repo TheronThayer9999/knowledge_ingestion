@@ -49,6 +49,11 @@ export class ChatContextChips {
   readonly categories = input<Category[]>([]);
   /** Provider sẵn sàng (backend đã dựng agent) — rỗng thì ẩn chip mô hình */
   readonly providers = input<LlmProviderOption[]>([]);
+  /**
+   * Kết nối RIÊNG của tôi (BYOK) — nhóm riêng trong menu chọn model. Rỗng =
+   * chưa tạo kết nối nào, nhóm này ẩn luôn.
+   */
+  readonly myProviders = input<LlmProviderOption[]>([]);
   /** Provider/model đang chọn; rỗng = theo cấu hình */
   readonly provider = input('');
   readonly model = input('');
@@ -65,7 +70,9 @@ export class ChatContextChips {
   readonly pickModel = output<ModelChoice>();
 
   /** Chỉ hiện chip khi backend có provider để chọn (options tải lỗi thì ẩn) */
-  protected readonly hasProviders = computed(() => this.providers().length > 0);
+  protected readonly hasProviders = computed(
+    () => this.providers().length > 0 || this.myProviders().length > 0,
+  );
 
   /** Nhãn chip: "Provider · model" khi đã chọn, "Theo cấu hình" khi để trống */
   protected readonly modelLabel = computed(() => {
@@ -73,7 +80,10 @@ export class ChatContextChips {
     if (!slug) {
       return this.lang.t('CHAT_MODEL_CONFIG');
     }
-    const label = this.providers().find((item) => item.slug === slug)?.label ?? slug;
+    const label =
+      this.providers().find((item) => item.slug === slug)?.label ??
+      this.myProviders().find((item) => item.slug === slug)?.label ??
+      slug;
     const model = this.model();
     return model ? `${label} · ${model}` : label;
   });

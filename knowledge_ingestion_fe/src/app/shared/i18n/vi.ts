@@ -272,6 +272,8 @@ export const VI_ENTRIES = {
   CHAT_MODEL: 'Mô hình',
   CHAT_MODEL_CONFIG: 'Theo cấu hình',
   CHAT_MODEL_HINT: 'Chọn nhà cung cấp và mô hình cho câu trả lời tiếp theo',
+  CHAT_MODEL_MY_GROUP: 'Kết nối của tôi',
+  CHAT_MODEL_MY_EMPTY: 'Bạn chưa có kết nối riêng — thêm ở Cài đặt.',
   // ---- Tệp đính kèm của lượt hỏi: hỏi trực tiếp về tệp, KHÔNG nạp vào kho ----
   CHAT_ATTACH: 'Đính kèm tệp',
   CHAT_ATTACHING: 'Đang đọc tệp…',
@@ -389,6 +391,35 @@ export const VI_ENTRIES = {
   SETTINGS_LLM_PROVIDER_SAVED: 'Đã cập nhật kết nối',
   SETTINGS_LLM_PROVIDER_CREATED: 'Đã tạo kết nối mới',
   SETTINGS_LLM_PROVIDER_DELETED: 'Đã xoá kết nối',
+  // ---- Kết nối RIÊNG của tôi (BYOK) ----
+  SETTINGS_LLM_MY: 'Kết nối của tôi',
+  SETTINGS_LLM_MY_DESC:
+    'Dùng provider AI của riêng bạn: tự nhập base URL và API key — chỉ tài khoản của bạn thấy.',
+  SETTINGS_LLM_MY_NOTE:
+    'Kết nối riêng chỉ dùng cho lượt chat của bạn và không thay thế cấu hình chung của hệ thống.',
+  SETTINGS_LLM_MY_MANAGE: 'Mở kết nối của tôi',
+  SETTINGS_LLM_MY_DIALOG_DESC:
+    'Thêm nhà cung cấp AI của riêng bạn — chỉ cần base URL và API key. Key được mã hoá ở máy chủ và không bao giờ được trả lại trình duyệt.',
+  SETTINGS_LLM_MY_LOADING: 'Đang tải kết nối của bạn…',
+  SETTINGS_LLM_MY_FAILED: 'Không tải được danh sách kết nối của bạn.',
+  SETTINGS_LLM_MY_EMPTY: 'Bạn chưa thêm kết nối AI riêng nào.',
+  SETTINGS_LLM_MY_ADD: 'Thêm kết nối',
+  SETTINGS_LLM_MY_ADD_HINT:
+    'Kết nối chỉ lưu cho tài khoản của bạn. Muốn ngưng dùng thì xoá kết nối đó.',
+  SETTINGS_LLM_MY_LABEL: 'Tên hiển thị',
+  SETTINGS_LLM_MY_CREATE: 'Tạo kết nối',
+  SETTINGS_LLM_MY_CREATING: 'Đang tạo…',
+  SETTINGS_LLM_MY_SAVE: 'Lưu thay đổi',
+  SETTINGS_LLM_MY_SAVED: 'Đã lưu kết nối của bạn',
+  SETTINGS_LLM_MY_CREATED: 'Đã tạo kết nối của bạn',
+  SETTINGS_LLM_MY_DELETED: 'Đã xoá kết nối của bạn',
+  SETTINGS_LLM_MY_DELETE: 'Xoá kết nối',
+  SETTINGS_LLM_MY_DELETE_HINT: 'Xoá là mất hẳn kết nối này cùng API key đã lưu',
+  SETTINGS_LLM_MY_KEY_HINT:
+    'Bắt buộc với Groq/OpenRouter/OpenAI; bỏ trống nếu dùng Ollama local',
+  SETTINGS_LLM_MY_KEY_PLACEHOLDER: 'Nhập key mới để thay key đang có',
+  SETTINGS_LLM_MY_KEY_SET: 'Đã có key (đã mã hoá)',
+  SETTINGS_LLM_MY_MODEL_PICK: 'Model có sẵn',
   PROFILE_TITLE: 'Hồ sơ cá nhân',
   PROFILE_SUBTITLE: 'Thông tin tài khoản và bảo mật.',
   PROFILE_ACCOUNT_INFO: 'Thông tin tài khoản',

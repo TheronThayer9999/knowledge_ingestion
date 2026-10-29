@@ -76,6 +76,31 @@
     </mat-button-toggle-group>
   </mat-card>
 
+  <!-- Card "Kết nối của tôi" (BYOK): MỌI tài khoản thấy — mỗi người tự
+       cắm provider LLM riêng (base URL + API key của họ). Popup chỉ đọc/ghi
+       kết nối của chính người đang đăng nhập. -->
+  <mat-card appearance="outlined" class="card">
+    <div class="card-head">
+      <mat-icon aria-hidden="true">key</mat-icon>
+      <div>
+        <h3 class="card-title">{{ lang.t('SETTINGS_LLM_MY') }}</h3>
+        <p class="card-desc">{{ lang.t('SETTINGS_LLM_MY_DESC') }}</p>
+      </div>
+    </div>
+
+    <div class="llm-entry">
+      <button matButton="filled" type="button" (click)="manageMyProviders()">
+        <mat-icon aria-hidden="true">tune</mat-icon>
+        {{ lang.t('SETTINGS_LLM_MY_MANAGE') }}
+      </button>
+
+      <p class="llm-note">
+        <mat-icon aria-hidden="true">info</mat-icon>
+        <span>{{ lang.t('SETTINGS_LLM_MY_NOTE') }}</span>
+      </p>
+    </div>
+  </mat-card>
+
   <!-- Card "Nhà cung cấp AI" (Đợt 28): CHỈ admin. Provider khai báo trong
        configs/config.json; popup lo key, tải danh sách model và chọn model
        mặc định. User thường không thấy card, API cũng chặn quyền ghi. -->

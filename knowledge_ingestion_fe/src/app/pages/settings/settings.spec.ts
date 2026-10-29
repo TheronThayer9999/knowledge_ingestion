@@ -8,6 +8,7 @@ import { AUTH_STORAGE_KEY } from '../../core/auth/auth-storage.service';
 import type { StoredSession } from '../../core/auth/auth.models';
 import { LangService } from '../../core/i18n/lang.service';
 import { LlmProvidersDialog } from './llm-providers-dialog';
+import { MyLlmProvidersDialog } from './my-llm-providers-dialog';
 import { Settings } from './settings';
 
 const api = (path: string): string => `${environment.apiBaseUrl}${path}`;
@@ -108,5 +109,35 @@ describe('Settings — mục Nhà cung cấp AI (Đợt 28)', () => {
 
     expect(element.querySelector('input[type="password"]')).toBeNull();
     expect(element.querySelectorAll('input').length).toBe(0);
+  });
+});
+
+describe('Settings — mục Kết nối của tôi (BYOK)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('user thường CŨNG thấy mục này — mỗi người tự cắm provider riêng', () => {
+    const { element, http } = setup(0);
+
+    expect(element.textContent).toContain('Kết nối của tôi');
+    expect(element.textContent).toContain('Mở kết nối của tôi');
+    // Trang cài đặt không tự nạp danh sách — chỉ nạp khi mở popup
+    http.expectNone(api('/llm/my/providers'));
+    http.verify();
+  });
+
+  it('bấm nút mở popup kết nối riêng', () => {
+    const { element } = setup(0);
+    const open = vi
+      .spyOn(TestBed.inject(MatDialog), 'open')
+      .mockReturnValue({} as unknown as ReturnType<MatDialog['open']>);
+
+    findButton(element, 'Mở kết nối của tôi').click();
+
+    expect(open).toHaveBeenCalledWith(
+      MyLlmProvidersDialog,
+      expect.objectContaining({ maxWidth: '94vw' }),
+    );
   });
 });

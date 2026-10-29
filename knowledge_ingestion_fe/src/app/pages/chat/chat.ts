@@ -143,6 +143,11 @@ export class Chat {
    */
   protected readonly providers = signal<LlmProviderOption[]>([]);
   /**
+   * Kết nối RIÊNG của tôi (BYOK) — nhóm riêng trong menu chọn model. Rỗng =
+   * chưa tạo kết nối nào, nhóm này ẩn luôn.
+   */
+  protected readonly myProviders = signal<LlmProviderOption[]>([]);
+  /**
    * Model đang chọn có client suy luận sâu không (Đợt 28). "Suy luận sâu" là
    * khả năng của TỪNG provider, không phải công tắc vạn năng: để user bật trong
    * khi backend âm thầm bỏ qua thì tai hại hơn là tắt nút và nói rõ lý do. Để
@@ -150,7 +155,10 @@ export class Chat {
    * tải được thì coi như bật được (đừng tự khoá bừa).
    */
   protected readonly thinkingSupported = computed(() => {
-    const list = this.providers();
+    // Provider chung và kết nối riêng của tôi nằm chung một danh sách tra
+    // cứu: chọn kết nối riêng thì phải khoá chip đúng như provider chưa có
+    // client "nghĩ", không thì bật xong backend âm thầm bỏ qua.
+    const list = [...this.providers(), ...this.myProviders()];
     const slug = this.provider();
     const pick = slug
       ? list.find((item) => item.slug === slug)
@@ -226,8 +234,13 @@ export class Chat {
         // Provider chưa dựng được agent (thiếu key) không chọn được ở chat —
         // admin vẫn thấy trong Settings để biết cấu hình sai ở đâu.
         this.providers.set(options.providers.filter((item) => item.available));
+        // Kết nối riêng của tôi (BYOK): cũng phải "available" mới chọn được.
+        this.myProviders.set(options.myProviders.filter((item) => item.available));
       },
-      error: () => this.providers.set([]),
+      error: () => {
+        this.providers.set([]);
+        this.myProviders.set([]);
+      },
     });
   }
 
@@ -247,7 +260,10 @@ export class Chat {
 
   /** Nhãn hiển thị của provider — rơi về slug khi không có trong danh sách options */
   protected providerLabel(slug: string): string {
-    return this.providers().find((item) => item.slug === slug)?.label ?? slug;
+    const found =
+      this.providers().find((item) => item.slug === slug) ??
+      this.myProviders().find((item) => item.slug === slug);
+    return found?.label ?? slug;
   }
 
   /** Badge dưới đáp án: `provider · model` — rỗng khi lượt không có thông tin */

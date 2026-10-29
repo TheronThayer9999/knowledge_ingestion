@@ -10,6 +10,7 @@ import {
   type LlmProviderForm,
   type LlmProviderOption,
   type LlmProviderOptionDto,
+  type LlmUserProviderForm,
 } from './llm.models';
 
 /**
@@ -77,5 +78,41 @@ export class LlmService {
     return this.api
       .delete<LlmOptionsDto>(`/llm/providers/${encodeURIComponent(slug)}`)
       .pipe(map(toLlmOptions));
+  }
+
+  // ---- Kết nối RIÊNG của tôi (BYOK) ----
+  //
+  // Đường này KHÔNG gate role: mỗi tài khoản tự thêm provider của riêng mình.
+  // Backend lấy chủ sở hữu từ token nên không có tham số user_id nào ở đây.
+  // API key vẫn đi MỘT chiều: gửi lên để lưu, không có lời gọi nào đọc về.
+
+  /** Danh sách kết nối riêng của tôi — màn Cài đặt dùng để vẽ danh sách. */
+  listMyProviders(): Observable<LlmProviderOption[]> {
+    return this.api
+      .get<LlmProviderOptionDto[]>('/llm/my/providers')
+      .pipe(map((list) => (list ?? []).map(toLlmProviderOption)));
+  }
+
+  /** Tạo mới (id = 0) hoặc sửa (id > 0) một kết nối riêng. */
+  saveMyProvider(id: number, form: LlmUserProviderForm): Observable<LlmProviderOption> {
+    const request$ =
+      id > 0
+        ? this.api.put<LlmProviderOptionDto>(`/llm/my/providers/${id}`, form)
+        : this.api.post<LlmProviderOptionDto>('/llm/my/providers', form);
+    return request$.pipe(map(toLlmProviderOption));
+  }
+
+  /** Xoá một kết nối riêng — backend trả lại danh sách còn lại. */
+  deleteMyProvider(id: number): Observable<LlmProviderOption[]> {
+    return this.api
+      .delete<LlmProviderOptionDto[]>(`/llm/my/providers/${id}`)
+      .pipe(map((list) => (list ?? []).map(toLlmProviderOption)));
+  }
+
+  /** Gọi chính provider của tôi bằng key của tôi để lấy danh sách model. */
+  loadMyProviderModels(id: number): Observable<string[]> {
+    return this.api
+      .post<LlmModelsDto>(`/llm/my/providers/${id}/models`)
+      .pipe(map((dto) => dto.models ?? []));
   }
 }

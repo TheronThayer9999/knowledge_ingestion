@@ -35,6 +35,22 @@ const OPTIONS_DTO = {
   ],
 };
 
+/** Kết nối RIÊNG của tôi (BYOK) — backend sinh slug "u_<id>" */
+const MY_CONNECTION = {
+  slug: 'u_12',
+  id: 12,
+  label: 'Groq của tôi',
+  type: 'openai',
+  default_model: 'llama-3.3-70b',
+  models: ['llama-3.3-70b'],
+  available: true,
+  thinking: false,
+  is_default: false,
+  base_url: 'https://api.groq.com/openai/v1',
+  has_key: true,
+  key_source: 'database',
+};
+
 describe('LlmService', () => {
   let service: LlmService;
   let http: HttpTestingController;
@@ -148,6 +164,63 @@ describe('LlmService', () => {
     expect(options!.providers.map((item) => item.slug)).toEqual(['9router', 'groq']);
     http.verify();
   });
+
+  // ---- Kết nối RIÊNG của tôi (BYOK) ----
+
+  it('listMyProviders: GET /llm/my/providers, map sang option có id', async () => {
+    const result = service.listMyProviders().toPromise();
+    const req = http.expectOne({ method: 'GET', url: api('/llm/my/providers') });
+    req.flush({ ...ENVELOPE_OK, data: [MY_CONNECTION] });
+
+    const list = await result;
+    expect(list![0].id).toBe(12);
+    expect(list![0].slug).toBe('u_12');
+    expect(list![0].hasKey).toBe(true);
+    http.verify();
+  });
+
+  it('saveMyProvider tạo mới: POST /llm/my/providers, sửa thì PUT /llm/my/providers/{id}', async () => {
+    const created = service
+      .saveMyProvider(0, { label: 'Groq của tôi', type: 'openai-compatible', base_url: 'https://x/v1' })
+      .toPromise();
+    const create = http.expectOne({ method: 'POST', url: api('/llm/my/providers') });
+    expect(create.request.body).toEqual({
+      label: 'Groq của tôi',
+      type: 'openai-compatible',
+      base_url: 'https://x/v1',
+    });
+    create.flush({ ...ENVELOPE_OK, data: MY_CONNECTION });
+
+    const updated = service
+      .saveMyProvider(12, { label: 'Groq của tôi', type: 'openai-compatible', base_url: 'https://x/v1' })
+      .toPromise();
+    const update = http.expectOne({ method: 'PUT', url: api('/llm/my/providers/12') });
+    expect(update.request.body.label).toBe('Groq của tôi');
+    update.flush({ ...ENVELOPE_OK, data: MY_CONNECTION });
+
+    expect((await created)!.slug).toBe('u_12');
+    expect((await updated)!.id).toBe(12);
+    http.verify();
+  });
+
+  it('deleteMyProvider: DELETE trả về danh sách còn lại', async () => {
+    const result = service.deleteMyProvider(12).toPromise();
+    const req = http.expectOne({ method: 'DELETE', url: api('/llm/my/providers/12') });
+    expect(req.request.body).toBeNull();
+    req.flush({ ...ENVELOPE_OK, data: [] });
+
+    expect(await result).toEqual([]);
+    http.verify();
+  });
+
+  it('loadMyProviderModels: POST tới provider của tôi rồi bóc mảng models', async () => {
+    const result = service.loadMyProviderModels(12).toPromise();
+    const req = http.expectOne({ method: 'POST', url: api('/llm/my/providers/12/models') });
+    req.flush({ ...ENVELOPE_OK, data: { slug: 'u_12', models: ['a', 'b'] } });
+
+    expect(await result).toEqual(['a', 'b']);
+    http.verify();
+  });
 });
 
 describe('toLlmOptions — mapper chịu được DTO cũ/thiếu field', () => {
@@ -172,6 +245,15 @@ describe('toLlmOptions — mapper chịu được DTO cũ/thiếu field', () => 
     const options = toLlmOptions({});
     expect(options.defaultProvider).toBe('');
     expect(options.providers).toEqual([]);
+    expect(options.myProviders).toEqual([]);
+  });
+
+  it('my_providers map sang danh sách kết nối riêng (có id)', () => {
+    const options = toLlmOptions({ my_providers: [MY_CONNECTION] });
+    expect(options.myProviders).toHaveLength(1);
+    expect(options.myProviders[0].id).toBe(12);
+    expect(options.myProviders[0].slug).toBe('u_12');
+    expect(options.myProviders[0].label).toBe('Groq của tôi');
   });
 
   it('key_source lạ thì bỏ, config_model giữ nguyên cho admin', () => {

@@ -13,6 +13,7 @@ import {
   type ThemePalette,
 } from '../../core/theme/theme.service';
 import { LlmProvidersDialog } from './llm-providers-dialog';
+import { MyLlmProvidersDialog } from './my-llm-providers-dialog';
 
 const PALETTE_KEYS: Record<
   ThemePalette,
@@ -55,6 +56,17 @@ export class Settings {
       return;
     }
     this.dialog.open(LlmProvidersDialog, { maxWidth: '94vw', autoFocus: 'first-tabbable' });
+  }
+
+  /**
+   * Mở popup kết nối RIÊNG của tôi (BYOK) — mọi tài khoản đều thấy card này,
+   * vì mỗi người có thể cắm provider LLM của riêng mình (base URL + API key).
+   */
+  protected manageMyProviders(): void {
+    this.dialog.open(MyLlmProvidersDialog, {
+      maxWidth: '94vw',
+      autoFocus: 'first-tabbable',
+    });
   }
 
   protected paletteKey(palette: ThemePalette): string {

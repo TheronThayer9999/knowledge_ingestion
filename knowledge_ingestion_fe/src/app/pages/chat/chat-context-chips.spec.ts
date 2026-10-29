@@ -36,6 +36,21 @@ const PROVIDERS: LlmProviderOption[] = [
   },
 ];
 
+const MY_PROVIDERS: LlmProviderOption[] = [
+  {
+    slug: 'u_12',
+    id: 12,
+    label: 'Groq của tôi',
+    type: 'openai',
+    // Tên model CỐ Ý khác model của provider chung — test tìm mục theo tên này
+    defaultModel: 'llama-cua-toi',
+    models: ['llama-cua-toi'],
+    available: true,
+    thinking: false,
+    isDefault: false,
+  },
+];
+
 interface Setup {
   fixture: ComponentFixture<ChatContextChips>;
   lang: LangService;
@@ -48,6 +63,7 @@ function setup(inputs: {
   locked?: boolean;
   busy?: boolean;
   providers?: LlmProviderOption[];
+  myProviders?: LlmProviderOption[];
   provider?: string;
   model?: string;
   thinkingSupported?: boolean;
@@ -64,6 +80,7 @@ function setup(inputs: {
   fixture.componentRef.setInput('busy', inputs.busy ?? false);
   fixture.componentRef.setInput('categories', CATEGORIES);
   fixture.componentRef.setInput('providers', inputs.providers ?? []);
+  fixture.componentRef.setInput('myProviders', inputs.myProviders ?? []);
   fixture.componentRef.setInput('provider', inputs.provider ?? '');
   fixture.componentRef.setInput('model', inputs.model ?? '');
   fixture.componentRef.setInput('thinkingSupported', inputs.thinkingSupported ?? true);
@@ -317,5 +334,52 @@ describe('ChatContextChips — chip mô hình (Đợt 28)', () => {
 
     expect(model.getAttribute('aria-disabled')).toBeNull();
     expect(model.classList.contains('is-locked')).toBe(false);
+  });
+});
+
+describe('ChatContextChips — nhóm "Kết nối của tôi" (BYOK)', () => {
+  it('chỉ có kết nối riêng thì chip mô hình vẫn hiện', () => {
+    const { fixture } = setup({ myProviders: MY_PROVIDERS });
+    const element = fixture.nativeElement as HTMLElement;
+
+    expect(element.querySelectorAll('.chip').length).toBe(3);
+  });
+
+  it('menu tách nhóm "Kết nối của tôi" khỏi provider chung', async () => {
+    const { fixture, lang } = setup({ providers: PROVIDERS, myProviders: MY_PROVIDERS });
+    const picked: { provider: string; model: string }[] = [];
+    fixture.componentInstance.pickModel.subscribe((choice) => picked.push(choice));
+
+    fixture.debugElement
+      .queryAll(By.directive(MatMenuTrigger))[1]
+      .injector.get(MatMenuTrigger)
+      .openMenu();
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve));
+
+    const headings = Array.from(document.querySelectorAll('.menu-heading')).map((el) =>
+      el.textContent?.trim(),
+    );
+    expect(headings).toContain(lang.t('CHAT_MODEL_MY_GROUP'));
+    expect(headings).toContain('Groq của tôi');
+
+    const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.mat-mdc-menu-item'));
+    const mine = items.find((item) => item.textContent?.includes('llama-cua-toi'));
+    expect(mine).toBeTruthy();
+    mine!.click();
+    expect(picked).toEqual([{ provider: 'u_12', model: 'llama-cua-toi' }]);
+  });
+
+  it('chọn kết nối riêng thì nhãn chip là nhãn của kết nối đó', () => {
+    const { fixture } = setup({
+      myProviders: MY_PROVIDERS,
+      provider: 'u_12',
+      model: 'llama-cua-toi',
+    });
+    const element = fixture.nativeElement as HTMLElement;
+
+    expect(element.querySelectorAll('.chip-value')[2].textContent?.trim()).toBe(
+      'Groq của tôi · llama-cua-toi',
+    );
   });
 });

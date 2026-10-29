@@ -94,6 +94,24 @@
           </button>
         }
       }
+      <!-- Nhóm KẾT NỐI CỦA TÔI (BYOK): provider riêng của tài khoản đang
+           đăng nhập, tách khỏi provider chung để không lẫn khi chọn. -->
+      @if (myProviders().length > 0) {
+        <div class="menu-heading">{{ lang.t('CHAT_MODEL_MY_GROUP') }}</div>
+        @for (item of myProviders(); track item.slug) {
+          <div class="menu-heading">{{ item.label }}</div>
+          @for (model of modelsOf(item); track model) {
+            <button mat-menu-item type="button" (click)="chooseModel(item.slug, model)">
+              <span class="menu-slot">
+                @if (isModelSelected(item.slug, model)) {
+                  <mat-icon aria-hidden="true">check</mat-icon>
+                }
+              </span>
+              <span class="menu-model">{{ model }}</span>
+            </button>
+          }
+        }
+      }
     </mat-menu>
   }
 

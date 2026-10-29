@@ -7,6 +7,12 @@
 
 export interface LlmProviderOption {
   slug: string;
+  /**
+   * id dòng trong DB — CHỈ có với kết nối RIÊNG của user (BYOK): đường đó
+   * định danh bằng id số (slug "u_<id>") chứ không phải slug tự do. Provider
+   * chung để undefined nên không đổi hình dạng response cũ.
+   */
+  id?: number;
   /** Tên hiển thị; backend đã fallback về slug khi config không khai label */
   label: string;
   /** Protocol client: "ollama" | "openai" */
@@ -61,16 +67,33 @@ export interface LlmProviderForm {
   disabled?: boolean;
 }
 
+/**
+ * Body POST/PUT /llm/my/providers — kết nối RIÊNG của user. Field bỏ trống
+ * nghĩa là "giữ nguyên giá trị cũ" (khi sửa); khi tạo mới thì nhãn + giao
+ * thức + base URL là bắt buộc — không có gì để "giữ".
+ */
+export interface LlmUserProviderForm {
+  label: string;
+  type: LlmProviderKind;
+  base_url: string;
+  api_key?: string;
+  model?: string;
+  models?: string[];
+}
+
 export interface LlmOptions {
   defaultProvider: string;
   defaultModel: string;
   providers: LlmProviderOption[];
+  /** Kết nối RIÊNG của chính người đang đăng nhập — nhóm "Kết nối của tôi" */
+  myProviders: LlmProviderOption[];
 }
 
 // ---- DTO khớp JSON backend (snake_case) ----
 
 export interface LlmProviderOptionDto {
   slug: string;
+  id?: number;
   label?: string;
   type?: string;
   default_model?: string;
@@ -90,11 +113,13 @@ export interface LlmOptionsDto {
   default_provider?: string;
   default_model?: string;
   providers?: LlmProviderOptionDto[];
+  my_providers?: LlmProviderOptionDto[];
 }
 
 export function toLlmProviderOption(dto: LlmProviderOptionDto): LlmProviderOption {
   return {
     slug: dto.slug,
+    id: dto.id,
     label: dto.label || dto.slug,
     type: dto.type ?? '',
     defaultModel: dto.default_model ?? '',
@@ -118,6 +143,7 @@ export function toLlmOptions(dto: LlmOptionsDto): LlmOptions {
     defaultProvider: dto.default_provider ?? '',
     defaultModel: dto.default_model ?? '',
     providers: (dto.providers ?? []).map(toLlmProviderOption),
+    myProviders: (dto.my_providers ?? []).map(toLlmProviderOption),
   };
 }
 
