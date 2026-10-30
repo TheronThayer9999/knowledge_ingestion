@@ -378,7 +378,7 @@ Kết quả đo được:
 * Content stream: **387 toán tử `Tj`, 100% nằm sau `3 Tr`** (render mode 3 = vô hình). Không có mode `0 Tr` nào sót.
 * `pdftotext -enc UTF-8` trích ra đúng thứ tự đọc, **có dấu tiếng Việt và có khoảng trắng giữa từ** ("1. Làm thêm giờ ngày thường được tính 150% lương cơ bản").
 * Render PDF ra ảnh rồi so với ảnh gốc: mean diff **2,38/255**, số điểm ảnh lệch >40 chỉ **0,92%** (và nằm ở viền chữ do downsample 300→100 DPI) ⇒ **không thấy chữ in ra**.
-* Font: `AddUTF8FontFromBytes` với `roboto-regular.ttf` (53 KB, có dấu tiếng Việt — chữ "lương", "Phụ" trích đúng).
+* Font: `AddUTF8FontFromBytes` với `roboto-regular.ttf` (53 KB, có dấu tiếng Việt — chữ "lương", "Phụ" trích đúng); file font này **đã xoá khỏi repo** cùng spike (sản phẩm không nhúng font — xem khối CHỐT LẠI).
 
 Phép biến đổi toạ độ (px 300DPI, góc trên-trái → pt PDF, góc dưới-trái):
 
@@ -581,7 +581,7 @@ Repository `ocr_job_repository.go` theo đúng convention: chỉ làm việc v�
 
 ### C.6. Việc đã kiểm chứng để viết tài liệu này
 
-* Spike fpdf (đã chạy, file tạm `.tmp_spike/` **đã xoá** sau khi đo — mã nằm ở B.7): TSV + ảnh 300DPI → `ki_searchable.pdf`; kết quả như B.5 (387 `Tj`, toàn bộ `3 Tr`, A4, `pdftotext` ra tiếng Việt có dấu, ảnh render không thấy chữ). Lệnh đã dùng: `go run ./.tmp_spike <tsv> <png> knowledge_ingestion_fe/public/fonts/roboto-regular.ttf <out.pdf>` — lưu ý API đúng là `fpdf.SizeType{Wd, Ht}`, **không có** `fpdf.Size`.
+* Spike fpdf (đã chạy, file tạm `.tmp_spike/` **đã xoá** sau khi đo — mã nằm ở B.7): TSV + ảnh 300DPI → `ki_searchable.pdf`; kết quả như B.5 (387 `Tj`, toàn bộ `3 Tr`, A4, `pdftotext` ra tiếng Việt có dấu, ảnh render không thấy chữ). Lệnh đã dùng: `go run ./.tmp_spike <tsv> <png> knowledge_ingestion_fe/public/fonts/roboto-regular.ttf <out.pdf>` (thư mục tạm **và** file font trong `public/fonts/` đều đã xoá, không còn trong repo) — lưu ý API đúng là `fpdf.SizeType{Wd, Ht}`, **không có** `fpdf.Size`.
 * Đo OCR thật: `tesseract scan_page-1.png stdout -l vie+eng --psm 6 tsv` → 2,5 s, 387 từ, mean conf 91,8, 8 từ <70.
 * Đo đường render ảnh trang để vẽ vùng: `pdftoppm` trong repo là `D:\code\tools\poppler\poppler-24.08.0\Library\bin\pdftoppm.exe` (trỏ trong `configs/config.json:101`), `pdftoppm -r 150 -png -f 1 -l 1 <pdf> <out>` → `*-150-01.png` 1240×1754 px (đúng 150 DPI A4) → toạ độ chuẩn hoá nhân lại là ra px để cắt vùng. Đây là cách tab 2 có ảnh để vẽ vùng mà không đụng PDF viewer.
 * Đọc autoai: xem các `file:line` đã dẫn ở A/B — những chỗ "đừng copy" chốt thành defect list: tiến độ bịa, lỗi raw Python/JSON, `_has_text` một trang là bỏ cả file, scroll-sync cross-origin không bao giờ chạy, `.docx` lọt `_PASS_THROUGH` nên không OCR mà vẫn đếm "words" từ file nhị phân, TIFF nhiều trang chỉ lấy trang 1, không TTL/dọn dẹp, `index_started:true` trả về dù indexer ném lỗi.
