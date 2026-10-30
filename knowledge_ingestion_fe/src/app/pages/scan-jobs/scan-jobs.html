@@ -7,7 +7,7 @@
   <div class="workspace">
     <div class="controls">
       <!-- 1. Tệp -->
-      <section class="card step" [class.step-done]="hasFile() && !busy()">
+      <section class="card step" [class.step-done]="hasFile() && !creating()">
         <header class="step-head">
           <span class="step-num" aria-hidden="true">1</span>
           <div class="step-heading">
@@ -36,7 +36,7 @@
               <button
                 mat-icon-button
                 type="button"
-                [disabled]="busy()"
+                [disabled]="creating()"
                 [matTooltip]="lang.t('SCAN_JOBS_REMOVE')"
                 [attr.aria-label]="lang.t('SCAN_JOBS_REMOVE')"
                 (click)="removeFile()"
@@ -48,7 +48,7 @@
               matButton="outlined"
               type="button"
               class="wide"
-              [disabled]="busy()"
+              [disabled]="creating()"
               (click)="fileInput.click()"
             >
               <mat-icon aria-hidden="true">swap_horiz</mat-icon>
@@ -102,32 +102,53 @@
             </div>
           </div>
 
-          <mat-form-field appearance="outline" subscriptSizing="dynamic">
-            <mat-label>{{ lang.t('SCAN_JOBS_DPI') }}</mat-label>
-            <mat-select
-              [value]="dpi()"
-              [disabled]="!canConfigure()"
-              (selectionChange)="setDpi($event.value)"
-            >
-              @for (option of dpiOptions; track option) {
-                <mat-option [value]="option">{{ lang.t(dpiLabel(option)) }}</mat-option>
-              }
-            </mat-select>
-            <mat-hint>{{ lang.t('SCAN_JOBS_DPI_HINT') }}</mat-hint>
-          </mat-form-field>
+          <!-- Progressive disclosure: advanced settings ẩn sau toggle -->
+          <button
+            matButton
+            type="button"
+            class="advanced-toggle"
+            [attr.aria-expanded]="showAdvanced()"
+            aria-controls="scan-advanced-settings"
+            (click)="toggleAdvanced()"
+          >
+            <mat-icon aria-hidden="true">{{
+              showAdvanced() ? 'expand_less' : 'expand_more'
+            }}</mat-icon>
+            {{
+              showAdvanced() ? lang.t('SCAN_JOBS_HIDE_ADVANCED') : lang.t('SCAN_JOBS_SHOW_ADVANCED')
+            }}
+          </button>
 
-          <mat-form-field appearance="outline" subscriptSizing="dynamic">
-            <mat-label>{{ lang.t('SCAN_JOBS_MODE') }}</mat-label>
-            <mat-select
-              [value]="mode()"
-              [disabled]="!canConfigure()"
-              (selectionChange)="setMode($event.value)"
-            >
-              <mat-option value="auto">{{ lang.t('SCAN_JOBS_MODE_AUTO') }}</mat-option>
-              <mat-option value="force">{{ lang.t('SCAN_JOBS_MODE_FORCE') }}</mat-option>
-            </mat-select>
-            <mat-hint>{{ lang.t('SCAN_JOBS_MODE_HINT') }}</mat-hint>
-          </mat-form-field>
+          @if (showAdvanced()) {
+            <div id="scan-advanced-settings" class="advanced-settings">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>{{ lang.t('SCAN_JOBS_DPI') }}</mat-label>
+                <mat-select
+                  [value]="dpi()"
+                  [disabled]="!canConfigure()"
+                  (selectionChange)="setDpi($event.value)"
+                >
+                  @for (option of dpiOptions; track option) {
+                    <mat-option [value]="option">{{ lang.t(dpiLabel(option)) }}</mat-option>
+                  }
+                </mat-select>
+                <mat-hint>{{ lang.t('SCAN_JOBS_DPI_HINT') }}</mat-hint>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>{{ lang.t('SCAN_JOBS_MODE') }}</mat-label>
+                <mat-select
+                  [value]="mode()"
+                  [disabled]="!canConfigure()"
+                  (selectionChange)="setMode($event.value)"
+                >
+                  <mat-option value="auto">{{ lang.t('SCAN_JOBS_MODE_AUTO') }}</mat-option>
+                  <mat-option value="force">{{ lang.t('SCAN_JOBS_MODE_FORCE') }}</mat-option>
+                </mat-select>
+                <mat-hint>{{ lang.t('SCAN_JOBS_MODE_HINT') }}</mat-hint>
+              </mat-form-field>
+            </div>
+          }
         </div>
       </section>
 
@@ -151,17 +172,18 @@
           >
             <!-- Một node icon + một node nhãn: hai nhánh @if rời sẽ làm Material
                  không chiếu được icon vào slot (NG8011), nên đổi nội dung tại chỗ. -->
-            <mat-icon [class.spin]="busy()" aria-hidden="true">{{
-              busy() ? 'progress_activity' : 'play_arrow'
+            <mat-icon [class.spin]="creating()" aria-hidden="true">{{
+              creating() ? 'progress_activity' : 'play_arrow'
             }}</mat-icon>
-            {{ busy() ? lang.t('SCAN_JOBS_RUNNING') : lang.t('SCAN_JOBS_START') }}
+            {{ creating() ? lang.t('SCAN_JOBS_RUNNING') : lang.t('SCAN_JOBS_START') }}
           </button>
 
           @if (startHint(); as hint) {
             <p class="hint">{{ lang.t(hint) }}</p>
           }
 
-          @if (busy()) {
+          <!-- Chỉ huỷ được đúng phiên đang xem; phiên khác vẫn chạy tiếp. -->
+          @if (busyJob()) {
             <button matButton="outlined" type="button" class="wide" (click)="cancel()">
               {{ lang.t('SCAN_JOBS_CANCEL') }}
             </button>
@@ -177,10 +199,10 @@
             </button>
           }
 
-          @if (activeJob(); as job) {
+          @if (busyJob(); as job) {
             <div class="progress">
               <div class="progress-line">
-                <span>{{ lang.t(statusKey(job.status)) }}</span>
+                <span class="progress-name" [matTooltip]="job.name">{{ job.name }}</span>
                 <span
                   class="status-chip"
                   [class.is-done]="job.status === 'done'"
@@ -221,17 +243,30 @@
         </div>
       </section>
 
-      <!-- Phiên gần đây: mở lại kết quả cũ mà không OCR lại -->
-      @if (recent().length > 0) {
+      <!-- Phiên gần đây: mở lại kết quả cũ mà không OCR lại, kể cả khi đang chạy
+           một phiên khác — mỗi phiên một trạng thái riêng. -->
+      @if (loadingRecent()) {
+        <section class="card recent" aria-labelledby="scan-recent-title">
+          <h3 class="recent-title" id="scan-recent-title">{{ lang.t('SCAN_JOBS_RECENT') }}</h3>
+          <ul class="recent-list" aria-busy="true" aria-live="polite">
+            @for (i of [1, 2, 3]; track i) {
+              <li>
+                <div class="recent-skeleton skeleton" aria-hidden="true"></div>
+              </li>
+            }
+          </ul>
+        </section>
+      } @else if (rail().length > 0) {
         <section class="card recent" aria-labelledby="scan-recent-title">
           <h3 class="recent-title" id="scan-recent-title">{{ lang.t('SCAN_JOBS_RECENT') }}</h3>
           <ul class="recent-list">
-            @for (job of recent(); track job.id) {
+            @for (job of rail(); track job.id) {
               <li>
                 <button
                   type="button"
                   class="recent-item"
-                  [disabled]="busy()"
+                  [class.is-active]="activeJob()?.id === job.id"
+                  [attr.aria-current]="activeJob()?.id === job.id ? 'true' : null"
                   (click)="openRecent(job)"
                 >
                   <mat-icon aria-hidden="true">picture_as_pdf</mat-icon>
@@ -315,19 +350,18 @@
           ></iframe>
         } @else {
           <div class="empty">
-            @if (busy()) {
+            @if (busyJob(); as job) {
               <mat-icon class="empty-icon spin" aria-hidden="true">progress_activity</mat-icon>
-              @if (activeJob(); as job) {
-                <p class="empty-title">{{ lang.t('SCAN_JOBS_EMPTY_BUSY') }}</p>
-                <p class="empty-text">
-                  {{ job.done_pages }}/{{ job.total_pages }} {{ lang.t('SCAN_JOBS_PAGES') }} ·
-                  {{ job.progress }}%
-                </p>
-                <mat-progress-bar class="empty-bar" mode="determinate" [value]="job.progress" />
-                <p class="empty-hint">{{ lang.t('SCAN_JOBS_EMPTY_BUSY_HINT') }}</p>
-              } @else {
-                <p class="empty-title">{{ lang.t('SCAN_JOBS_PREPARING') }}</p>
-              }
+              <p class="empty-title">{{ lang.t('SCAN_JOBS_EMPTY_BUSY') }}</p>
+              <p class="empty-text">
+                {{ job.done_pages }}/{{ job.total_pages }} {{ lang.t('SCAN_JOBS_PAGES') }} ·
+                {{ job.progress }}%
+              </p>
+              <mat-progress-bar class="empty-bar" mode="determinate" [value]="job.progress" />
+              <p class="empty-hint">{{ lang.t('SCAN_JOBS_EMPTY_BUSY_HINT') }}</p>
+            } @else if (creating()) {
+              <mat-icon class="empty-icon spin" aria-hidden="true">progress_activity</mat-icon>
+              <p class="empty-title">{{ lang.t('SCAN_JOBS_PREPARING') }}</p>
             } @else {
               <mat-icon class="empty-icon" aria-hidden="true">document_scanner</mat-icon>
               <p class="empty-title">{{ lang.t('SCAN_JOBS_EMPTY_TITLE') }}</p>
@@ -371,7 +405,7 @@
         [disabled]="!canStart()"
         (click)="start()"
       >
-        {{ busy() ? lang.t('SCAN_JOBS_RUNNING') : lang.t('SCAN_JOBS_START') }}
+        {{ creating() ? lang.t('SCAN_JOBS_RUNNING') : lang.t('SCAN_JOBS_START') }}
       </button>
     }
   </div>

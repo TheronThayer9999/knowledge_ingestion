@@ -202,6 +202,8 @@ export const VI_ENTRIES = {
   SCAN_JOBS_LANG_VI: 'Tiếng Việt',
   SCAN_JOBS_LANG_EN: 'Tiếng Anh',
   SCAN_JOBS_LANG_BOTH: 'Việt + Anh',
+  SCAN_JOBS_SHOW_ADVANCED: 'Cài đặt nâng cao',
+  SCAN_JOBS_HIDE_ADVANCED: 'Ẩn cài đặt nâng cao',
   SCAN_JOBS_DPI: 'Độ phân giải',
   SCAN_JOBS_DPI_150: '150 DPI — nhanh',
   SCAN_JOBS_DPI_200: '200 DPI — cân bằng',

@@ -40,6 +40,10 @@ const RUNNING_STATUSES = ['pending', 'processing'];
  * Cài đặt OCR phải đi cùng request tạo job (`ScanJobService.create`) vì server
  * lưu vào row rồi worker đọc lại — trước đây form có mà không gửi, đổi cài đặt
  * không có tác dụng gì.
+ *
+ * Trạng thái của MỌI phiên nằm trong `jobs` (theo id) chứ không phải một biến
+ * `job` duy nhất: worker chạy nhiều phiên song song, nên đang OCR tệp này vẫn
+ * phải mở/xem/tải được tệp đã xong mà không làm mất dấu phiên đang chạy.
  */
 @Component({
   selector: 'app-scan-jobs',
@@ -69,39 +73,68 @@ export class ScanJobs implements OnDestroy {
   protected readonly dpi = signal<number>(this.stored.dpi);
   protected readonly mode = signal<ScanMode>(this.stored.mode);
 
-  protected readonly recent = signal<ScanJobResponse[]>([]);
-
-  /** Trạng thái kéo-thả đang phủ lên vùng thả tệp. */
-  protected readonly dragging = signal(false);
-  /** Xem PDF ở chế độ toàn màn hình (chỉ khung xem, không cả trang). */
-  protected readonly fullscreen = signal(false);
-
+  /** 5 phiên mới nhất theo server — nguồn cho danh sách bên trái. */
+  private readonly recent = signal<ScanJobResponse[]>([]);
+  /** Trạng thái sống của những phiên trang này biết (vừa tạo hoặc vừa mở). */
+  private readonly jobs = signal<ReadonlyMap<number, ScanJobResponse>>(new Map());
+  /** Phiên đang hiện trong khung xem — độc lập với việc phiên nào đang chạy. */
+  private readonly activeId = signal<number | null>(null);
+  /** Request tạo phiên đang bay; chỉ chặn đúng thao tác tạo, không chặn cả trang. */
+  private readonly submitting = signal(false);
   private readonly current = signal<SelectedFile | null>(null);
-  private readonly job = signal<ScanJobResponse | null>(null);
-  private readonly previewUrl = signal<string | null>(null);
   private readonly failure = signal<string | null>(null);
   private readonly notice = signal<string | null>(null);
-  private readonly working = signal(false);
 
   private timer: ReturnType<typeof setInterval> | null = null;
 
   protected readonly file = this.current.asReadonly();
-  protected readonly activeJob = this.job.asReadonly();
-  protected readonly busy = this.working.asReadonly();
+  protected readonly creating = this.submitting.asReadonly();
   protected readonly error = this.failure.asReadonly();
   protected readonly success = this.notice.asReadonly();
 
+  protected readonly activeJob = computed<ScanJobResponse | null>(() => {
+    const id = this.activeId();
+    if (id === null) {
+      return null;
+    }
+    return this.jobs().get(id) ?? this.recent().find((job) => job.id === id) ?? null;
+  });
+
+  /** Phiên đang chạy mà khung xem đang theo dõi — chỉ khi đó mới hiện khối tiến độ. */
+  protected readonly busyJob = computed<ScanJobResponse | null>(() => {
+    const job = this.activeJob();
+    return job && RUNNING_STATUSES.includes(job.status) ? job : null;
+  });
+
+  /**
+   * Danh sách hiển thị: 5 phiên của server + phiên vừa tạo trong trang (server
+   * có thể chưa kịp trả về), trạng thái lấy bản mới nhất giữa hai nguồn.
+   */
+  protected readonly rail = computed<ScanJobResponse[]>(() => {
+    const live = this.jobs();
+    const fromServer = this.recent();
+    const seen = new Set(fromServer.map((job) => job.id));
+    const fresh = [...live.values()].filter((job) => !seen.has(job.id));
+    return [...fresh.reverse(), ...fromServer.map((job) => live.get(job.id) ?? job)];
+  });
+
+  private readonly runningIds = computed<number[]>(() =>
+    [...this.jobs().values()]
+      .filter((job) => RUNNING_STATUSES.includes(job.status))
+      .map((job) => job.id),
+  );
+
   protected readonly hasFile = computed(() => this.current() !== null);
-  protected readonly canConfigure = computed(() => this.hasFile() && !this.working());
+  protected readonly canConfigure = computed(() => this.hasFile() && !this.submitting());
   protected readonly canStart = computed(() => {
     const picked = this.current();
-    return !!picked && !picked.error && !this.working();
+    return !!picked && !picked.error && !this.submitting();
   });
-  protected readonly canDownload = computed(() => this.job()?.status === 'done');
+  protected readonly canDownload = computed(() => this.activeJob()?.status === 'done');
 
   /** Vì sao nút "Bắt đầu OCR" đang tắt — nút disabled mà không nói lý do là lỗi UX. */
   protected readonly startHint = computed<TranslationKey | null>(() => {
-    if (this.working()) {
+    if (this.submitting()) {
       return null;
     }
     const picked = this.current();
@@ -109,6 +142,11 @@ export class ScanJobs implements OnDestroy {
       return 'SCAN_JOBS_HINT_NO_FILE';
     }
     return picked.error ? 'SCAN_JOBS_HINT_FILE_INVALID' : null;
+  });
+
+  protected readonly safePreviewUrl = computed<SafeResourceUrl | null>(() => {
+    const url = this.activeJob()?.output_url;
+    return url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : null;
   });
 
   constructor() {
@@ -135,6 +173,20 @@ export class ScanJobs implements OnDestroy {
     }
   }
 
+  /** Trạng thái kéo-thả đang phủ lên vùng thả tệp. */
+  protected readonly dragging = signal(false);
+  /** Xem PDF ở chế độ toàn màn hình (chỉ khung xem, không cả trang). */
+  protected readonly fullscreen = signal(false);
+  /** Đang nạp danh sách phiên gần đây — hiện skeleton thay vì list rỗng. */
+  protected readonly loadingRecent = signal(false);
+  /** Hiện advanced settings (DPI, Mode) — ẩn mặc định để giảm clutter. */
+  protected readonly showAdvanced = signal(false);
+
+  /** Bật/tắt advanced settings (progressive disclosure). */
+  protected toggleAdvanced(): void {
+    this.showAdvanced.update((value) => !value);
+  }
+
   protected onDragOver(event: DragEvent): void {
     event.preventDefault();
     this.dragging.set(true);
@@ -146,16 +198,15 @@ export class ScanJobs implements OnDestroy {
 
   protected removeFile(): void {
     this.current.set(null);
-    this.clearResult();
+    this.failure.set(null);
+    this.notice.set(null);
   }
 
   /** Mỗi lượt một tệp (batch là V2): chọn tệp mới thay tệp cũ, không âm thầm bỏ tệp. */
   private accept(picked: File): void {
-    if (this.working()) {
-      return;
-    }
     this.current.set({ file: picked, error: this.validate(picked) });
-    this.clearResult();
+    this.failure.set(null);
+    this.notice.set(null);
   }
 
   private validate(picked: File): TranslationKey | undefined {
@@ -214,14 +265,12 @@ export class ScanJobs implements OnDestroy {
 
   protected start(): void {
     const picked = this.current();
-    if (!picked || picked.error || this.working()) {
+    if (!picked || picked.error || this.submitting()) {
       return;
     }
-    this.working.set(true);
+    this.submitting.set(true);
     this.failure.set(null);
     this.notice.set(null);
-    this.previewUrl.set(null);
-    this.job.set(null);
 
     this.svc
       .create(picked.file, {
@@ -231,23 +280,86 @@ export class ScanJobs implements OnDestroy {
       })
       .subscribe({
         next: (job) => {
-          this.job.set(job);
-          if (job.output_url) {
-            this.previewUrl.set(job.output_url);
-          }
-          this.watch(job.id);
+          this.submitting.set(false);
+          // Tệp đã thành một phiên: trả bước 1 về trạng thái trống để chọn tệp
+          // tiếp theo ngay, không phải chờ phiên này xong.
+          this.current.set(null);
+          this.activeId.set(job.id);
+          this.merge(job);
+          this.watchRunning();
           this.loadRecent();
         },
         error: (cause: unknown) => {
-          this.working.set(false);
+          this.submitting.set(false);
           this.failure.set(messageOf(cause, this.lang.t('SCAN_JOBS_CREATE_FAILED')));
         },
       });
   }
 
-  private watch(id: number): void {
-    this.stopWatching();
-    this.timer = setInterval(() => this.refresh(id), POLL_MS);
+  protected cancel(): void {
+    const job = this.activeJob();
+    if (!job) {
+      return;
+    }
+    this.svc.cancel(job.id).subscribe({
+      next: () => {
+        this.notice.set(this.lang.t('SCAN_JOBS_CANCEL_DONE'));
+        this.refresh(job.id);
+      },
+      error: (cause: unknown) =>
+        this.failure.set(messageOf(cause, this.lang.t('SCAN_JOBS_CANCEL_FAILED'))),
+    });
+  }
+
+  protected download(): void {
+    const job = this.activeJob();
+    if (!job) {
+      return;
+    }
+    this.svc.download(job.id).subscribe({
+      next: (file) => window.open(file.url, '_blank', 'noopener'),
+      error: (cause: unknown) =>
+        this.failure.set(messageOf(cause, this.lang.t('SCAN_JOBS_DOWNLOAD_FAILED'))),
+    });
+  }
+
+  protected openInTab(): void {
+    const url = this.activeJob()?.output_url;
+    if (url) {
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+
+  /** Bỏ tệp đang chọn + bỏ chọn phiên trong khung xem; các phiên khác vẫn chạy. */
+  protected reset(): void {
+    this.current.set(null);
+    this.activeId.set(null);
+    this.failure.set(null);
+    this.notice.set(null);
+  }
+
+  // ---- Theo dõi tiến độ ----
+
+  /** Một vòng poll cho TẤT CẢ phiên đang chạy, không chỉ phiên đang xem. */
+  private watchRunning(): void {
+    if (this.runningIds().length === 0) {
+      this.stopWatching();
+      return;
+    }
+    if (!this.timer) {
+      this.timer = setInterval(() => this.refreshRunning(), POLL_MS);
+    }
+  }
+
+  private refreshRunning(): void {
+    const ids = this.runningIds();
+    if (ids.length === 0) {
+      this.stopWatching();
+      return;
+    }
+    for (const id of ids) {
+      this.refresh(id);
+    }
   }
 
   private refresh(id: number): void {
@@ -260,15 +372,21 @@ export class ScanJobs implements OnDestroy {
   }
 
   private apply(job: ScanJobResponse): void {
-    this.job.set(job);
-    if (job.output_url) {
-      this.previewUrl.set(job.output_url);
+    const known = this.jobs().get(job.id);
+    const wasRunning = !!known && RUNNING_STATUSES.includes(known.status);
+    this.merge(job);
+    if (!RUNNING_STATUSES.includes(job.status) && wasRunning) {
+      this.settle(job);
     }
-    if (RUNNING_STATUSES.includes(job.status)) {
-      return;
-    }
-    this.stopWatching();
-    this.working.set(false);
+    this.watchRunning();
+  }
+
+  private merge(job: ScanJobResponse): void {
+    this.jobs.update((known) => new Map(known).set(job.id, job));
+  }
+
+  /** Phiên vừa rời trạng thái chạy — chỉ lúc này mới báo xong/lỗi cho người dùng. */
+  private settle(job: ScanJobResponse): void {
     if (job.status === 'done') {
       this.notice.set(this.lang.t('SCAN_JOBS_SUCCESS'));
       this.announceInBackground();
@@ -288,85 +406,41 @@ export class ScanJobs implements OnDestroy {
     });
   }
 
-  protected cancel(): void {
-    const job = this.job();
-    if (!job) {
-      return;
-    }
-    this.svc.cancel(job.id).subscribe({
-      next: () => {
-        this.stopWatching();
-        this.working.set(false);
-        this.notice.set(this.lang.t('SCAN_JOBS_CANCEL_DONE'));
-      },
-      error: (cause: unknown) =>
-        this.failure.set(messageOf(cause, this.lang.t('SCAN_JOBS_CANCEL_FAILED'))),
-    });
-  }
-
-  protected download(): void {
-    const job = this.job();
-    if (!job) {
-      return;
-    }
-    this.svc.download(job.id).subscribe({
-      next: (file) => window.open(file.url, '_blank', 'noopener'),
-      error: (cause: unknown) =>
-        this.failure.set(messageOf(cause, this.lang.t('SCAN_JOBS_DOWNLOAD_FAILED'))),
-    });
-  }
-
-  protected openInTab(): void {
-    const url = this.previewUrl();
-    if (url) {
-      window.open(url, '_blank', 'noopener');
-    }
-  }
-
-  protected reset(): void {
-    this.stopWatching();
-    this.current.set(null);
-    this.working.set(false);
-    this.clearResult();
-    this.loadRecent();
-  }
-
-  private clearResult(): void {
-    this.stopWatching();
-    this.job.set(null);
-    this.previewUrl.set(null);
-    this.failure.set(null);
-    this.notice.set(null);
-  }
-
-  // ---- Lịch sử gần đây ----
+  // ---- Danh sách phiên ----
 
   private loadRecent(): void {
+    this.loadingRecent.set(true);
     this.svc.list('', 5, 0).subscribe({
       // Không có lịch sử không phải lỗi — im lặng để trang trống vẫn sạch.
-      next: (page) => this.recent.set(page.items),
-      error: () => undefined,
+      next: (page) => {
+        this.recent.set(page.items);
+        this.loadingRecent.set(false);
+      },
+      error: () => {
+        this.loadingRecent.set(false);
+      },
     });
   }
 
+  /** Mở một phiên trong khung xem; phiên khác đang chạy vẫn được poll tiếp. */
   protected openRecent(job: ScanJobResponse): void {
-    this.clearResult();
-    this.current.set(null);
-    this.working.set(RUNNING_STATUSES.includes(job.status));
-    this.svc.get(job.id).subscribe({
-      next: (fresh) => {
-        this.apply(fresh);
-        if (RUNNING_STATUSES.includes(fresh.status)) {
-          this.watch(fresh.id);
-        }
-      },
-      error: (cause: unknown) =>
-        this.failure.set(messageOf(cause, this.lang.t('SCAN_JOBS_OPEN_FAILED'))),
-    });
+    this.activeId.set(job.id);
+    this.merge(job);
+    if (job.status === 'failed') {
+      this.failure.set(job.error_message || this.lang.t('SCAN_JOBS_FAILED'));
+    }
+    // Luôn lấy bản mới: link tải/preview là presigned nên bản trong danh sách có
+    // thể đã hết hạn, còn phiên đang chạy thì cần số trang mới nhất.
+    this.refresh(job.id);
+    this.watchRunning();
   }
 
   protected recentMeta(job: ScanJobResponse): string {
     return `${job.done_pages}/${job.total_pages} ${this.lang.t('SCAN_JOBS_PAGES')}`;
+  }
+
+  protected isRunning(job: ScanJobResponse | null): boolean {
+    return !!job && RUNNING_STATUSES.includes(job.status);
   }
 
   protected toggleFullscreen(): void {
@@ -395,8 +469,6 @@ export class ScanJobs implements OnDestroy {
     }
   }
 
-  // ---- Trạng thái hiển thị ----
-
   protected statusKey(status: string): TranslationKey {
     switch (status) {
       case 'done':
@@ -410,11 +482,6 @@ export class ScanJobs implements OnDestroy {
       default:
         return 'SCAN_JOBS_STATUS_PENDING';
     }
-  }
-
-  protected safePreviewUrl(): SafeResourceUrl | null {
-    const url = this.previewUrl();
-    return url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : null;
   }
 
   ngOnDestroy(): void {

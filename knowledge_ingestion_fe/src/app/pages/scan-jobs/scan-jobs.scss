@@ -204,6 +204,25 @@
   color: var(--color-muted);
 }
 
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  color: var(--color-muted);
+  font: var(--text-style-xs);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.advanced-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
 .seg {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -256,6 +275,13 @@
   justify-content: space-between;
   gap: var(--space-2);
   font: var(--text-style-sm);
+}
+
+// Tên tệp của phiên đang chạy — cắt đuôi để không đẩy % ra ngoài
+.progress-name {
+  @include truncate;
+  min-width: 0;
+  font: var(--text-style-sm-strong);
 }
 
 .progress-meta {
@@ -329,6 +355,37 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.recent-skeleton {
+  height: var(--list-row-height);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-container) 25%,
+    var(--color-surface-container-high) 50%,
+    var(--color-surface-container) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
 }
 
 .recent-item {

@@ -116,6 +116,11 @@
   min-height: var(--list-row-height);
   padding: var(--space-2) var(--space-1);
   border-bottom: var(--border-width) solid var(--color-border);
+  transition: background-color var(--duration-fast) ease;
+}
+
+.recent-row:hover {
+  background: var(--color-surface-container-high);
 }
 
 .recent-row:last-child {
@@ -227,6 +232,7 @@
 
 .tip-card {
   background: var(--color-surface-container);
+  border-left: 3px solid var(--color-primary);
 }
 
 .tip-head {

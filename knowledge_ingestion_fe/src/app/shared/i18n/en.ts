@@ -204,6 +204,8 @@ export const EN_ENTRIES: Record<TranslationKey, string> = {
   SCAN_JOBS_LANG_VI: 'Vietnamese',
   SCAN_JOBS_LANG_EN: 'English',
   SCAN_JOBS_LANG_BOTH: 'Vietnamese + English',
+  SCAN_JOBS_SHOW_ADVANCED: 'Advanced settings',
+  SCAN_JOBS_HIDE_ADVANCED: 'Hide advanced settings',
   SCAN_JOBS_DPI: 'Resolution',
   SCAN_JOBS_DPI_150: '150 DPI — fast',
   SCAN_JOBS_DPI_200: '200 DPI — balanced',
