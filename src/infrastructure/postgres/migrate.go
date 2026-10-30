@@ -27,7 +27,8 @@ func autoMigrate(db *gorm.DB) error {
 		return tx.AutoMigrate(domain.User{}, domain.Category{}, domain.Article{}, domain.ArticlePage{},
 			domain.EmbedCacheEntry{}, domain.OutboxEvent{}, domain.CategoryClosure{}, domain.ArticleSection{},
 			domain.RefreshToken{}, domain.WorkerHeartbeat{}, domain.Conversation{}, domain.ChatMessage{},
-			domain.LLMProviderSetting{}, domain.LLMUsageDaily{}, domain.LLMUserProvider{})
+			domain.LLMProviderSetting{}, domain.LLMUsageDaily{}, domain.LLMUserProvider{},
+			domain.OCRJob{}, domain.OCRJobPage{})
 	})
 }
 
@@ -78,6 +79,11 @@ func migrate(db *gorm.DB) error {
 		return err
 	}
 	if err := migrateQueueIndexes(db); err != nil {
+		return err
+	}
+	// Hàng đợi tab Quét (ocr_jobs/ocr_job_pages): FK + index claim — AutoMigrate
+	// không sinh FK ON DELETE CASCADE lẫn index ghép được nên phải exec tay.
+	if err := migrateScanQueue(db); err != nil {
 		return err
 	}
 	return nil
@@ -357,6 +363,46 @@ func migrateQueueColumns(db *gorm.DB) error {
 	for _, idx := range []string{"idx_articles_chunk_poll", "idx_articles_embed_poll", "idx_pages_article_unique"} {
 		if err := db.Exec(`DROP INDEX IF EXISTS ` + idx).Error; err != nil {
 			return fmt.Errorf("xoá index cũ %s: %w", idx, err)
+		}
+	}
+	return nil
+}
+
+// migrateScanQueue dựng FK + index cho hàng đợi tab Quét (ocr_jobs +
+// ocr_job_pages).
+//
+// AutoMigrate chỉ tạo bảng, cột và index đơn theo tag — nó không sinh FK
+// ON DELETE CASCADE (bài học category_closure: muốn ràng buộc thật trong DB thì
+// exec tay) và không tự nhận ra cặp (job_id, page_num) là đường tìm chính.
+//
+// KHÔNG kiểm tra lại shape PK ở đây: hai bảng này sinh ra cùng đợt với tính
+// năng, chưa từng tồn tại với PK sai, nên một bước "dựng lại bảng" chỉ là code
+// chết. Nếu sau này đổi PK thì thêm guard theo khuôn migrateCategoryClosure.
+func migrateScanQueue(db *gorm.DB) error {
+	if err := db.Exec(`ALTER TABLE ocr_job_pages
+		DROP CONSTRAINT IF EXISTS ocr_job_pages_job_id_fkey`).Error; err != nil {
+		return fmt.Errorf("gỡ FK ocr_job_pages cũ: %w", err)
+	}
+	if err := db.Exec(`ALTER TABLE ocr_job_pages
+		ADD CONSTRAINT ocr_job_pages_job_id_fkey FOREIGN KEY (job_id)
+		REFERENCES ocr_jobs (id) ON DELETE CASCADE`).Error; err != nil {
+		return fmt.Errorf("dựng FK ocr_job_pages_job_id_fkey: %w", err)
+	}
+	// Statement riêng cho từng index: một câu fail thì lỗi nêu đúng index nào,
+	// không phải cả lô.
+	for _, stmt := range []string{
+		// Câu claim của worker: trang pending tới hạn, theo đúng thứ tự
+		// ORDER BY job_id, page_num để hai worker không cùng mở một tệp.
+		`CREATE INDEX IF NOT EXISTS idx_ocr_job_pages_claim ON ocr_job_pages (status, next_retry_at, job_id, page_num)`,
+		// Hàng đợi job: lọc theo trạng thái khi tab Lịch sử hỏi "job nào còn chạy".
+		`CREATE INDEX IF NOT EXISTS idx_ocr_jobs_claim ON ocr_jobs (status, next_retry_at) WHERE deleted_at IS NULL`,
+		// Tab Lịch sử luôn là `WHERE user_id = ? ORDER BY id DESC LIMIT n`.
+		`CREATE INDEX IF NOT EXISTS idx_ocr_jobs_owner_list ON ocr_jobs (user_id, id DESC) WHERE deleted_at IS NULL`,
+		// Janitor quét theo hạn, không quét theo chủ.
+		`CREATE INDEX IF NOT EXISTS idx_ocr_jobs_expiry ON ocr_jobs (expires_at)`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("dựng index hàng đợi quét: %w", err)
 		}
 	}
 	return nil

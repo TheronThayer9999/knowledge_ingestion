@@ -22,6 +22,9 @@ func (f *fakeConfig) GetQdrant() config.QdrantConfig { return config.QdrantConfi
 
 func (f *fakeConfig) GetOCR() config.OCRConfig { return config.OCRConfig{} }
 
+// GetScanOCR: các test storage không dựng job OCR nên trả struct rỗng (tắt).
+func (f *fakeConfig) GetScanOCR() config.ScanOCRConfig { return config.ScanOCRConfig{} }
+
 func (f *fakeConfig) GetRedis() config.RedisConfig { return config.RedisConfig{} }
 
 func (f *fakeConfig) GetRabbitMQ() config.RabbitMQConfig { return config.RabbitMQConfig{} }

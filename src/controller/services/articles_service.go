@@ -173,7 +173,7 @@ func (s *articleService) DownloadURL(ctx context.Context, id int64) dtos.Result[
 	}
 	expiry := constants.PRESIGN_DOWNLOAD_EXPIRY
 	name := downloadFilename(article)
-	url, err := s.storage.PresignedGetURL(ctx, key, name, expiry)
+	url, err := s.storage.PresignedGetURL(ctx, key, name, false, expiry)
 	if err != nil {
 		logs.Warnw("article: ký URL tải lỗi", "trace_id", utils.TraceIDFromCtx(ctx),
 			"article_id", article.ID, "name", article.Name, "file", fileTag(article),

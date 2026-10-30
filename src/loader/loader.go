@@ -85,9 +85,10 @@ func loadAdapter() []fx.Option {
 		// Phiên chat (S1): 2 repo conversations/messages — tách ra hàm riêng vì
 		// loadAdapter đã đầy ngân sách hàm (guardrail function_budget_test.go).
 		fx.Options(loadChatRepositories()...),
-		// VLM đọc ảnh (qwen-vl) — bind 2 vai hẹp cho agent dùng `Ask`; provider
-		// lazy nên không thành phụ thuộc bắt buộc lúc boot.
-		fx.Options(vlmOptions()...),
+		// Tab Quét: bộ đọc ảnh/tài liệu (VLM cho agent + cấu hình OCR xem trước)
+		// và hàng đợi quét theo trang — một nhóm cho cả feature, thêm repo đợt
+		// V1 chỉ sửa loader/scan.go (guardrail function_budget_test.go).
+		fx.Options(scanFeatureOptions()...),
 	}
 }
 
@@ -131,7 +132,7 @@ func loadService() []fx.Option {
 		fx.Provide(services.NewPingPongService),
 		fx.Provide(services.NewUserService),
 		fx.Provide(services.NewFileService),
-		fx.Provide(services.NewChatAttachmentService),
+		fx.Options(loadDocumentServices()...),
 		fx.Provide(services.NewCategoryService),
 		fx.Provide(services.NewArticleService),
 		fx.Provide(services.NewArticleAdminService),
@@ -186,6 +187,18 @@ func loadService() []fx.Option {
 	}
 }
 
+// loadDocumentServices gom service đọc tệp của API: trích text đính kèm chat
+// (một lượt) và hàng đợi quét của tab Quét (chỉ ghi DB + blob). Tách khỏi
+// loadService để hàm đó còn đủ ngân sách (guardrail
+// src/quality/function_budget_test.go).
+func loadDocumentServices() []fx.Option {
+	return []fx.Option{
+		fx.Provide(services.NewChatAttachmentService),
+		// Hàng đợi quét thật (ocr_jobs) — chỉ tạo/đọc/huỷ job, OCR nằm ở worker.
+		fx.Provide(services.NewScanJobService),
+	}
+}
+
 // loadUserProviderServices: service kết nối LLM RIÊNG của user (BYOK) + 3 vai
 // hẹp của nó (API CRUD, đường chat, menu chọn model). Tách riêng để
 // loadService còn đủ ngân sách dòng (guardrail src/quality/function_budget_test.go).
@@ -232,6 +245,7 @@ func loadEngine() []fx.Option {
 		fx.Provide(apis.NewHealthAPI),
 		fx.Provide(apis.NewSearchAPI),
 		fx.Provide(apis.NewChatAPI),
+		fx.Provide(apis.NewScanJobAPI),
 		fx.Provide(apis.NewConversationAPI),
 		fx.Provide(apis.NewLLMAPI),
 		fx.Provide(apis.NewLLMUserAPI),

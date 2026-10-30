@@ -143,12 +143,16 @@ func (s *Storage) PresignedURL(ctx context.Context, key string, contentType stri
 // SeaweedFS, API không phải stream 500MB qua process. ResponseContentDisposition
 // là header GET-override được S3 chấp nhận (nằm trong chữ ký), nên tên file
 // gắn vào đây chứ không sửa metadata của object.
-func (s *Storage) PresignedGetURL(ctx context.Context, key string, downloadAs string, expiry time.Duration) (string, error) {
+func (s *Storage) PresignedGetURL(ctx context.Context, key string, downloadAs string, inline bool, expiry time.Duration) (string, error) {
 	presignClient := s3.NewPresignClient(s.client)
+	disposition := buildContentDisposition(downloadAs)
+	if inline {
+		disposition = buildInlineDisposition(downloadAs)
+	}
 	res, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket:                     aws.String(s.bucket),
 		Key:                        aws.String(key),
-		ResponseContentDisposition: aws.String(buildContentDisposition(downloadAs)),
+		ResponseContentDisposition: aws.String(disposition),
 	}, func(o *s3.PresignOptions) {
 		o.Expires = expiry
 	})

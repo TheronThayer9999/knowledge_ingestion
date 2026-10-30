@@ -2035,6 +2035,195 @@ paths:
       summary: Pong the server
       tags:
       - health
+  /api/v1/scan/jobs:
+    get:
+      parameters:
+      - description: status filter
+        in: query
+        name: status
+        type: string
+      - description: limit
+        in: query
+        name: limit
+        type: integer
+      - description: offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: List scan jobs of current user
+      tags:
+      - scan
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: image or PDF
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Create a scan OCR job from an uploaded file
+      tags:
+      - scan
+  /api/v1/scan/jobs/{id}:
+    delete:
+      parameters:
+      - description: job id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Delete a scan job
+      tags:
+      - scan
+    get:
+      parameters:
+      - description: job id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Get scan job progress
+      tags:
+      - scan
+  /api/v1/scan/jobs/{id}/cancel:
+    post:
+      parameters:
+      - description: job id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Cancel a scan job
+      tags:
+      - scan
+  /api/v1/scan/jobs/{id}/download:
+    get:
+      parameters:
+      - description: job id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Get presigned URL for the result file (PDF)
+      tags:
+      - scan
+  /api/v1/scan/jobs/{id}/pages/{page}:
+    get:
+      description: 'Returns the per-page OCR result for the review tab: normalized
+        word boxes (0..1), confidence per word, page text and a presigned URL of the
+        rendered page image (rendered lazily and cached on first view). Scoped to
+        the job owner.'
+      parameters:
+      - description: job id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: page number (1-based)
+        in: path
+        name: page
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Get one OCR page with words, confidence and rendered image
+      tags:
+      - scan
+  /api/v1/scan/jobs/{id}/pages/{page}/retry:
+    post:
+      parameters:
+      - description: job id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: page number
+        in: path
+        name: page
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dtos.ResponseResource'
+      security:
+      - BearerAuth: []
+      summary: Re-OCR one page
+      tags:
+      - scan
   /api/v1/search:
     post:
       consumes:

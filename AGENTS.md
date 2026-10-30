@@ -55,6 +55,14 @@
 - **Checkpoint compile**: `articles.compile_done_sections` = số mục ĐẦU đã tóm tắt xong. Mỗi lô upsert `article_sections` **trước**, rồi mới tăng checkpoint → checkpoint chỉ LAG chứ không LEAD, job chết giữa chừng làm lại đúng 1 lô chứ không bỏ sót mục. Chạy lại có checkpoint thì KHÔNG dọn dòng cũ.
 - **Audit chi phí LLM theo tài khoản**: bảng `llm_usage_daily` (khoá user_id+day+site+provider+model, cộng dồn ON CONFLICT). `usageHandler` của Eino đăng ký GLOBAL nên bắt MỌI lượt gọi chat model (kể cả lượt hỏng) rồi cộng vào collector đi theo ctx (`src/common/llmusage`). Admin đọc `GET /api/v1/admin/llm-usage` (role ≥ 1), lọc `?site=chat|compile|classify&user_id=&from=&to=`. Lượt hỏng VẪN ghi (token đầu vào đã mất).
 
+### Tab Quét (hàng đợi TẠM, tách hẳn khỏi kho tri thức)
+
+- Bảng `ocr_jobs`/`ocr_job_pages` + `src/common/scanocr`; **claim theo TRANG** (`ClaimPages`, `SKIP LOCKED` + lease) nên nhiều worker chia nhau một tệp 300 trang thay vì mỗi worker ôm nguyên tệp. Worker `process-scan-jobs` (5s) OCR tuần tự 4 trang/lượt, RAM theo 1 trang.
+- **KHÔNG có lớp chữ ẩn (searchable PDF)** — đã bỏ hẳn cùng package `searchpdf` và endpoint đồng bộ `POST /scan/ocr`. Kết quả = **PDF**: nguồn PDF thì output trỏ thẳng `SourceKey` (không render/copy), nguồn JPG/PNG thì bọc 1 ảnh vào PDF một trang bằng `fpdf` (`buildOutput` → `imagePagePDF`). Vì vậy `scanExts` **không nhận WEBP** (fpdf không nhúng được, không có decoder trong go.mod) — nhận rồi không có đường sinh PDF.
+- Từ + box + confidence vẫn lưu JSONB theo trang (`SavePageWords`) vì tab **Xem & sửa** cần: ảnh trang render lười (`GET /scan/jobs/:id/pages/:n`, ghi `render_key`) bị chặn đồng thời bởi semaphore `SCAN_RENDER_CONCURRENCY=2` — không có nó thì N người mở tab = N tiến trình `pdftoppm`.
+- **Janitor là bắt buộc** (`scan_job_janitor.PurgeExpired`, schedule `purge-scan-jobs`): xoá object TRƯỚC rồi `DeleteIDs` theo lô `SCAN_JANITOR_BATCH`. Không có janitor thì job bỏ dở nằm lại bucket vĩnh viễn vì đây là luồng tạm, không phải kho.
+- FE: `pages/scan-jobs/` là vỏ 4 tab (`matTabContent` nạp lười) + `scan-job.store.ts` cấp tại trang — **một** vòng poll 2s cho mọi job đang chạy, dừng khi tab trình duyệt ẩn. Poll mỗi tab tự lo là N lần request cho cùng một job.
+
 
 ## Conventions
 

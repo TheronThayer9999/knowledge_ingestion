@@ -52,6 +52,7 @@ theo số Đợt.
 | Đợt | Ngày | Nội dung | Kế hoạch |
 |---|---|---|---|
 | 26 | 2026-10-27 | Chart dựng từ chunk đã dẫn, LLM chọn loại biểu đồ, server dựng số | [kế hoạch](2026-10-27-dot-26-chart-tu-chunk-da-dan-va-llm-chon-loai.md) |
+| 31 | 2026-10-30 | OCR tài liệu scan → **PDF**: tab Quét tách **4 tab** (Tài liệu / Xem & sửa / PDF chuẩn / Lịch sử), job OCR async **claim theo trang**, kết quả = PDF (nguồn PDF trả nguyên bản, ảnh bọc một trang); **đã bỏ lớp chữ ẩn, bỏ `/scan/ocr` đồng bộ, không nhận WEBP**; kèm janitor TTL + semaphore render; tham chiếu quy trình `D:\code\work\autoai` | [kế hoạch](2026-10-30-dot-31-ocr-searchable-pdf-4-tab.md) |
 
 ## Còn chờ (đã ghi backlog, chưa có file kế hoạch)
 

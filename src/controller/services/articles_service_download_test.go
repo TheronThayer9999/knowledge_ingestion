@@ -22,7 +22,7 @@ type downloadStubStorage struct {
 	called               bool
 }
 
-func (s *downloadStubStorage) PresignedGetURL(_ context.Context, key, downloadAs string, expiry time.Duration) (string, error) {
+func (s *downloadStubStorage) PresignedGetURL(_ context.Context, key, downloadAs string, inline bool, expiry time.Duration) (string, error) {
 	s.called = true
 	s.key, s.downloadAs, s.expiry = key, downloadAs, expiry
 	if s.err != nil {

@@ -318,3 +318,70 @@ const (
 	CATEGORY_TYPE_PRODUCT = "product"
 	CATEGORY_TYPE_ARTICLE = "article"
 )
+
+// Knob của hàng đợi quét (tab Quét): src/common/scanocr đo + OCR, ảnh trang
+// render cho tab Xem & sửa, ocr_jobs/ocr_job_pages giữ trạng thái. Tách
+// hẳn khỏi knob extract/index/compile vì đây là luồng TẠM theo người dùng, có
+// TTL riêng — xem plans/2026-10-30-dot-31.
+
+// SCAN_OBJECT_PREFIX "thư mục ảo" của bản quét tạm trong bucket. Tách khỏi
+// uploads/ và extracted/ để janitor, ACL và dung lượng nhìn thành một nhóm
+// riêng — xoá nhầm luồng kho là mất bài, xoá nhầm luồng quét chỉ mất bản nháp.
+const SCAN_OBJECT_PREFIX = "scan/"
+
+// SCAN_PAGE_INSERT_BATCH số row trang mỗi câu INSERT. Row lúc tạo rất nhẹ (words
+// chỉ được ghi sau OCR) nên lô lớn vẫn dưới trần 65535 param của Postgres; file
+// 300 trang là 2 câu INSERT thay vì 300.
+const SCAN_PAGE_INSERT_BATCH = 200
+
+// SCAN_CLAIM_PAGES số trang một lô claim, ĐỒNG THỜI là mặc định khi caller
+// truyền limit <= 0 — repo không được phép để Limit(0) biến câu claim thành
+// "khoá cả bảng".
+const SCAN_CLAIM_PAGES = 4
+
+// SCAN_PAGE_LEASE thời hạn một trang bị giữ. Trần thời gian OCR một trang
+// (scan_ocr.page_timeout_sec, mặc định 180s) phải NHỎ hơn lease, nếu không worker
+// khác reclaim đúng lúc trang gần xong và OCR trùng twice.
+const SCAN_PAGE_LEASE = 5 * time.Minute
+
+// SCAN_PAGE_BACKOFF chờ giữa hai lần thử cùng một trang — OCR lỗi phần lớn do
+// trang đang bị kẹt tài nguyên (disk, engine treo), nghỉ 30s là đủ khỏi.
+const SCAN_PAGE_BACKOFF = 30 * time.Second
+
+// SCAN_JOB_LEASE hẹn lease cấp job (chỉ để lịch sử không hiện job "chờ" vô
+// hạn); thiết kế claim theo trang nên job không tự chiếm chỗ ai.
+const SCAN_JOB_LEASE = 30 * time.Minute
+
+// SCAN_PAGE_WINDOW số trang nạp một lượt khi đọc bảng trang theo cửa sổ (dọn
+// object khi xoá job, janitor) — cùng ý nghĩa với cửa sổ trượt của phase index:
+// RAM không phụ thuộc số trang của tệp.
+const SCAN_PAGE_WINDOW = 20
+
+// SCAN_PREVIEW_JPEG_QUALITY chất lượng JPEG của ẢNH XEM trang (tab Xem & sửa).
+// Ảnh xem chỉ để đối chiếu chữ OCR nên cắt byte mạnh: một trang A4 150DPI còn
+// khoảng 1/4 dung lượng PNG mà mắt thường không phân biệt trên bản scan.
+const SCAN_PREVIEW_JPEG_QUALITY = 80
+
+// SCAN_RENDER_CONCURRENCY số lượt render ảnh trang chạy ĐỒNG THỜI trong process
+// API. Mỗi lượt là một tiến trình pdftoppm; nhiều người mở tab Xem & sửa cùng
+// lúc mà không chặn thì số tiến trình (và RAM) tỉ lệ với số request. Chờ quá
+// lâu thì trả ảnh rỗng (best-effort), không để request treo vô hạn.
+const SCAN_RENDER_CONCURRENCY = 2
+
+// SCAN_LIST_LIMIT_DEFAULT/MAX phân trang tab Lịch sử. Trần ở repo để một cú
+// limit=1000000 từ client không biến thành một cú seq scan cả bảng.
+const SCAN_LIST_LIMIT_DEFAULT = 20
+const SCAN_LIST_LIMIT_MAX = 100
+
+// SCAN_JANITOR_BATCH số job dọn mỗi lượt; INTERVAL thưa vì TTL tính bằng giờ.
+const SCAN_JANITOR_BATCH = 200
+const SCAN_JANITOR_INTERVAL = 1 * time.Hour
+const SCAN_JANITOR_TIMEOUT = 10 * time.Minute
+
+// SCAN_TMP_TTL / SCAN_PUSHED_TTL là hạn mặc định của bản quét tạm khi config
+// không nói gì (scan_ocr.temp_ttl_hours / pushed_ttl_hours thắng). Đã push vào
+// kho thì bản tạm không còn là nguồn duy nhất nên giữ lâu hơn cho người dùng
+// quay lại tải PDF, nhưng vẫn phải hết hạn — tài liệu scan nhạy cảm không được
+// nằm trong kho vĩnh viễn chỉ vì quên bấm xoá.
+const SCAN_TMP_TTL = 24 * time.Hour
+const SCAN_PUSHED_TTL = 7 * 24 * time.Hour

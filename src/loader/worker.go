@@ -44,6 +44,8 @@ func LoadWorkerInfra() []fx.Option {
 		fx.Provide(repository.NewRefreshTokenRepository),
 		fx.Provide(repository.NewArticlePageRepository),
 		fx.Provide(repository.NewArticleSectionRepository),
+		// Hàng đợi tab Quét: worker claim theo TRANG ở đây (API chỉ tạo/đọc job).
+		fx.Provide(repository.NewOCRJobRepository),
 		// Audit chi phí LLM theo tài khoản — worker compile ghi số liệu mỗi lô
 		// mục vào đây (bảng llm_usage_daily).
 		fx.Provide(repository.NewLLMUsageRepository),
@@ -83,27 +85,8 @@ func LoadWorkerInfra() []fx.Option {
 			}
 		}),
 		// OCR map từ config sang struct của extractor để extractor không phụ
-		// thuộc config (sau này tách OCR thành API riêng cũng dùng struct này
-		// làm contract).
-		fx.Provide(func(cfg config.IConfig) extractor.OCRConfig {
-			o := cfg.GetOCR()
-			if o.Enabled && o.RenderBinary == "" {
-				// Warn lúc boot thay vì để PDF scan failed thầm lặng sau 10
-				// lần thử — người vận hành thấy ngay là thiếu renderer.
-				logs.Warnw("ocr bật nhưng thiếu render_binary — trang PDF scan sẽ bị skip",
-					"lang", o.Lang)
-			}
-			return extractor.OCRConfig{
-				Enabled:      o.Enabled,
-				Binary:       o.Binary,
-				Lang:         o.Lang,
-				Timeout:      time.Duration(o.TimeoutSec) * time.Second,
-				RenderBinary: o.RenderBinary,
-				RenderDPI:    o.RenderDPI,
-				MinTextChars: o.MinTextChars,
-				PSM:          o.PSM,
-			}
-		}),
+		// thuộc config. API cũng dùng đúng mapper này cho tab Quét.
+		fx.Provide(newOCRConfig),
 		// Kiểm tra traineddata lúc boot: thiếu gói ngôn ngữ thì tesseract
 		// exit != 0 cho MỌI trang (không phải "đọc kém chính xác") — job scan
 		// chết sau 10 lần retry mà log chỉ nói "tesseract lỗi". Ở đây chỉ

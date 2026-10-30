@@ -16,6 +16,9 @@ type IConfig interface {
 	GetLLMs() LLMsConfig
 	GetQdrant() QdrantConfig
 	GetOCR() OCRConfig
+	// GetScanOCR là engine của TÍNH NĂNG tab Quét (OCR chữ in → PDF).
+	// Tách khỏi GetOCR vì mục tiêu khác nhau — xem ghi chú ở ScanOCRConfig.
+	GetScanOCR() ScanOCRConfig
 	GetRedis() RedisConfig // Thêm method này
 	GetRabbitMQ() RabbitMQConfig
 	GetJWT() JWTConfig
@@ -35,6 +38,7 @@ type appConfig struct {
 	LLMs       LLMsConfig       `json:"llms"`
 	Qdrant     QdrantConfig     `json:"qdrant"`
 	OCR        OCRConfig        `json:"ocr"`
+	ScanOCR    ScanOCRConfig    `json:"scan_ocr"`
 	RedisCli   RedisConfig      `json:"redis"`
 	Rabbit     RabbitMQConfig   `json:"rabbitmq"`
 	JWTCli     JWTConfig        `json:"jwt"`
@@ -226,10 +230,67 @@ type OCRConfig struct {
 	PSM int `json:"psm"`
 }
 
+// ScanOCRConfig là cấu hình của TÍNH NĂNG tab Quét — OCR chữ in thành PDF.
+// TÁCH KHỎI OCRConfig ở trên vì hai thứ có mục tiêu ngược
+// nhau và đi chung code thì mỗi lần chỉnh một bên là âm thầm đổi bên kia:
+//   - OCRConfig (pipeline nạp kho): chỉ cần TEXT THÔ từng trang để chunk + embed,
+//     sai sót bù bằng chunker/agent, chạy trong worker ingest, không box, không
+//     confidence, không PDF.
+//   - ScanOCRConfig (tab Quét): cần TỪ + toạ độ + confidence để hiển thị/sửa/OCR
+//     lại theo vùng, rồi trả PDF. Người dùng ngồi xem từng
+//     trang nên chất lượng và vị trí phải đúng.
+//
+// Hai bên chỉ trùng đường dẫn binary trên máy, không trùng code: engine của tab
+// Quét ở src/common/scanocr (cổng Engine + adapter tesseract), pipeline nạp kho
+// ở src/common/extractor.
+type ScanOCRConfig struct {
+	Enabled bool `json:"enabled"`
+	// Engine chọn adapter trong registry scanocr — mặc định "tesseract". Thêm
+	// engine khác (paddle/vietocr/doctr) chỉ là thêm file + một dòng registry,
+	// không đổi service/UI/PDF vì tất cả chỉ nhìn hợp đồng scanocr.Page.
+	Engine string `json:"engine"`
+	// Binary đường dẫn Tesseract cho tính năng này — mặc định lấy theo env
+	// SCAN_OCR_BINARY, rồi tới ocr.binary, cuối cùng "tesseract" (ăn PATH).
+	Binary string `json:"binary"`
+	// Lang chuỗi tessdata, hỗ trợ nhiều gói kiểu "vie+eng". Mặc định "vie" như
+	// pipeline: máy chưa cài gói eng sẽ làm tesseract exit != 0 cho MỌI trang.
+	Lang    string `json:"lang"`
+	PSM     int    `json:"psm"`
+	Timeout int    `json:"timeout_sec"`
+	// RenderBinary/RenderDPI cho renderer PDF→ảnh (poppler pdftoppm). OCR cần
+	// 300 DPI; ảnh hiển thị cho FE vẽ vùng chỉ cần PreviewDPI để nhẹ băng thông.
+	RenderBinary  string `json:"render_binary"`
+	RenderDPI     int    `json:"render_dpi"`
+	PreviewDPI    int    `json:"preview_dpi"`
+	PreviewJPEG   int    `json:"preview_jpeg_quality"`
+	ThresholdChar int    `json:"text_layer_min_chars"`
+	// MinConfWord là ngưỡng dưới: từ có confidence thấp hơn bị coi là "nghi ngờ"
+	// và FE tô amber để người dùng sửa. Đo thật trên fixture tiếng Việt: TB 91,8,
+	// 8/387 từ <70 — tức ~2% nên filter không nhiễu.
+	MinConfWord int `json:"min_conf_word"`
+	// Trần an toàn cho MỘT job — job async nên không chặn theo request HTTP nữa,
+	// chặn theo dung lượng/số trang để worker không bị một tệp khổng lồ chiếm hàng đợi.
+	MaxPages       int `json:"max_pages"`
+	MaxSizeMB      int `json:"max_size_mb"`
+	MaxUploadMB    int `json:"max_upload_mb"`
+	Parallel       int `json:"parallel"`
+	PageTimeout    int `json:"page_timeout_sec"`
+	MaxAttempts    int `json:"max_attempts"`
+	TempTTLHours   int `json:"temp_ttl_hours"`
+	PushedTTLHours int `json:"pushed_ttl_hours"`
+	// OutputJPEGQuality: ảnh trang nhúng lại vào PDF search được nén tới đâu.
+	// PNG 300DPI một trang A4 ~410KB → 200 trang là 80MB; JPEG q80 giảm còn
+	// ~1/4 tới ~1/6 mà mắt không phân biệt được trên bản scan.
+	OutputJPEGQuality int `json:"output_jpeg_quality"`
+	// PDFAsane bật hậu xử lý Ghostscript -dPDFA=2 sau khi đã có PDF (V2).
+	PDFASane bool `json:"pdfa"`
+}
+
 // redis cli
 type RedisConfig struct {
-	Host           string `json:"host"` // Đổi từ Addr sang Host để dễ quản lý
-	Port           int    `json:"port"` // Thêm Port
+	// Đổi từ Addr sang Host để dễ quản lý
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
 	Password       string `json:"password"`
 	DB             int    `json:"db"`
 	SocketTimeout  int    `json:"socket_timeout"`
@@ -425,6 +486,119 @@ func applyChatCryptoDefaults(cfg *appConfig) error {
 	return nil
 }
 
+// normalizeOCR chuẩn hoá đường OCR của PIPELINE NẠP KHO (extractor.OCRConfig).
+// Tách từ Load để Load còn đọc được trong một màn hình; hành vi giữ nguyên từng
+// chữ một — chỉ dời chỗ, không đổi mặc định nào.
+func normalizeOCR(cfg *appConfig) {
+	if envBin := os.Getenv("OCR_BINARY"); envBin != "" {
+		cfg.OCR.Binary = envBin
+	}
+	if cfg.OCR.Binary == "" {
+		cfg.OCR.Binary = "tesseract" // ăn theo PATH (Linux/prod)
+	}
+	if cfg.OCR.Lang == "" {
+		// Default giữ "vie" chứ không phải "vie+eng": máy chưa cài gói eng
+		// sẽ làm tesseract exit != 0 cho MỌI trang (không chỉ kém chính
+		// xác). Máy nào đã có eng thì khai "vie+eng" trong config.
+		cfg.OCR.Lang = "vie"
+	}
+	if cfg.OCR.TimeoutSec <= 0 {
+		cfg.OCR.TimeoutSec = 120
+	}
+	// Kẹp trần 1 giờ — time.Duration(o.TimeoutSec)*time.Second tràn số với
+	// giá trị khổng lồ (thành âm rồi rơi về default một cách tình cờ).
+	if cfg.OCR.TimeoutSec > 3600 {
+		cfg.OCR.TimeoutSec = 3600
+	}
+	if cfg.OCR.RenderDPI <= 0 {
+		cfg.OCR.RenderDPI = 300
+	}
+	if cfg.OCR.MinTextChars < 0 {
+		cfg.OCR.MinTextChars = 0
+	}
+	if cfg.OCR.PSM <= 0 {
+		cfg.OCR.PSM = 6
+	}
+}
+
+// clampInt điền mặc định khi chưa khai báo (số <= 0 = "không gửi") rồi kẹp vào
+// [lo, hi]. Giá trị âm là gõ sai, để nguyên thì về sau nhân với thời gian/DPI
+// thành hành vi khó đoán, nên thà kẹp về cận.
+func clampInt(v *int, def, lo, hi int) {
+	if *v <= 0 {
+		*v = def
+	}
+	if *v < lo {
+		*v = lo
+	} else if *v > hi {
+		*v = hi
+	}
+}
+
+// normalizeScanOCR chuẩn hoá config của TÍNH NĂNG tab Quét. Đi sau khối ocr.*
+// vì nó mượn đường dẫn binary/renderer của khối đó làm fallback: một máy chỉ
+// cài Tesseract + poppler một lần, khai ở đâu cũng chạy cả hai luồng, nhưng
+// hai struct vẫn TÁCH NHAU (không sửa cfg.OCR) để chỉnh một bên không âm thầm
+// đổi bên kia.
+//
+// enabled KHÔNG tự bật: thiếu section thì tính năng tắt và API báo 400 nói rõ
+// tên công tắc, còn việc tự bật OCR trên máy production là quyết định vận hành.
+func normalizeScanOCR(cfg *appConfig) {
+	s := &cfg.ScanOCR
+	if envBin := os.Getenv("SCAN_OCR_BINARY"); envBin != "" {
+		s.Binary = envBin
+	}
+	if s.Binary == "" {
+		s.Binary = cfg.OCR.Binary
+	}
+	if s.Binary == "" {
+		s.Binary = "tesseract" // ăn theo PATH (Linux/prod)
+	}
+	if s.Engine == "" {
+		s.Engine = "tesseract"
+	}
+	s.Engine = strings.ToLower(strings.TrimSpace(s.Engine))
+	// "vie" chứ không "vie+eng": máy chưa cài gói eng làm tesseract exit != 0
+	// cho MỌI trang của job, không chỉ kém chính xác.
+	if s.Lang == "" {
+		s.Lang = "vie"
+	}
+	if s.RenderBinary == "" {
+		s.RenderBinary = cfg.OCR.RenderBinary
+	}
+	if s.RenderBinary == "" {
+		s.RenderBinary = "pdftoppm"
+	}
+	for _, d := range []struct {
+		v           *int
+		def, lo, hi int
+	}{
+		{v: &s.PSM, def: 6, lo: 3, hi: 13},
+		{v: &s.Timeout, def: 120, lo: 5, hi: 3600},
+		{v: &s.PageTimeout, def: 180, lo: 10, hi: 1800},
+		{v: &s.RenderDPI, def: 300, lo: 72, hi: 600},
+		{v: &s.PreviewDPI, def: 150, lo: 72, hi: 600},
+		{v: &s.PreviewJPEG, def: 80, lo: 50, hi: 95},
+		{v: &s.OutputJPEGQuality, def: 80, lo: 50, hi: 95},
+		{v: &s.ThresholdChar, def: 40, lo: 1, hi: 2000},
+		{v: &s.MinConfWord, def: 70, lo: 1, hi: 100},
+		{v: &s.MaxPages, def: 300, lo: 1, hi: 2000},
+		{v: &s.MaxSizeMB, def: 200, lo: 1, hi: 2000},
+		{v: &s.MaxUploadMB, def: 500, lo: 1, hi: 2048},
+		{v: &s.Parallel, def: 2, lo: 1, hi: 8},
+		{v: &s.MaxAttempts, def: 3, lo: 1, hi: 10},
+		{v: &s.TempTTLHours, def: 24, lo: 1, hi: 720},
+		{v: &s.PushedTTLHours, def: 168, lo: 1, hi: 8760},
+	} {
+		clampInt(d.v, d.def, d.lo, d.hi)
+	}
+	// Một trang gồm render + OCR, nên trần trang phải CHỨA trần engine call;
+	// ngược lại deadline trang sẽ cắt giữa lúc Tesseract đang chạy.
+	if s.PageTimeout < s.Timeout {
+		s.PageTimeout = s.Timeout
+	}
+}
+
 // Load đọc file JSON và trả về IConfig. opts áp SAU file và SAU env — dùng
 // cho flag CLI, nên thứ tự ưu tiên là flag > env > file (xem llm_selection.go).
 func Load(path string, opts ...LoadOption) (IConfig, error) {
@@ -519,35 +693,10 @@ func Load(path string, opts ...LoadOption) (IConfig, error) {
 	if envToken := os.Getenv("QDRANT_TOKEN"); envToken != "" {
 		cfg.Qdrant.Token = envToken
 	}
-	if envBin := os.Getenv("OCR_BINARY"); envBin != "" {
-		cfg.OCR.Binary = envBin
-	}
-	if cfg.OCR.Binary == "" {
-		cfg.OCR.Binary = "tesseract" // ăn theo PATH (Linux/prod)
-	}
-	if cfg.OCR.Lang == "" {
-		// Default giữ "vie" chứ không phải "vie+eng": máy chưa cài gói eng
-		// sẽ làm tesseract exit != 0 cho MỌI trang (không chỉ kém chính
-		// xác). Máy nào đã có eng thì khai "vie+eng" trong config.
-		cfg.OCR.Lang = "vie"
-	}
-	if cfg.OCR.TimeoutSec <= 0 {
-		cfg.OCR.TimeoutSec = 120
-	}
-	// Kẹp trần 1 giờ — time.Duration(o.TimeoutSec)*time.Second tràn số với
-	// giá trị khổng lồ (thành âm rồi rơi về default một cách tình cờ).
-	if cfg.OCR.TimeoutSec > 3600 {
-		cfg.OCR.TimeoutSec = 3600
-	}
-	if cfg.OCR.RenderDPI <= 0 {
-		cfg.OCR.RenderDPI = 300
-	}
-	if cfg.OCR.MinTextChars < 0 {
-		cfg.OCR.MinTextChars = 0
-	}
-	if cfg.OCR.PSM <= 0 {
-		cfg.OCR.PSM = 6
-	}
+	// OCR của pipeline nạp kho và OCR của tab Quét là hai đường TÁCH NHAU (§0.7):
+	// mỗi đường tự chuẩn hoá trong hàm riêng để không ai vô tình sửa số của ai.
+	normalizeOCR(&cfg)
+	normalizeScanOCR(&cfg)
 	if cfg.RedisCli.Host == "" {
 		return nil, fmt.Errorf("redis.host is required")
 	}
@@ -659,6 +808,7 @@ func (c *appConfig) GetEmbedding() EmbeddingConfig   { return c.Embedding }
 func (c *appConfig) GetLLMs() LLMsConfig             { return c.LLMs }
 func (c *appConfig) GetQdrant() QdrantConfig         { return c.Qdrant }
 func (c *appConfig) GetOCR() OCRConfig               { return c.OCR }
+func (c *appConfig) GetScanOCR() ScanOCRConfig       { return c.ScanOCR }
 func (c *appConfig) GetRedis() RedisConfig           { return c.RedisCli }
 func (c *appConfig) GetRabbitMQ() RabbitMQConfig     { return c.Rabbit }
 func (c *appConfig) GetJWT() JWTConfig               { return c.JWTCli }

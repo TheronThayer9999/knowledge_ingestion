@@ -42,5 +42,7 @@ type IStorage interface {
 	// Content-Disposition: attachment, vì link cross-origin khiến browser bỏ qua
 	// thuộc tính download của thẻ <a>; tên có dấu phải mã theo RFC 5987
 	// (filename*=UTF-8''…). Trả error nếu kho từ chối ký.
-	PresignedGetURL(ctx context.Context, key string, downloadAs string, expiry time.Duration) (string, error)
+	// inline=true → Content-Disposition: inline (cho phép preview trong iframe);
+	// false → attachment (tải xuống). Tên file vẫn nhét vào header theo RFC 5987.
+	PresignedGetURL(ctx context.Context, key string, downloadAs string, inline bool, expiry time.Duration) (string, error)
 }

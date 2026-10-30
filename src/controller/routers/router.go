@@ -22,7 +22,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 	consistencyAPI *apis.ConsistencyAPI, healthAPI *apis.HealthAPI,
 	searchAPI *apis.SearchAPI, chatAPI *apis.ChatAPI,
 	conversationAPI *apis.ConversationAPI, llmAPI *apis.LLMAPI, usageAPI *apis.LLMUsageAdminAPI,
-	llmUserAPI *apis.LLMUserAPI,
+	llmUserAPI *apis.LLMUserAPI, scanJobAPI *apis.ScanJobAPI,
 	cryptoAPI *apis.CryptoAPI, cors middlewares.ICORSMiddleware, auth middlewares.IAuthMiddleware,
 	crypto middlewares.IChatCryptoMiddleware,
 	trace middlewares.ITraceMiddleware, rl middlewares.IRateLimiter) *Router {
@@ -82,6 +82,7 @@ func NewRouter(cfg config.IConfig, api *apis.PingPongAPI,
 		authed.POST("/chat", chatAPI.Chat)
 		registerConversationRoutes(authed, chatAPI, conversationAPI, llmAPI, cryptoAPI)
 		registerUserProviderRoutes(authed, llmUserAPI)
+		registerScanJobRoutes(authed, scanJobAPI)
 	}
 
 	return &Router{Engine: engine}
@@ -135,6 +136,20 @@ func registerPublicRoutes(v1 *gin.RouterGroup, api *apis.PingPongAPI, userAPI *a
 // tài khoản: service tự lấy user_id từ token và mọi truy vấn DB scope theo
 // user đó, nên không có đường nào đọc được kết nối của người khác. Ngược lại
 // /llm/providers/* là cấu hình CHUNG nên vẫn gate admin.
+
+// registerScanJobRoutes ghi nhóm route hàng đợi OCR quét (tab Quét): tạo job,
+// theo dõi tiến độ, huỷ/xoá, OCR lại 1 trang, xem 1 trang và lấy URL tệp kết quả.
+func registerScanJobRoutes(authed *gin.RouterGroup, api *apis.ScanJobAPI) {
+	authed.POST("/scan/jobs", api.Create)
+	authed.GET("/scan/jobs", api.List)
+	authed.GET("/scan/jobs/:id", api.Get)
+	authed.POST("/scan/jobs/:id/cancel", api.Cancel)
+	authed.DELETE("/scan/jobs/:id", api.Delete)
+	authed.POST("/scan/jobs/:id/pages/:page/retry", api.RetryPage)
+	authed.GET("/scan/jobs/:id/pages/:page", api.GetPage)
+	authed.GET("/scan/jobs/:id/download", api.DownloadURL)
+}
+
 func registerUserProviderRoutes(authed *gin.RouterGroup, api *apis.LLMUserAPI) {
 	authed.GET("/llm/my/providers", api.List)
 	// Danh mục provider để user chọn — route TĨNH, gin ưu tiên nó hơn

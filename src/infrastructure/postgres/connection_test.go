@@ -46,6 +46,8 @@ func (c *testConfig) GetQdrant() config.QdrantConfig { return c.inner.GetQdrant(
 
 func (c *testConfig) GetOCR() config.OCRConfig { return c.inner.GetOCR() }
 
+func (c *testConfig) GetScanOCR() config.ScanOCRConfig { return c.inner.GetScanOCR() }
+
 func (c *testConfig) GetAgent() config.AgentConfig { return c.inner.GetAgent() }
 
 func (c *testConfig) GetVLM() config.VLMConfig { return c.inner.GetVLM() }

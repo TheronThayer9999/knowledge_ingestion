@@ -20,6 +20,7 @@ func (fakeConfig) GetEmbedding() config.EmbeddingConfig { return config.Embeddin
 func (fakeConfig) GetLLMs() config.LLMsConfig           { return config.LLMsConfig{} }
 func (fakeConfig) GetQdrant() config.QdrantConfig       { return config.QdrantConfig{} }
 func (fakeConfig) GetOCR() config.OCRConfig             { return config.OCRConfig{} }
+func (fakeConfig) GetScanOCR() config.ScanOCRConfig     { return config.ScanOCRConfig{} }
 func (fakeConfig) GetRedis() config.RedisConfig         { return config.RedisConfig{} }
 func (fakeConfig) GetRabbitMQ() config.RabbitMQConfig   { return config.RabbitMQConfig{} }
 func (fakeConfig) GetJWT() config.JWTConfig             { return config.JWTConfig{} }

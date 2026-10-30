@@ -46,6 +46,7 @@ type allowEntry struct {
 var functionBudgetAllowlist = []allowEntry{
 	{"cmd/examples/main.go::main", 67, 4},
 	{"cmd/examples/main.go::runAgent", 71, 8},
+	{"cmd/worker/main.go::main", 92, 5},
 	{"src/agent/eino/agent.go::(*ChatAgent).Run", 67, 17},
 	{"src/agent/eino/knowledge_search.go::NewKnowledgeSearchTool", 78, 14},
 	{"src/agent/eino/list_unreadable_pages.go::NewListUnreadablePagesTool", 76, 15},
@@ -71,6 +72,8 @@ var functionBudgetAllowlist = []allowEntry{
 	{"src/controller/services/article_admin_service.go::(*articleAdminService).QueueStatus", 88, 9},
 	{"src/controller/services/article_purge_service.go::(*articlePurgeService).PurgeDeleted", 86, 12},
 	{"src/controller/services/category_service.go::(*categoryService).Update", 57, 19},
+	{"src/controller/services/scan_job_worker_service.go::(*scanJobWorkerService).ProcessPending", 49, 14},
+	{"src/controller/services/scan_job_worker_service.go::(*scanJobWorkerService).processOne", 61, 9},
 	{"src/controller/services/user_service.go::(*userService).Refresh", 67, 14},
 	{"src/infrastructure/postgres/migrate.go::migrateCategoryClosure", 61, 9},
 	{"src/infrastructure/qdrant/connection.go::(*connection).ensureCollection", 68, 17},

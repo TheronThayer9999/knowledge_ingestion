@@ -129,7 +129,7 @@ func (s *purgeStubStorage) Exists(context.Context, string) (bool, error) { retur
 func (s *purgeStubStorage) PresignedURL(context.Context, string, string, time.Duration) (string, error) {
 	return "", nil
 }
-func (s *purgeStubStorage) PresignedGetURL(context.Context, string, string, time.Duration) (string, error) {
+func (s *purgeStubStorage) PresignedGetURL(context.Context, string, string, bool, time.Duration) (string, error) {
 	return "", nil
 }
 

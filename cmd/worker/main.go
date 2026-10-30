@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"knowledge_ingestion/src/common/constants"
 	"knowledge_ingestion/src/common/logs"
+	"knowledge_ingestion/src/common/scanocr"
 	"knowledge_ingestion/src/config"
 	"knowledge_ingestion/src/controller/services"
 	"knowledge_ingestion/src/loader"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"go.uber.org/fx"
 )
@@ -62,13 +64,54 @@ func main() {
 		fx.Provide(services.NewArticleIndexService),
 		fx.Provide(services.NewArticleCompileService),
 		fx.Provide(services.NewRefreshTokenJanitor),
+		// Hang doi OCR quet (tab Quet): service xu ly theo trang.
+		fx.Provide(func(cfg config.IConfig) scanocr.Config {
+			s := cfg.GetScanOCR()
+			return scanocr.Config{
+				Enabled:           s.Enabled,
+				Engine:            s.Engine,
+				Binary:            s.Binary,
+				Lang:              s.Lang,
+				PSM:               s.PSM,
+				Timeout:           time.Duration(s.Timeout) * time.Second,
+				PageTimeout:       time.Duration(s.PageTimeout) * time.Second,
+				RenderBinary:      s.RenderBinary,
+				RenderDPI:         s.RenderDPI,
+				PreviewDPI:        s.PreviewDPI,
+				TextLayerMinChars: s.ThresholdChar,
+				MinConfWord:       s.MinConfWord,
+				MaxAttempts:       s.MaxAttempts,
+				Parallel:          s.Parallel,
+			}.Normalize()
+		}),
+		fx.Provide(func(cfg config.IConfig) services.ScanJobOptions {
+			s := cfg.GetScanOCR()
+			ttl := func(hours int, def time.Duration) time.Duration {
+				if hours <= 0 {
+					return def
+				}
+				return time.Duration(hours) * time.Hour
+			}
+			return services.ScanJobOptions{
+				Enabled:        s.Enabled,
+				Lang:           s.Lang,
+				DPI:            s.RenderDPI,
+				PSM:            s.PSM,
+				Engine:         s.Engine,
+				MaxUploadBytes: int64(s.MaxSizeMB) << 20,
+				MaxPages:       s.MaxPages,
+				TempTTL:        ttl(s.TempTTLHours, constants.SCAN_TMP_TTL),
+				PushedTTL:      ttl(s.PushedTTLHours, constants.SCAN_PUSHED_TTL),
+				PresignTTL:     constants.PRESIGN_DOWNLOAD_EXPIRY,
+			}
+		}),
+		fx.Provide(services.NewScanJobWorkerService),
+		fx.Provide(services.NewScanJobJanitor),
 		fx.Provide(services.NewWorkerHeartbeatService),
 		// Lưới chắn mất vector — khai báo job nằm ở schedulesFor, không rải
 		// trong main.
 		fx.Provide(services.NewIndexReconcileService),
-		fx.Invoke(func(lc fx.Lifecycle, purge services.IArticlePurgeService, extract services.IArticleExtractService, index services.IArticleIndexService, compile services.IArticleCompileService, refreshJanitor services.IRefreshTokenJanitor, reconcile services.IIndexReconcileService, opts services.PurgeOptions) {
-			NewRunner(schedulesFor(purge, extract, index, compile, refreshJanitor, reconcile, opts)).Attach(lc)
-		}),
+		fx.Invoke(attachSchedules),
 		// Nhịp sống worker — ghi bảng worker_heartbeats mỗi
 		// WORKER_HEARTBEAT_INTERVAL để API/UI biết worker còn chạy (không
 		// phải job Schedule: log "job xong" mỗi 15s chỉ tổ nhiễu).

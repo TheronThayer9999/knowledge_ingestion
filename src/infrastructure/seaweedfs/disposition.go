@@ -70,3 +70,10 @@ func buildContentDisposition(filename string) string {
 	return "attachment; filename=" + strconv.Quote(asciiFilename(filename)) +
 		"; filename*=UTF-8''" + encodeExtValue(filename)
 }
+
+// buildInlineDisposition tương tự nhưng dùng "inline" để browser preview PDF
+// trong iframe thay vì tải xuống.
+func buildInlineDisposition(filename string) string {
+	return "inline; filename=" + strconv.Quote(asciiFilename(filename)) +
+		"; filename*=UTF-8''" + encodeExtValue(filename)
+}
