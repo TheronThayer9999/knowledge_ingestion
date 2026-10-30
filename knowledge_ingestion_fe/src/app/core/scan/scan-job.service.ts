@@ -38,6 +38,32 @@ export interface ScanJobDownloadResponse {
   filename: string;
 }
 
+/** Một từ đã OCR — box chuẩn hoá 0..1 theo ảnh render (§B.3). */
+export interface ScanPageWord {
+  t: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Confidence 0..100 */
+  c: number;
+}
+
+/** Kết quả MỘT trang cho tab Xem & sửa (GET /scan/jobs/:id/pages/:page). */
+export interface ScanJobPageResponse {
+  job_id: number;
+  page: number;
+  status: string;
+  words: ScanPageWord[];
+  text: string;
+  mean_conf: number;
+  low_conf_words: number;
+  chars_existing: number;
+  has_text_layer: boolean;
+  last_error?: string;
+  render_url?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ScanJobService {
   private readonly api = inject(ApiService);
@@ -99,5 +125,10 @@ export class ScanJobService {
 
   download(id: number): Observable<ScanJobDownloadResponse> {
     return this.api.get<ScanJobDownloadResponse>(`/scan/jobs/${id}/download`);
+  }
+
+  /** Một trang kèm từ/độ tự tin + ảnh render presigned (tab Xem & sửa). */
+  getPage(id: number, page: number): Observable<ScanJobPageResponse> {
+    return this.api.get<ScanJobPageResponse>(`/scan/jobs/${id}/pages/${page}`);
   }
 }

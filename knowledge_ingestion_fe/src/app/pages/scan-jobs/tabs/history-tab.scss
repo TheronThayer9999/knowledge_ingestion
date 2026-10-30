@@ -1,0 +1,133 @@
+// Tab Lịch sử: bảng phiên + lọc trạng thái + phân trang.
+:host {
+  display: block;
+}
+
+.history-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.filter {
+  width: 220px;
+}
+
+.table-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  list-style: none;
+}
+
+.row-skeleton {
+  height: var(--list-row-height);
+}
+
+.rows-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--text-style-sm);
+
+  th {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: var(--border-width) solid var(--color-border);
+    color: var(--color-muted);
+    font: var(--text-style-xs-strong);
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: var(--border-width) solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background: var(--color-accent-faint);
+  }
+
+  tbody tr.is-active {
+    background: var(--color-accent-soft);
+  }
+}
+
+.cell-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 0; // cho phép truncate trong bảng
+  width: 50%;
+
+  mat-icon {
+    color: var(--color-muted);
+    flex: 0 0 auto;
+  }
+}
+
+.cell-meta {
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.cell-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.history-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pager-label {
+  min-width: 8ch;
+  text-align: center;
+  font: var(--text-style-sm);
+  color: var(--color-muted);
+}
+
+// Chỉ hiện với trình đọc màn hình — tiêu đề cột hành động không có nhãn thị giác
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .rows-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .filter {
+    width: 100%;
+  }
+}

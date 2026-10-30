@@ -1,0 +1,302 @@
+<div class="scan-body">
+  <div class="layout">
+    <div class="steps">
+      <!-- 1. Tệp -->
+      <section class="scan-card step" [class.step-done]="store.hasFile() && !store.creating()">
+        <header class="step-head">
+          <span class="step-num" aria-hidden="true">1</span>
+          <div class="step-heading">
+            <h3 class="scan-card-title">{{ lang.t('SCAN_JOBS_STEP_UPLOAD') }}</h3>
+            <p class="scan-hint">{{ lang.t('SCAN_JOBS_STEP_UPLOAD_SUB') }}</p>
+          </div>
+        </header>
+
+        <div class="step-body">
+          @if (store.file(); as picked) {
+            <div class="file-row" [class.is-invalid]="picked.error">
+              <span class="file-icon" aria-hidden="true">
+                <mat-icon>{{ store.fileIcon(picked.file) }}</mat-icon>
+              </span>
+              <div class="file-text">
+                <p class="file-name" [matTooltip]="picked.file.name">{{ picked.file.name }}</p>
+                <p class="file-meta">
+                  {{ store.formatBytes(picked.file.size) }} ·
+                  @if (picked.error) {
+                    <span class="scan-danger">{{ lang.t(picked.error) }}</span>
+                  } @else {
+                    <span>{{ lang.t('SCAN_JOBS_FILE_READY') }}</span>
+                  }
+                </p>
+              </div>
+              <button
+                mat-icon-button
+                type="button"
+                [disabled]="store.creating()"
+                [matTooltip]="lang.t('SCAN_JOBS_REMOVE')"
+                [attr.aria-label]="lang.t('SCAN_JOBS_REMOVE')"
+                (click)="store.removeFile()"
+              >
+                <mat-icon aria-hidden="true">close</mat-icon>
+              </button>
+            </div>
+            <button
+              matButton="outlined"
+              type="button"
+              class="wide"
+              [disabled]="store.creating()"
+              (click)="fileInput.click()"
+            >
+              <mat-icon aria-hidden="true">swap_horiz</mat-icon>
+              {{ lang.t('SCAN_JOBS_REPLACE') }}
+            </button>
+          } @else {
+            <div
+              class="dropzone"
+              [class.dragging]="store.dragging()"
+              (dragover)="store.onDragOver($event)"
+              (dragleave)="store.onDragLeave()"
+              (drop)="store.onDrop($event)"
+            >
+              <mat-icon class="drop-icon" aria-hidden="true">cloud_upload</mat-icon>
+              <p class="drop-title">{{ lang.t('SCAN_JOBS_DROP_TITLE') }}</p>
+              <p class="scan-hint">{{ lang.t('SCAN_JOBS_DROP_HINT') }}</p>
+              <button matButton="outlined" type="button" (click)="fileInput.click()">
+                <mat-icon aria-hidden="true">folder_open</mat-icon>
+                {{ lang.t('SCAN_JOBS_PICK') }}
+              </button>
+            </div>
+          }
+        </div>
+      </section>
+
+      <!-- 2. Cài đặt -->
+      <section class="scan-card step" [class.step-done]="store.canStart()">
+        <header class="step-head">
+          <span class="step-num" aria-hidden="true">2</span>
+          <div class="step-heading">
+            <h3 class="scan-card-title">{{ lang.t('SCAN_JOBS_STEP_SETTINGS') }}</h3>
+            <p class="scan-hint">{{ lang.t('SCAN_JOBS_STEP_SETTINGS_SUB') }}</p>
+          </div>
+        </header>
+
+        <div class="step-body">
+          <div class="field">
+            <span class="field-label" id="scan-ocr-lang">{{ lang.t('SCAN_JOBS_LANG') }}</span>
+            <div class="seg" role="group" aria-labelledby="scan-ocr-lang">
+              @for (code of store.ocrLangs; track code) {
+                <button
+                  type="button"
+                  [class.active]="store.ocrLang() === code"
+                  [disabled]="!store.canConfigure()"
+                  [attr.aria-pressed]="store.ocrLang() === code"
+                  (click)="store.setLang(code)"
+                >
+                  {{ lang.t(store.langLabel(code)) }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Progressive disclosure: DPI và chế độ ẩn mặc định để giảm clutter -->
+          <button
+            matButton
+            type="button"
+            class="advanced-toggle"
+            [attr.aria-expanded]="store.showAdvanced()"
+            aria-controls="scan-advanced-settings"
+            (click)="store.toggleAdvanced()"
+          >
+            <mat-icon aria-hidden="true">{{
+              store.showAdvanced() ? 'expand_less' : 'expand_more'
+            }}</mat-icon>
+            {{
+              store.showAdvanced()
+                ? lang.t('SCAN_JOBS_HIDE_ADVANCED')
+                : lang.t('SCAN_JOBS_SHOW_ADVANCED')
+            }}
+          </button>
+
+          @if (store.showAdvanced()) {
+            <div id="scan-advanced-settings" class="advanced-settings">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>{{ lang.t('SCAN_JOBS_DPI') }}</mat-label>
+                <mat-select
+                  [value]="store.dpi()"
+                  [disabled]="!store.canConfigure()"
+                  (selectionChange)="store.setDpi($event.value)"
+                >
+                  @for (option of store.dpiOptions; track option) {
+                    <mat-option [value]="option">{{ lang.t(store.dpiLabel(option)) }}</mat-option>
+                  }
+                </mat-select>
+                <mat-hint>{{ lang.t('SCAN_JOBS_DPI_HINT') }}</mat-hint>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>{{ lang.t('SCAN_JOBS_MODE') }}</mat-label>
+                <mat-select
+                  [value]="store.mode()"
+                  [disabled]="!store.canConfigure()"
+                  (selectionChange)="store.setMode($event.value)"
+                >
+                  <mat-option value="auto">{{ lang.t('SCAN_JOBS_MODE_AUTO') }}</mat-option>
+                  <mat-option value="force">{{ lang.t('SCAN_JOBS_MODE_FORCE') }}</mat-option>
+                </mat-select>
+                <mat-hint>{{ lang.t('SCAN_JOBS_MODE_HINT') }}</mat-hint>
+              </mat-form-field>
+            </div>
+          }
+        </div>
+      </section>
+
+      <!-- 3. Chạy -->
+      <section class="scan-card step" [class.step-done]="store.canDownload()">
+        <header class="step-head">
+          <span class="step-num" aria-hidden="true">3</span>
+          <div class="step-heading">
+            <h3 class="scan-card-title">{{ lang.t('SCAN_JOBS_STEP_RUN') }}</h3>
+            <p class="scan-hint">{{ lang.t('SCAN_JOBS_STEP_RUN_SUB') }}</p>
+          </div>
+        </header>
+
+        <div class="step-body">
+          <button
+            matButton="filled"
+            type="button"
+            class="wide"
+            [disabled]="!store.canStart()"
+            (click)="store.startJob()"
+          >
+            <!-- Một node icon + một node nhãn: hai nhánh @if rời sẽ làm Material
+                 không chiếu được icon vào slot (NG8011), nên đổi nội dung tại chỗ. -->
+            <mat-icon [class.scan-spin]="store.creating()" aria-hidden="true">{{
+              store.creating() ? 'progress_activity' : 'play_arrow'
+            }}</mat-icon>
+            {{ store.creating() ? lang.t('SCAN_JOBS_RUNNING') : lang.t('SCAN_JOBS_START') }}
+          </button>
+
+          @if (store.startHint(); as hint) {
+            <p class="scan-hint">{{ lang.t(hint) }}</p>
+          }
+
+          <!-- Chỉ huỷ được đúng phiên đang mở; phiên khác vẫn chạy tiếp. -->
+          @if (store.busyJob()) {
+            <button matButton="outlined" type="button" class="wide" (click)="store.cancel()">
+              {{ lang.t('SCAN_JOBS_CANCEL') }}
+            </button>
+          }
+
+          @if (store.canDownload()) {
+            <button matButton="filled" type="button" class="wide" (click)="store.showTab(2)">
+              <mat-icon aria-hidden="true">picture_as_pdf</mat-icon>
+              {{ lang.t('SCAN_JOBS_VIEW_PDF') }}
+            </button>
+            <button matButton type="button" class="wide" (click)="store.reset()">
+              {{ lang.t('SCAN_JOBS_RESET') }}
+            </button>
+          }
+
+          @if (store.busyJob(); as job) {
+            <div class="progress">
+              <div class="progress-line">
+                <span class="progress-name" [matTooltip]="job.name">{{ job.name }}</span>
+                <span class="scan-chip is-running">{{ job.progress }}%</span>
+              </div>
+              <mat-progress-bar
+                [mode]="job.total_pages ? 'determinate' : 'indeterminate'"
+                [value]="job.progress"
+              />
+              <p class="scan-hint">
+                {{ job.done_pages }}/{{ job.total_pages }} {{ lang.t('SCAN_JOBS_PAGES') }}
+                @if (job.failed_pages > 0) {
+                  ·
+                  <span class="scan-warning"
+                    >{{ job.failed_pages }} {{ lang.t('SCAN_JOBS_FAILED_PAGES') }}</span
+                  >
+                }
+              </p>
+            </div>
+          }
+
+          @if (store.error(); as message) {
+            <div class="scan-banner is-error" role="alert">
+              <mat-icon aria-hidden="true">error</mat-icon>
+              <span>{{ message }}</span>
+            </div>
+          }
+          @if (store.success(); as message) {
+            <div class="scan-banner is-success" role="status">
+              <mat-icon aria-hidden="true">check_circle</mat-icon>
+              <span>{{ message }}</span>
+            </div>
+          }
+        </div>
+      </section>
+    </div>
+
+    <aside class="side">
+      <!-- Phiên gần đây: mở lại kết quả cũ mà không OCR lại, kể cả khi đang chạy
+           một phiên khác — mỗi phiên một trạng thái riêng. -->
+      <section class="scan-card" aria-labelledby="scan-recent-title">
+        <h3 class="side-title" id="scan-recent-title">{{ lang.t('SCAN_JOBS_RECENT') }}</h3>
+        @if (store.loadingRecent()) {
+          <ul class="recent-list" aria-busy="true" aria-live="polite">
+            @for (i of [1, 2, 3]; track i) {
+              <li>
+                <div class="recent-skeleton scan-skeleton" aria-hidden="true"></div>
+              </li>
+            }
+          </ul>
+        } @else if (store.rail().length > 0) {
+          <ul class="recent-list">
+            @for (job of store.rail(); track job.id) {
+              <li>
+                <button
+                  type="button"
+                  class="recent-item"
+                  [class.is-active]="store.activeJob()?.id === job.id"
+                  [attr.aria-current]="store.activeJob()?.id === job.id ? 'true' : null"
+                  (click)="store.open(job)"
+                >
+                  <mat-icon aria-hidden="true">picture_as_pdf</mat-icon>
+                  <span class="recent-name" [matTooltip]="job.name">{{ job.name }}</span>
+                  <span
+                    class="scan-chip"
+                    [class.is-done]="job.status === 'done'"
+                    [class.is-failed]="job.status === 'failed'"
+                    [class.is-running]="store.isRunning(job)"
+                  >
+                    {{ lang.t(store.statusKey(job.status)) }}
+                  </span>
+                  <span class="recent-meta">{{ store.recentMeta(job) }}</span>
+                </button>
+              </li>
+            }
+          </ul>
+        } @else {
+          <div class="side-empty">
+            <mat-icon aria-hidden="true">document_scanner</mat-icon>
+            <p class="scan-hint">{{ lang.t('SCAN_JOBS_NO_RECENT') }}</p>
+          </div>
+        }
+      </section>
+
+      <section class="scan-card tips">
+        <h3 class="side-title">{{ lang.t('SCAN_JOBS_TIPS_TITLE') }}</h3>
+        <ol class="tips-list">
+          <li>{{ lang.t('SCAN_JOBS_TIP_1') }}</li>
+          <li>{{ lang.t('SCAN_JOBS_TIP_2') }}</li>
+          <li>{{ lang.t('SCAN_JOBS_TIP_3') }}</li>
+        </ol>
+      </section>
+    </aside>
+  </div>
+
+  <input
+    #fileInput
+    type="file"
+    class="file-input"
+    accept=".pdf,.png,.jpg,.jpeg"
+    (change)="store.onFilesSelected($event)"
+  />
+</div>

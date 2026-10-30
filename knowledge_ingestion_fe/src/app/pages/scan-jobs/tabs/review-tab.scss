@@ -1,0 +1,129 @@
+// Tab Xem & sửa: ảnh trang + overlay box, cạnh panel chữ OCR của đúng trang đó.
+:host {
+  display: block;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font: var(--text-style-sm-strong);
+
+  mat-icon {
+    color: var(--color-muted);
+  }
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.pager-label {
+  min-width: 12ch;
+  text-align: center;
+  font: var(--text-style-sm);
+  color: var(--color-muted);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.canvas-card,
+.text-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+// Vùng ảnh: box từ được định vị theo % nên ảnh luôn khớp overlay ở mọi kích thước.
+.canvas {
+  position: relative;
+  align-self: center;
+  max-height: 70vh;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+}
+
+.page-image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.word {
+  position: absolute;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background-color var(--duration-fast) var(--easing-standard);
+  pointer-events: auto;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    border-color: var(--color-primary);
+  }
+
+  // Từ có độ tự tin thấp (< 70): tô đỏ nhạt để mắt người dùng nhảy đúng chỗ
+  &.low {
+    background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+    border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+  }
+}
+
+.canvas-empty {
+  min-height: 240px;
+}
+
+.text-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.text-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+// Chữ OCR là văn bản thô: giữ xuống dòng gốc, cho phép bôi đen để copy tay.
+.ocr-text {
+  margin: 0;
+  padding: var(--space-3);
+  max-height: 70vh;
+  overflow: auto;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+  font: var(--text-style-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+}
+
+@media (max-width: 1023px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

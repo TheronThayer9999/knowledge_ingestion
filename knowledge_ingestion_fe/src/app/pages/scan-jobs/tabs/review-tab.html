@@ -1,0 +1,165 @@
+<div class="scan-body">
+  @if (store.activeJob(); as job) {
+    <header class="toolbar">
+      <div class="toolbar-title">
+        <mat-icon aria-hidden="true">fact_check</mat-icon>
+        <span class="scan-truncate" [matTooltip]="job.name">{{ job.name }}</span>
+        <span
+          class="scan-chip"
+          [class.is-done]="job.status === 'done'"
+          [class.is-failed]="job.status === 'failed'"
+          [class.is-running]="store.isRunning(job)"
+        >
+          {{ lang.t(store.statusKey(job.status)) }}
+        </span>
+      </div>
+
+      <div class="pager">
+        <button
+          mat-icon-button
+          type="button"
+          [disabled]="store.reviewPage() <= 1"
+          [matTooltip]="lang.t('SCAN_REVIEW_PREV')"
+          [attr.aria-label]="lang.t('SCAN_REVIEW_PREV')"
+          (click)="store.prevPage()"
+        >
+          <mat-icon aria-hidden="true">chevron_left</mat-icon>
+        </button>
+        <span class="pager-label">
+          {{ lang.t('SCAN_REVIEW_PAGE') }} {{ store.reviewPage() }} /
+          {{ store.totalPages() || '—' }}
+        </span>
+        <button
+          mat-icon-button
+          type="button"
+          [disabled]="store.reviewPage() >= store.totalPages()"
+          [matTooltip]="lang.t('SCAN_REVIEW_NEXT')"
+          [attr.aria-label]="lang.t('SCAN_REVIEW_NEXT')"
+          (click)="store.nextPage()"
+        >
+          <mat-icon aria-hidden="true">chevron_right</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          type="button"
+          [matTooltip]="lang.t('SCAN_REVIEW_RELOAD')"
+          [attr.aria-label]="lang.t('SCAN_REVIEW_RELOAD')"
+          (click)="store.reloadPage()"
+        >
+          <mat-icon aria-hidden="true">refresh</mat-icon>
+        </button>
+        <button
+          matButton="outlined"
+          type="button"
+          [disabled]="store.pageBusy()"
+          (click)="store.retryPage(store.reviewPage())"
+        >
+          <mat-icon aria-hidden="true">restart_alt</mat-icon>
+          {{ lang.t('SCAN_REVIEW_RETRY') }}
+        </button>
+      </div>
+    </header>
+
+    @if (store.pageFailure(); as message) {
+      <div class="scan-banner is-error" role="alert">
+        <mat-icon aria-hidden="true">error</mat-icon>
+        <span>{{ message }}</span>
+      </div>
+    }
+
+    @if (store.pageBusy()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    <div class="split">
+      <!-- Ảnh gốc + overlay box từng từ -->
+      <section class="scan-card canvas-card" aria-labelledby="scan-page-image">
+        <h3 class="scan-card-title" id="scan-page-image">
+          {{ lang.t('SCAN_REVIEW_IMAGE') }}
+        </h3>
+        @if (store.page()?.render_url; as url) {
+          <div class="canvas">
+            <img class="page-image" [src]="url" [alt]="lang.t('SCAN_REVIEW_IMAGE')" />
+            @for (word of store.page()?.words ?? []; track $index) {
+              <!-- `title` thay vì matTooltip: một trang có thể có hàng nghìn từ, mỗi
+                   directive tooltip là một subscription — hover hiếm khi cần tới. -->
+              <span
+                class="word"
+                aria-hidden="true"
+                [class.low]="store.wordTone(word) === 'low'"
+                [attr.title]="word.t"
+                [style.left.%]="word.x * 100"
+                [style.top.%]="word.y * 100"
+                [style.width.%]="word.w * 100"
+                [style.height.%]="word.h * 100"
+              ></span>
+            }
+          </div>
+        } @else {
+          <div class="scan-empty canvas-empty">
+            <mat-icon class="scan-empty-icon" aria-hidden="true">image_not_supported</mat-icon>
+            <p class="scan-empty-title">{{ lang.t('SCAN_REVIEW_NO_IMAGE_TITLE') }}</p>
+            <p class="scan-empty-text">{{ lang.t('SCAN_REVIEW_NO_IMAGE_TEXT') }}</p>
+          </div>
+        }
+      </section>
+
+      <!-- Chữ OCR của trang -->
+      <section class="scan-card text-card" aria-labelledby="scan-page-text">
+        <header class="text-head">
+          <h3 class="scan-card-title" id="scan-page-text">{{ lang.t('SCAN_REVIEW_TEXT') }}</h3>
+          <div class="text-stats">
+            @if (store.page(); as page) {
+              <span class="scan-chip"
+                >{{ lang.t('SCAN_REVIEW_CONF') }} {{ page.mean_conf.toFixed(0) }}%</span
+              >
+              @if (page.low_conf_words > 0) {
+                <span class="scan-chip is-failed"
+                  >{{ page.low_conf_words }} {{ lang.t('SCAN_REVIEW_LOW_WORDS') }}</span
+                >
+              }
+              <button
+                mat-icon-button
+                type="button"
+                [disabled]="!page.text"
+                [matTooltip]="lang.t('SCAN_REVIEW_COPY')"
+                [attr.aria-label]="lang.t('SCAN_REVIEW_COPY')"
+                (click)="store.copyText(page.text)"
+              >
+                <mat-icon aria-hidden="true">content_copy</mat-icon>
+              </button>
+            }
+          </div>
+        </header>
+
+        @if (store.page()?.text; as text) {
+          <pre class="ocr-text">{{ text }}</pre>
+        } @else {
+          <div class="scan-empty">
+            <mat-icon class="scan-empty-icon" aria-hidden="true">text_fields</mat-icon>
+            <p class="scan-empty-title">{{ lang.t('SCAN_REVIEW_EMPTY_TITLE') }}</p>
+            <p class="scan-empty-text">{{ lang.t('SCAN_REVIEW_EMPTY_TEXT') }}</p>
+          </div>
+        }
+
+        @if (store.page()?.last_error; as lastError) {
+          <div class="scan-banner is-error" role="alert">
+            <mat-icon aria-hidden="true">error</mat-icon>
+            <span>{{ lastError }}</span>
+          </div>
+        }
+      </section>
+    </div>
+  } @else {
+    <div class="scan-card">
+      <div class="scan-empty">
+        <mat-icon class="scan-empty-icon" aria-hidden="true">fact_check</mat-icon>
+        <p class="scan-empty-title">{{ lang.t('SCAN_REVIEW_NO_JOB_TITLE') }}</p>
+        <p class="scan-empty-text">{{ lang.t('SCAN_REVIEW_NO_JOB_TEXT') }}</p>
+        <button matButton="filled" type="button" (click)="store.showTab(0)">
+          {{ lang.t('SCAN_JOBS_PICK') }}
+        </button>
+      </div>
+    </div>
+  }
+</div>

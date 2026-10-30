@@ -1,420 +1,61 @@
-<div class="page">
+<div class="scan-page">
   <header class="page-head">
     <h2 class="page-title">{{ lang.t('SCAN_JOBS_TITLE') }}</h2>
     <p class="page-subtitle">{{ lang.t('SCAN_JOBS_SUBTITLE') }}</p>
   </header>
 
-  <div class="workspace">
-    <div class="controls">
-      <!-- 1. Tệp -->
-      <section class="card step" [class.step-done]="hasFile() && !creating()">
-        <header class="step-head">
-          <span class="step-num" aria-hidden="true">1</span>
-          <div class="step-heading">
-            <h3 class="step-title">{{ lang.t('SCAN_JOBS_STEP_UPLOAD') }}</h3>
-            <p class="step-sub">{{ lang.t('SCAN_JOBS_STEP_UPLOAD_SUB') }}</p>
-          </div>
-        </header>
+  <mat-tab-group
+    class="scan-tabs"
+    animationDuration="150ms"
+    [selectedIndex]="store.tabIndex()"
+    (selectedIndexChange)="store.showTab($event)"
+  >
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <span class="tab-label">
+          <mat-icon aria-hidden="true">upload_file</mat-icon>
+          {{ lang.t('SCAN_TAB_DOCUMENTS') }}
+        </span>
+      </ng-template>
+      <ng-template matTabContent>
+        <app-documents-tab />
+      </ng-template>
+    </mat-tab>
 
-        <div class="step-body">
-          @if (file(); as picked) {
-            <div class="file-row" [class.is-invalid]="picked.error">
-              <span class="file-icon" aria-hidden="true">
-                <mat-icon>{{ fileIcon(picked.file) }}</mat-icon>
-              </span>
-              <div class="file-text">
-                <p class="file-name" [matTooltip]="picked.file.name">{{ picked.file.name }}</p>
-                <p class="file-meta">
-                  {{ formatBytes(picked.file.size) }} ·
-                  @if (picked.error) {
-                    <span class="is-danger">{{ lang.t(picked.error) }}</span>
-                  } @else {
-                    <span>{{ lang.t('SCAN_JOBS_FILE_READY') }}</span>
-                  }
-                </p>
-              </div>
-              <button
-                mat-icon-button
-                type="button"
-                [disabled]="creating()"
-                [matTooltip]="lang.t('SCAN_JOBS_REMOVE')"
-                [attr.aria-label]="lang.t('SCAN_JOBS_REMOVE')"
-                (click)="removeFile()"
-              >
-                <mat-icon aria-hidden="true">close</mat-icon>
-              </button>
-            </div>
-            <button
-              matButton="outlined"
-              type="button"
-              class="wide"
-              [disabled]="creating()"
-              (click)="fileInput.click()"
-            >
-              <mat-icon aria-hidden="true">swap_horiz</mat-icon>
-              {{ lang.t('SCAN_JOBS_REPLACE') }}
-            </button>
-          } @else {
-            <div
-              class="dropzone"
-              [class.dragging]="dragging()"
-              (dragover)="onDragOver($event)"
-              (dragleave)="onDragLeave()"
-              (drop)="onDrop($event)"
-            >
-              <mat-icon class="drop-icon" aria-hidden="true">cloud_upload</mat-icon>
-              <p class="drop-title">{{ lang.t('SCAN_JOBS_DROP_TITLE') }}</p>
-              <p class="drop-hint">{{ lang.t('SCAN_JOBS_DROP_HINT') }}</p>
-              <button matButton="outlined" type="button" (click)="fileInput.click()">
-                <mat-icon aria-hidden="true">folder_open</mat-icon>
-                {{ lang.t('SCAN_JOBS_PICK') }}
-              </button>
-            </div>
-          }
-        </div>
-      </section>
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <span class="tab-label">
+          <mat-icon aria-hidden="true">fact_check</mat-icon>
+          {{ lang.t('SCAN_TAB_REVIEW') }}
+        </span>
+      </ng-template>
+      <ng-template matTabContent>
+        <app-review-tab />
+      </ng-template>
+    </mat-tab>
 
-      <!-- 2. Cài đặt -->
-      <section class="card step" [class.step-done]="canStart()">
-        <header class="step-head">
-          <span class="step-num" aria-hidden="true">2</span>
-          <div class="step-heading">
-            <h3 class="step-title">{{ lang.t('SCAN_JOBS_STEP_SETTINGS') }}</h3>
-            <p class="step-sub">{{ lang.t('SCAN_JOBS_STEP_SETTINGS_SUB') }}</p>
-          </div>
-        </header>
-
-        <div class="step-body">
-          <div class="field">
-            <span class="field-label" id="scan-ocr-lang">{{ lang.t('SCAN_JOBS_LANG') }}</span>
-            <div class="seg" role="group" aria-labelledby="scan-ocr-lang">
-              @for (code of ocrLangs; track code) {
-                <button
-                  type="button"
-                  [class.active]="ocrLang() === code"
-                  [disabled]="!canConfigure()"
-                  [attr.aria-pressed]="ocrLang() === code"
-                  (click)="setLang(code)"
-                >
-                  {{ lang.t(langLabel(code)) }}
-                </button>
-              }
-            </div>
-          </div>
-
-          <!-- Progressive disclosure: advanced settings ẩn sau toggle -->
-          <button
-            matButton
-            type="button"
-            class="advanced-toggle"
-            [attr.aria-expanded]="showAdvanced()"
-            aria-controls="scan-advanced-settings"
-            (click)="toggleAdvanced()"
-          >
-            <mat-icon aria-hidden="true">{{
-              showAdvanced() ? 'expand_less' : 'expand_more'
-            }}</mat-icon>
-            {{
-              showAdvanced() ? lang.t('SCAN_JOBS_HIDE_ADVANCED') : lang.t('SCAN_JOBS_SHOW_ADVANCED')
-            }}
-          </button>
-
-          @if (showAdvanced()) {
-            <div id="scan-advanced-settings" class="advanced-settings">
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>{{ lang.t('SCAN_JOBS_DPI') }}</mat-label>
-                <mat-select
-                  [value]="dpi()"
-                  [disabled]="!canConfigure()"
-                  (selectionChange)="setDpi($event.value)"
-                >
-                  @for (option of dpiOptions; track option) {
-                    <mat-option [value]="option">{{ lang.t(dpiLabel(option)) }}</mat-option>
-                  }
-                </mat-select>
-                <mat-hint>{{ lang.t('SCAN_JOBS_DPI_HINT') }}</mat-hint>
-              </mat-form-field>
-
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>{{ lang.t('SCAN_JOBS_MODE') }}</mat-label>
-                <mat-select
-                  [value]="mode()"
-                  [disabled]="!canConfigure()"
-                  (selectionChange)="setMode($event.value)"
-                >
-                  <mat-option value="auto">{{ lang.t('SCAN_JOBS_MODE_AUTO') }}</mat-option>
-                  <mat-option value="force">{{ lang.t('SCAN_JOBS_MODE_FORCE') }}</mat-option>
-                </mat-select>
-                <mat-hint>{{ lang.t('SCAN_JOBS_MODE_HINT') }}</mat-hint>
-              </mat-form-field>
-            </div>
-          }
-        </div>
-      </section>
-
-      <!-- 3. Chạy -->
-      <section class="card step" [class.step-done]="canDownload()">
-        <header class="step-head">
-          <span class="step-num" aria-hidden="true">3</span>
-          <div class="step-heading">
-            <h3 class="step-title">{{ lang.t('SCAN_JOBS_STEP_RUN') }}</h3>
-            <p class="step-sub">{{ lang.t('SCAN_JOBS_STEP_RUN_SUB') }}</p>
-          </div>
-        </header>
-
-        <div class="step-body">
-          <button
-            matButton="filled"
-            type="button"
-            class="wide"
-            [disabled]="!canStart()"
-            (click)="start()"
-          >
-            <!-- Một node icon + một node nhãn: hai nhánh @if rời sẽ làm Material
-                 không chiếu được icon vào slot (NG8011), nên đổi nội dung tại chỗ. -->
-            <mat-icon [class.spin]="creating()" aria-hidden="true">{{
-              creating() ? 'progress_activity' : 'play_arrow'
-            }}</mat-icon>
-            {{ creating() ? lang.t('SCAN_JOBS_RUNNING') : lang.t('SCAN_JOBS_START') }}
-          </button>
-
-          @if (startHint(); as hint) {
-            <p class="hint">{{ lang.t(hint) }}</p>
-          }
-
-          <!-- Chỉ huỷ được đúng phiên đang xem; phiên khác vẫn chạy tiếp. -->
-          @if (busyJob()) {
-            <button matButton="outlined" type="button" class="wide" (click)="cancel()">
-              {{ lang.t('SCAN_JOBS_CANCEL') }}
-            </button>
-          }
-
-          @if (canDownload()) {
-            <button matButton="filled" type="button" class="wide" (click)="download()">
-              <mat-icon aria-hidden="true">download</mat-icon>
-              {{ lang.t('SCAN_JOBS_DOWNLOAD') }}
-            </button>
-            <button matButton type="button" class="wide" (click)="reset()">
-              {{ lang.t('SCAN_JOBS_RESET') }}
-            </button>
-          }
-
-          @if (busyJob(); as job) {
-            <div class="progress">
-              <div class="progress-line">
-                <span class="progress-name" [matTooltip]="job.name">{{ job.name }}</span>
-                <span
-                  class="status-chip"
-                  [class.is-done]="job.status === 'done'"
-                  [class.is-failed]="job.status === 'failed'"
-                  [class.is-running]="job.status === 'pending' || job.status === 'processing'"
-                >
-                  {{ job.progress }}%
-                </span>
-              </div>
-              <mat-progress-bar
-                [mode]="job.total_pages ? 'determinate' : 'indeterminate'"
-                [value]="job.progress"
-              />
-              <p class="progress-meta">
-                {{ job.done_pages }}/{{ job.total_pages }} {{ lang.t('SCAN_JOBS_PAGES') }}
-                @if (job.failed_pages > 0) {
-                  ·
-                  <span class="is-warning"
-                    >{{ job.failed_pages }} {{ lang.t('SCAN_JOBS_FAILED_PAGES') }}</span
-                  >
-                }
-              </p>
-            </div>
-          }
-
-          @if (error(); as message) {
-            <div class="banner is-error" role="alert">
-              <mat-icon aria-hidden="true">error</mat-icon>
-              <span>{{ message }}</span>
-            </div>
-          }
-          @if (success(); as message) {
-            <div class="banner is-success" role="status">
-              <mat-icon aria-hidden="true">check_circle</mat-icon>
-              <span>{{ message }}</span>
-            </div>
-          }
-        </div>
-      </section>
-
-      <!-- Phiên gần đây: mở lại kết quả cũ mà không OCR lại, kể cả khi đang chạy
-           một phiên khác — mỗi phiên một trạng thái riêng. -->
-      @if (loadingRecent()) {
-        <section class="card recent" aria-labelledby="scan-recent-title">
-          <h3 class="recent-title" id="scan-recent-title">{{ lang.t('SCAN_JOBS_RECENT') }}</h3>
-          <ul class="recent-list" aria-busy="true" aria-live="polite">
-            @for (i of [1, 2, 3]; track i) {
-              <li>
-                <div class="recent-skeleton skeleton" aria-hidden="true"></div>
-              </li>
-            }
-          </ul>
-        </section>
-      } @else if (rail().length > 0) {
-        <section class="card recent" aria-labelledby="scan-recent-title">
-          <h3 class="recent-title" id="scan-recent-title">{{ lang.t('SCAN_JOBS_RECENT') }}</h3>
-          <ul class="recent-list">
-            @for (job of rail(); track job.id) {
-              <li>
-                <button
-                  type="button"
-                  class="recent-item"
-                  [class.is-active]="activeJob()?.id === job.id"
-                  [attr.aria-current]="activeJob()?.id === job.id ? 'true' : null"
-                  (click)="openRecent(job)"
-                >
-                  <mat-icon aria-hidden="true">picture_as_pdf</mat-icon>
-                  <span class="recent-name" [matTooltip]="job.name">{{ job.name }}</span>
-                  <span
-                    class="status-chip"
-                    [class.is-done]="job.status === 'done'"
-                    [class.is-failed]="job.status === 'failed'"
-                    [class.is-running]="job.status === 'pending' || job.status === 'processing'"
-                  >
-                    {{ lang.t(statusKey(job.status)) }}
-                  </span>
-                  <span class="recent-meta">{{ recentMeta(job) }}</span>
-                </button>
-              </li>
-            }
-          </ul>
-        </section>
-      }
-    </div>
-
-    <!-- Khung xem PDF: Chromium/PDFium tự lo zoom + chuyển trang, nên thanh
-         công cụ của mình chỉ giữ hành động thật (mở tab, toàn màn hình, tải). -->
-    <section class="card viewer" [class.fullscreen]="fullscreen()">
-      <header class="viewer-head">
-        <div class="viewer-title">
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <span class="tab-label">
           <mat-icon aria-hidden="true">picture_as_pdf</mat-icon>
-          <span class="viewer-name" [matTooltip]="activeJob()?.name ?? ''">
-            {{ activeJob()?.name ?? lang.t('SCAN_JOBS_PREVIEW_TITLE') }}
-          </span>
-          @if (activeJob(); as job) {
-            <span class="viewer-meta">{{ job.total_pages }} {{ lang.t('SCAN_JOBS_PAGES') }}</span>
-          }
-        </div>
+          {{ lang.t('SCAN_TAB_OUTPUT') }}
+        </span>
+      </ng-template>
+      <ng-template matTabContent>
+        <app-output-tab />
+      </ng-template>
+    </mat-tab>
 
-        <div class="viewer-tools">
-          @if (canDownload()) {
-            <button
-              mat-icon-button
-              type="button"
-              [matTooltip]="lang.t('SCAN_JOBS_OPEN_TAB')"
-              [attr.aria-label]="lang.t('SCAN_JOBS_OPEN_TAB')"
-              (click)="openInTab()"
-            >
-              <mat-icon aria-hidden="true">open_in_new</mat-icon>
-            </button>
-            <button
-              mat-icon-button
-              type="button"
-              [matTooltip]="lang.t('SCAN_JOBS_DOWNLOAD')"
-              [attr.aria-label]="lang.t('SCAN_JOBS_DOWNLOAD')"
-              (click)="download()"
-            >
-              <mat-icon aria-hidden="true">download</mat-icon>
-            </button>
-          }
-          <button
-            mat-icon-button
-            type="button"
-            [matTooltip]="
-              fullscreen() ? lang.t('SCAN_JOBS_EXIT_FULLSCREEN') : lang.t('SCAN_JOBS_FULLSCREEN')
-            "
-            [attr.aria-label]="
-              fullscreen() ? lang.t('SCAN_JOBS_EXIT_FULLSCREEN') : lang.t('SCAN_JOBS_FULLSCREEN')
-            "
-            (click)="toggleFullscreen()"
-          >
-            <mat-icon aria-hidden="true">{{
-              fullscreen() ? 'fullscreen_exit' : 'fullscreen'
-            }}</mat-icon>
-          </button>
-        </div>
-      </header>
-
-      <div class="viewer-body">
-        @if (safePreviewUrl(); as url) {
-          <iframe
-            class="viewer-frame"
-            [src]="url"
-            [title]="lang.t('SCAN_JOBS_PREVIEW_TITLE')"
-          ></iframe>
-        } @else {
-          <div class="empty">
-            @if (busyJob(); as job) {
-              <mat-icon class="empty-icon spin" aria-hidden="true">progress_activity</mat-icon>
-              <p class="empty-title">{{ lang.t('SCAN_JOBS_EMPTY_BUSY') }}</p>
-              <p class="empty-text">
-                {{ job.done_pages }}/{{ job.total_pages }} {{ lang.t('SCAN_JOBS_PAGES') }} ·
-                {{ job.progress }}%
-              </p>
-              <mat-progress-bar class="empty-bar" mode="determinate" [value]="job.progress" />
-              <p class="empty-hint">{{ lang.t('SCAN_JOBS_EMPTY_BUSY_HINT') }}</p>
-            } @else if (creating()) {
-              <mat-icon class="empty-icon spin" aria-hidden="true">progress_activity</mat-icon>
-              <p class="empty-title">{{ lang.t('SCAN_JOBS_PREPARING') }}</p>
-            } @else {
-              <mat-icon class="empty-icon" aria-hidden="true">document_scanner</mat-icon>
-              <p class="empty-title">{{ lang.t('SCAN_JOBS_EMPTY_TITLE') }}</p>
-              <ol class="empty-steps">
-                <li>
-                  <span class="num" aria-hidden="true">1</span
-                  >{{ lang.t('SCAN_JOBS_EMPTY_STEP_1') }}
-                </li>
-                <li>
-                  <span class="num" aria-hidden="true">2</span
-                  >{{ lang.t('SCAN_JOBS_EMPTY_STEP_2') }}
-                </li>
-                <li>
-                  <span class="num" aria-hidden="true">3</span
-                  >{{ lang.t('SCAN_JOBS_EMPTY_STEP_3') }}
-                </li>
-              </ol>
-              @if (!hasFile()) {
-                <button matButton="filled" type="button" (click)="fileInput.click()">
-                  {{ lang.t('SCAN_JOBS_PICK') }}
-                </button>
-              }
-            }
-          </div>
-        }
-      </div>
-    </section>
-  </div>
-
-  <!-- Mobile: hành động chính luôn trong tầm ngón tay -->
-  <div class="mobile-bar">
-    @if (canDownload()) {
-      <button matButton="filled" type="button" class="wide" (click)="download()">
-        {{ lang.t('SCAN_JOBS_DOWNLOAD') }}
-      </button>
-    } @else {
-      <button
-        matButton="filled"
-        type="button"
-        class="wide"
-        [disabled]="!canStart()"
-        (click)="start()"
-      >
-        {{ creating() ? lang.t('SCAN_JOBS_RUNNING') : lang.t('SCAN_JOBS_START') }}
-      </button>
-    }
-  </div>
-
-  <input
-    #fileInput
-    type="file"
-    class="file-input"
-    accept=".pdf,.png,.jpg,.jpeg,.webp"
-    (change)="onFilesSelected($event)"
-  />
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <span class="tab-label">
+          <mat-icon aria-hidden="true">history</mat-icon>
+          {{ lang.t('SCAN_TAB_HISTORY') }}
+        </span>
+      </ng-template>
+      <ng-template matTabContent>
+        <app-history-tab />
+      </ng-template>
+    </mat-tab>
+  </mat-tab-group>
 </div>

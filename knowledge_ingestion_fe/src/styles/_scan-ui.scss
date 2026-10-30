@@ -1,0 +1,176 @@
+// Primitive dùng chung cho 4 tab của trang Quét (Tài liệu / Xem & sửa / PDF
+// chuẩn / Lịch sử).
+//
+// VÌ SAO GLOBAL: mỗi tab là một component có style encapsulation riêng, nên một
+// mixin `@use` ở 4 file sẽ nhân bản cùng một khối CSS 4 lần vào bundle. Khai
+// một lần ở đây (cùng lý do với _page-head.scss) để card/chip/banner chỉ có
+// đúng một định nghĩa — sửa một chỗ là cả 4 tab đổi theo.
+//
+// Đặt tên có tiền tố `scan-` để không đụng class của trang khác.
+
+.scan-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+}
+
+.scan-card {
+  padding: var(--space-4);
+  background: var(--color-card-background);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elevation-1);
+}
+
+.scan-card-title {
+  margin: 0;
+  font: var(--text-style-sm-strong);
+  color: var(--color-on-surface);
+}
+
+.scan-muted {
+  color: var(--color-muted);
+}
+
+.scan-danger {
+  color: var(--color-danger);
+}
+
+.scan-warning {
+  color: var(--color-warning);
+}
+
+.scan-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-hint {
+  margin: 0;
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+}
+
+// ---- Chip trạng thái ----
+
+.scan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-container);
+  color: var(--color-muted);
+  font: var(--text-style-xs-strong);
+  white-space: nowrap;
+
+  &.is-done {
+    background: color-mix(in srgb, var(--color-success) 14%, var(--color-surface));
+    color: var(--color-success);
+  }
+
+  &.is-failed {
+    background: var(--color-error-container);
+    color: var(--color-on-error-container);
+  }
+
+  &.is-running {
+    background: var(--color-accent-soft);
+    color: var(--color-primary);
+  }
+}
+
+// ---- Banner thông báo trong trang ----
+
+.scan-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font: var(--text-style-sm);
+
+  &.is-error {
+    background: var(--color-error-container);
+    color: var(--color-on-error-container);
+  }
+
+  &.is-success {
+    background: color-mix(in srgb, var(--color-success) 14%, var(--color-surface));
+    color: var(--color-success);
+  }
+}
+
+// ---- Trạng thái rỗng ----
+
+.scan-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.scan-empty-icon {
+  font-size: var(--icon-size-xl);
+  width: var(--icon-size-xl);
+  height: var(--icon-size-xl);
+  color: var(--color-outline);
+}
+
+.scan-empty-title {
+  margin: 0;
+  font: var(--text-style-base-strong);
+  color: var(--color-on-surface);
+}
+
+.scan-empty-text {
+  margin: 0;
+  font: var(--text-style-sm);
+}
+
+// ---- Hiệu ứng ----
+
+.scan-skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-container) 25%,
+    var(--color-surface-container-high) 50%,
+    var(--color-surface-container) 75%
+  );
+  background-size: 200% 100%;
+  animation: scan-shimmer 1.4s ease-in-out infinite;
+}
+
+.scan-spin {
+  animation: scan-spin 1s linear infinite;
+}
+
+@keyframes scan-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes scan-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-skeleton,
+  .scan-spin {
+    animation: none;
+  }
+}

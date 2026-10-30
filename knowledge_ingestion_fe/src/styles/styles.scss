@@ -3,6 +3,7 @@
 @use './reset';
 @use './fonts';
 @use './page-head';
+@use './scan-ui';
 @use './material';
 
 @mixin app-theme($primary, $tertiary) {

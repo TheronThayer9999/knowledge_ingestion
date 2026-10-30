@@ -1,0 +1,326 @@
+// Tab Tài liệu: cột trái = 3 bước, cột phải = phiên gần đây + mẹo dùng.
+// Primitive (card/chip/banner/hint) ở src/styles/_scan-ui.scss.
+@use '../../../../styles/mixins' as *;
+
+:host {
+  display: block;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(280px, 360px);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.wide {
+  width: 100%;
+}
+
+// ---- Bước ----
+
+.step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.step-num {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--icon-size-lg);
+  height: var(--icon-size-lg);
+  border-radius: var(--radius-full);
+  background: var(--color-accent-soft);
+  color: var(--color-primary);
+  font: var(--text-style-xs-strong);
+}
+
+.step-done .step-num {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.step-heading {
+  min-width: 0;
+}
+
+.step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+// ---- Tệp ----
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+  border: var(--border-width-strong) dashed var(--color-outline);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-faint);
+  transition:
+    border-color var(--duration-fast) var(--easing-standard),
+    background-color var(--duration-fast) var(--easing-standard);
+
+  &:hover,
+  &:focus-within,
+  &.dragging {
+    border-color: var(--color-primary);
+    background: var(--color-accent-soft);
+  }
+}
+
+.drop-icon {
+  font-size: var(--icon-size-xl);
+  width: var(--icon-size-xl);
+  height: var(--icon-size-xl);
+  color: var(--color-primary);
+}
+
+.drop-title {
+  margin: 0;
+  font: var(--text-style-sm-strong);
+  color: var(--color-on-surface);
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+
+  &.is-invalid {
+    border-color: var(--color-danger);
+    background: var(--color-error-container);
+  }
+}
+
+.file-icon {
+  display: grid;
+  place-items: center;
+  color: var(--color-muted);
+}
+
+.file-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  @include truncate;
+  margin: 0;
+  font: var(--text-style-sm-strong);
+}
+
+.file-meta {
+  margin: 0;
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+}
+
+// ---- Cài đặt ----
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field-label {
+  font: var(--text-style-xs-strong);
+  color: var(--color-muted);
+}
+
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  color: var(--color-muted);
+  font: var(--text-style-xs);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.advanced-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.seg {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-field);
+  background: var(--color-surface-container);
+
+  button {
+    @include truncate;
+    padding: var(--space-2) var(--space-1);
+    border: none;
+    border-radius: calc(var(--radius-field) - 2px);
+    background: transparent;
+    color: var(--color-muted);
+    font: var(--text-style-sm);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--color-accent-faint);
+      color: var(--color-on-surface);
+    }
+
+    &.active {
+      background: var(--color-card-background);
+      color: var(--color-primary);
+      font: var(--text-style-sm-strong);
+      box-shadow: var(--elevation-1);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+  }
+}
+
+// ---- Tiến độ ----
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.progress-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font: var(--text-style-sm);
+}
+
+.progress-name {
+  @include truncate;
+  min-width: 0;
+  font: var(--text-style-sm-strong);
+}
+
+// ---- Cột phải ----
+
+.side-title {
+  margin: 0 0 var(--space-2);
+  font: var(--text-style-xs-strong);
+  color: var(--color-muted);
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent-skeleton {
+  height: var(--list-row-height);
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-on-surface);
+  font: var(--text-style-sm);
+  text-align: left;
+  cursor: pointer;
+
+  mat-icon {
+    color: var(--color-muted);
+  }
+
+  &:hover {
+    background: var(--color-accent-faint);
+  }
+
+  &.is-active {
+    background: var(--color-accent-soft);
+  }
+}
+
+.recent-name {
+  @include truncate;
+  flex: 1;
+  min-width: 0;
+}
+
+.recent-meta {
+  font: var(--text-style-xs);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.side-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-2);
+  text-align: center;
+  color: var(--color-outline);
+}
+
+.tips-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  font: var(--text-style-sm);
+  color: var(--color-muted);
+
+  li + li {
+    margin-top: var(--space-1);
+  }
+}
+
+.file-input {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

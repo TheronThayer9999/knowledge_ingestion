@@ -1,0 +1,123 @@
+<div class="scan-body">
+  <header class="history-head">
+    <div>
+      <h3 class="scan-card-title">{{ lang.t('SCAN_HISTORY_TITLE') }}</h3>
+      <p class="scan-hint">{{ lang.t('SCAN_HISTORY_SUBTITLE') }}</p>
+    </div>
+
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter">
+      <mat-label>{{ lang.t('SCAN_HISTORY_FILTER') }}</mat-label>
+      <mat-select
+        [value]="store.historyFilter()"
+        (selectionChange)="store.setHistoryFilter($event.value)"
+      >
+        @for (status of filters; track status) {
+          <mat-option [value]="status">{{ filterLabel(status) }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </header>
+
+  <section class="scan-card table-card">
+    @if (store.historyBusy()) {
+      <ul class="rows" aria-busy="true" aria-live="polite">
+        @for (i of [1, 2, 3, 4]; track i) {
+          <li class="row-skeleton scan-skeleton" aria-hidden="true"></li>
+        }
+      </ul>
+    } @else if (store.historyItems().length > 0) {
+      <table class="rows-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ lang.t('SCAN_HISTORY_NAME') }}</th>
+            <th scope="col">{{ lang.t('SCAN_HISTORY_STATUS') }}</th>
+            <th scope="col">{{ lang.t('SCAN_HISTORY_PAGES') }}</th>
+            <th scope="col">{{ lang.t('SCAN_HISTORY_CREATED') }}</th>
+            <th scope="col">
+              <span class="sr-only">{{ lang.t('SCAN_HISTORY_ACTIONS') }}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (job of store.historyItems(); track job.id) {
+            <tr [class.is-active]="store.activeJob()?.id === job.id">
+              <td class="cell-name">
+                <mat-icon aria-hidden="true">picture_as_pdf</mat-icon>
+                <span class="scan-truncate" [matTooltip]="job.name">{{ job.name }}</span>
+              </td>
+              <td>
+                <span
+                  class="scan-chip"
+                  [class.is-done]="job.status === 'done'"
+                  [class.is-failed]="job.status === 'failed'"
+                  [class.is-running]="store.isRunning(job)"
+                >
+                  {{ lang.t(store.statusKey(job.status)) }}
+                </span>
+              </td>
+              <td class="cell-meta">{{ job.done_pages }}/{{ job.total_pages }}</td>
+              <td class="cell-meta">{{ job.created_at | date: 'short' }}</td>
+              <td class="cell-actions">
+                <button
+                  mat-icon-button
+                  type="button"
+                  [matTooltip]="lang.t('SCAN_HISTORY_OPEN')"
+                  [attr.aria-label]="lang.t('SCAN_HISTORY_OPEN')"
+                  (click)="open(job)"
+                >
+                  <mat-icon aria-hidden="true">open_in_new</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  type="button"
+                  [matTooltip]="lang.t('SCAN_HISTORY_DELETE')"
+                  [attr.aria-label]="lang.t('SCAN_HISTORY_DELETE')"
+                  (click)="store.remove(job)"
+                >
+                  <mat-icon aria-hidden="true">delete</mat-icon>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <div class="scan-empty">
+        <mat-icon class="scan-empty-icon" aria-hidden="true">history</mat-icon>
+        <p class="scan-empty-title">{{ lang.t('SCAN_HISTORY_EMPTY_TITLE') }}</p>
+        <p class="scan-empty-text">{{ lang.t('SCAN_HISTORY_EMPTY_TEXT') }}</p>
+      </div>
+    }
+  </section>
+
+  @if (store.historyTotal() > 0) {
+    <footer class="history-foot">
+      <span class="scan-hint">
+        {{ store.historyFrom() }}–{{ store.historyTo() }} / {{ store.historyTotal() }}
+      </span>
+      <div class="pager">
+        <button
+          mat-icon-button
+          type="button"
+          [disabled]="store.historyOffset() === 0"
+          [matTooltip]="lang.t('SCAN_HISTORY_PREV')"
+          [attr.aria-label]="lang.t('SCAN_HISTORY_PREV')"
+          (click)="store.historyPrev()"
+        >
+          <mat-icon aria-hidden="true">chevron_left</mat-icon>
+        </button>
+        <span class="pager-label">{{ store.historyPage() }} / {{ store.historyPages() }}</span>
+        <button
+          mat-icon-button
+          type="button"
+          [disabled]="store.historyTo() >= store.historyTotal()"
+          [matTooltip]="lang.t('SCAN_HISTORY_NEXT')"
+          [attr.aria-label]="lang.t('SCAN_HISTORY_NEXT')"
+          (click)="store.historyNext()"
+        >
+          <mat-icon aria-hidden="true">chevron_right</mat-icon>
+        </button>
+      </div>
+    </footer>
+  }
+</div>

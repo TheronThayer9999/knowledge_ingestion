@@ -1,0 +1,95 @@
+<div class="scan-body">
+  <section class="viewer scan-card" [class.fullscreen]="store.fullscreen()">
+    <header class="viewer-head">
+      <div class="viewer-title">
+        <mat-icon aria-hidden="true">picture_as_pdf</mat-icon>
+        <span class="scan-truncate" [matTooltip]="store.activeJob()?.name ?? ''">
+          {{ store.activeJob()?.name ?? lang.t('SCAN_OUTPUT_TITLE') }}
+        </span>
+        @if (store.activeJob(); as job) {
+          <span class="viewer-meta"
+            >{{ job.total_pages }} {{ lang.t('SCAN_JOBS_PAGES') }} · {{ job.progress }}%</span
+          >
+        }
+      </div>
+
+      <div class="viewer-tools">
+        @if (store.canDownload()) {
+          <button
+            mat-icon-button
+            type="button"
+            [matTooltip]="lang.t('SCAN_JOBS_OPEN_TAB')"
+            [attr.aria-label]="lang.t('SCAN_JOBS_OPEN_TAB')"
+            (click)="store.openInTab()"
+          >
+            <mat-icon aria-hidden="true">open_in_new</mat-icon>
+          </button>
+          <button matButton="filled" type="button" (click)="store.download()">
+            <mat-icon aria-hidden="true">download</mat-icon>
+            {{ lang.t('SCAN_JOBS_DOWNLOAD') }}
+          </button>
+        }
+        <button
+          mat-icon-button
+          type="button"
+          [matTooltip]="
+            store.fullscreen()
+              ? lang.t('SCAN_JOBS_EXIT_FULLSCREEN')
+              : lang.t('SCAN_JOBS_FULLSCREEN')
+          "
+          [attr.aria-label]="
+            store.fullscreen()
+              ? lang.t('SCAN_JOBS_EXIT_FULLSCREEN')
+              : lang.t('SCAN_JOBS_FULLSCREEN')
+          "
+          (click)="store.toggleFullscreen()"
+        >
+          <mat-icon aria-hidden="true">{{
+            store.fullscreen() ? 'fullscreen_exit' : 'fullscreen'
+          }}</mat-icon>
+        </button>
+      </div>
+    </header>
+
+    <div class="viewer-body">
+      @if (store.safeOutputUrl(); as url) {
+        <iframe class="viewer-frame" [src]="url" [title]="lang.t('SCAN_OUTPUT_TITLE')"></iframe>
+      } @else {
+        <div class="scan-empty">
+          @if (store.busyJob(); as job) {
+            <mat-icon class="scan-empty-icon scan-spin" aria-hidden="true"
+              >progress_activity</mat-icon
+            >
+            <p class="scan-empty-title">{{ lang.t('SCAN_JOBS_EMPTY_BUSY') }}</p>
+            <p class="scan-empty-text">
+              {{ job.done_pages }}/{{ job.total_pages }} {{ lang.t('SCAN_JOBS_PAGES') }} ·
+              {{ job.progress }}%
+            </p>
+            <mat-progress-bar class="empty-bar" mode="determinate" [value]="job.progress" />
+            <p class="scan-hint">{{ lang.t('SCAN_JOBS_EMPTY_BUSY_HINT') }}</p>
+          } @else if (store.activeJob()?.status === 'failed') {
+            <mat-icon class="scan-empty-icon" aria-hidden="true">error</mat-icon>
+            <p class="scan-empty-title">{{ lang.t('SCAN_OUTPUT_FAILED_TITLE') }}</p>
+            <p class="scan-empty-text">
+              {{ store.activeJob()?.error_message || lang.t('SCAN_JOBS_FAILED') }}
+            </p>
+            <button matButton="outlined" type="button" (click)="store.showTab(1)">
+              {{ lang.t('SCAN_TAB_REVIEW') }}
+            </button>
+          } @else if (store.activeJob()) {
+            <mat-icon class="scan-empty-icon" aria-hidden="true">hourglass_empty</mat-icon>
+            <p class="scan-empty-title">{{ lang.t('SCAN_OUTPUT_PENDING_TITLE') }}</p>
+            <p class="scan-empty-text">{{ lang.t('SCAN_OUTPUT_PENDING_TEXT') }}</p>
+          } @else {
+            <mat-icon class="scan-empty-icon" aria-hidden="true">picture_as_pdf</mat-icon>
+            <p class="scan-empty-title">{{ lang.t('SCAN_JOBS_EMPTY_TITLE') }}</p>
+            <p class="scan-empty-text">{{ lang.t('SCAN_OUTPUT_NO_JOB_TEXT') }}</p>
+            <button matButton="filled" type="button" (click)="store.showTab(0)">
+              {{ lang.t('SCAN_JOBS_PICK') }}
+            </button>
+          }
+        </div>
+      }
+    </div>
+  </section>
+</div>
