@@ -23,7 +23,9 @@ describe('APP SHELL route structure', () => {
 
   it('mỗi route con của shell (trừ redirect) có đúng một mục nav trong NAV_GROUPS', () => {
     const childPaths = (findShellRoute().children ?? [])
-      .filter((child) => !(child.path === '' && 'redirectTo' in child && child.pathMatch === 'full'))
+      // redirect (kể cả `/app/scan` → `/app/scan-jobs`) không phải trang nên
+      // không có mục nav riêng; trang đích mới là thứ phải lên menu.
+      .filter((child) => !('redirectTo' in child))
       .map((child) => `/app/${child.path}`);
     const navPaths = NAV_GROUPS.flatMap((group) => group.items).map((item) => item.path);
 

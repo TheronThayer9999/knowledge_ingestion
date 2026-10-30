@@ -29,6 +29,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/app/overview', icon: 'space_dashboard', label: 'NAV_OVERVIEW' },
       { path: '/app/documents', icon: 'folder_open', label: 'NAV_DOCUMENTS' },
+      { path: '/app/scan-jobs', icon: 'picture_as_pdf', label: 'NAV_SCAN_JOBS' },
       { path: '/app/chat', icon: 'forum', label: 'NAV_CHAT' },
     ],
   },

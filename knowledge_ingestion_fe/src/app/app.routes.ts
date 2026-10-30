@@ -19,6 +19,15 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/documents/documents').then((m) => m.Documents),
       },
       {
+        path: 'scan',
+        redirectTo: 'scan-jobs',
+        pathMatch: 'full',
+      },
+      {
+        path: 'scan-jobs',
+        loadComponent: () => import('./pages/scan-jobs/scan-jobs').then((m) => m.ScanJobs),
+      },
+      {
         path: 'chat',
         loadComponent: () => import('./pages/chat/chat').then((m) => m.Chat),
       },

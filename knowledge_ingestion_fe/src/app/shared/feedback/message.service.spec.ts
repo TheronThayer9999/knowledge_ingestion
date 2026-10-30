@@ -21,6 +21,11 @@ describe('MessageService', () => {
   }
 
   beforeEach(() => {
+    // Assertions dưới đây so câu tiếng Việt, mà LangService đọc `ki.lang` từ
+    // localStorage lúc khởi tạo. Builder chạy nhiều file test trong cùng một
+    // worker nên `lang.service.spec.ts` (set 'en') có thể để lại giá trị đó —
+    // xoá trước mỗi test để kết quả không phụ thuộc thứ tự chạy.
+    localStorage.clear();
     snackBar.open.mockClear();
     dialog.open.mockReset();
     dialog.open.mockReturnValue({ afterClosed: () => of(true) });

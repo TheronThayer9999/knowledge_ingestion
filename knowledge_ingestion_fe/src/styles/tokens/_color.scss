@@ -16,6 +16,10 @@
   --color-on-surface: var(--mat-sys-on-surface);
   --color-muted: var(--mat-sys-on-surface-variant);
   --color-danger: var(--mat-sys-error);
+  // Thành công / cảnh báo cho badge trạng thái OCR (không có token M3 tương đương
+  // → pha từ primary/error để vẫn đổi theo theme).
+  --color-success: color-mix(in srgb, #1e7e34 80%, var(--color-on-surface) 20%);
+  --color-warning: color-mix(in srgb, #b26a00 80%, var(--color-on-surface) 20%);
 
   // Nền phân tầng: trang nhạt hơn card, card trắng (kiểu Drive/Gmail).
   // Dark mode đảo chiều tự nhiên: trang tối nhất, card nổi lên một bậc.
